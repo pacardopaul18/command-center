@@ -150,7 +150,4 @@
    Both are written out as `@media (min-width: ...)` at each use site rather
    than declared as custom media, because @custom-media needs a PostCSS plugin
    and the dependency is not worth two numbers.
-
-   Only 960px is exercised today. Action Items is the only screen and its form
-   grid sits at 960px with the table and the shell, so 720px is sanctioned but
-   unused. See D22 in docs/DECISIONS.md. */
+ */

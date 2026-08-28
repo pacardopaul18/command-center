@@ -137,12 +137,17 @@ works from 720px, but a seven column table and a fixed 224px rail do not: at
 which is unusable. Adding no further breakpoints without amending this entry
 again.
 
-State of the code as of 8015ce8: only 960px is exercised. Action Items is the
-only screen, and its form grid was written at 960px alongside the table and the
-shell, so 720px is sanctioned but not yet used anywhere. Moving that form grid
-to 720px is a one line change, deliberately not made here because it alters
-layout and the build is on hold. Whichever way it goes, this entry gets updated
-so the ledger never describes a breakpoint the code does not have.
+State of the code: both breakpoints are exercised, and the split matches this
+entry. Verified against the compiled CSS rather than the source, so what ships
+is what is described here.
+
+| Breakpoint | Compiled selectors |
+| --- | --- |
+| 720px | `.grid`, `.span-all`, `.filters` |
+| 960px | `.list`, `.table-wrap`, `table`, `th`, `td`, and the table cell rules, plus `AppShell` in its own file |
+
+The earlier note in this entry, that only 960px was exercised, is superseded.
+The form grid moved to 720px in the commit that added this table.
 
 ### D23: 14px type scale adopted, inputs render 16px on touch
 

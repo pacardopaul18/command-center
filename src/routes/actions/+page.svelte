@@ -723,7 +723,8 @@
 		color: var(--text-secondary);
 	}
 
-	@media (min-width: 960px) {
+	/* D22, content blocks. Form grids go two up here. */
+	@media (min-width: 720px) {
 		.grid {
 			grid-template-columns: 1fr 1fr;
 		}
@@ -735,7 +736,11 @@
 		.filters {
 			grid-template-columns: 2fr 2fr auto;
 		}
+	}
 
+	/* D22, shell and tables. The card list gives way to the table only here,
+	   because seven columns need the room the sidebar breakpoint implies. */
+	@media (min-width: 960px) {
 		.list {
 			display: none;
 		}
