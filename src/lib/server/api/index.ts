@@ -1,6 +1,8 @@
 import { Hono } from 'hono';
 import type { ApiEnv } from './env';
 import { actionItems } from './action-items';
+import { clients } from './clients';
+import { invoicing } from './invoicing';
 import { projects } from './projects';
 import { sops } from './sops';
 import { today } from './today';
@@ -29,6 +31,8 @@ api.get('/health', (c) =>
 
 api.route('/today', today);
 api.route('/action-items', actionItems);
+api.route('/clients', clients);
+api.route('/invoicing', invoicing);
 api.route('/projects', projects);
 api.route('/sops', sops);
 

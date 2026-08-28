@@ -426,6 +426,26 @@ The verification is the point. This migration read correctly and was wrong. It
 was caught because the check compared actual rows before and after rather than
 asserting that the migration looked right.
 
+### D39: a remote snapshot is taken before every remote migration, unconditionally
+
+`npx wrangler d1 export command-center-db --remote --output <file>` runs
+immediately before any `migrations apply --remote`, every time, with no
+exceptions.
+
+The rule is written to survive the argument against it. "Nothing is at risk"
+and "the table is empty" are exactly the conditions under which the habit gets
+skipped, and a habit that is skipped when it seems unnecessary is not a habit.
+The cost is seconds. The case it protects against is the one nobody predicted,
+which is the only kind that matters.
+
+This sits on top of D1 Time Travel, which is always on but gives only a 7 day
+restore window on the Workers Free plan. An exported file is ours, is not
+governed by that window, and can be inspected without a restore.
+
+Remote migrations are also batched rather than applied one at a time, so a
+verified local sequence lands as a single remote change with a single snapshot
+in front of it.
+
 ## Interpretation notes
 
 Not decisions. Judgment calls made inside an existing decision, recorded so the
@@ -486,6 +506,30 @@ and Invoices. None are built:
 and stays unconstrained per the Stage 1 foreign key pattern, but nothing can set
 it until Clients exists, so the column would read "no client" on every row. It is
 omitted rather than shipped empty. Tracked as T-clients-0.
+
+### Money is stored as integer cents, and aging is never stored
+
+Two deviations from the field names in architecture section E, both in migration
+0004.
+
+`amount` and `amount_paid` become `amount_cents` and `amount_paid_cents`, stored
+as INTEGER. Binary floating point cannot represent most decimal money values
+exactly, so summing invoice totals in REAL drifts, and an aging report that does
+not add up is worse than no aging report. The name carries the unit so nobody
+has to guess. Hours stay REAL, because billing is done in quarter-hour
+increments, which are exactly representable, and hours are summed for display
+rather than for money.
+
+`aging_bucket` is listed in section E as a derived field and is treated as
+exactly that: computed at read time, never stored. A stored bucket is wrong the
+morning after it is written. The same reasoning removes "overdue" from the
+invoice status enum: an invoice is overdue when it is unpaid and its due date
+has passed, which is a question about today, not about the row. Status stays
+draft, sent, partial or paid, and overdue is derived alongside the bucket.
+
+The band totals on the Invoicing screen are computed by grouping the same
+derivation the rows use, in one query, so the bands and the list cannot
+disagree. Verified by recomputing every band from the rows and comparing.
 
 ## Risks
 

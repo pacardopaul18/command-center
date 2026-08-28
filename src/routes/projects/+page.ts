@@ -1,12 +1,21 @@
 import type { PageLoad } from './$types';
-import type { Project } from '$lib/types';
+import type { Client, Project } from '$lib/types';
 
 export const load: PageLoad = async ({ fetch }) => {
-	const res = await fetch('/api/projects');
-	if (!res.ok) {
-		const body = (await res.json().catch(() => ({}))) as { error?: string };
+	const [projectsRes, clientsRes] = await Promise.all([
+		fetch('/api/projects'),
+		fetch('/api/clients')
+	]);
+
+	if (!projectsRes.ok) {
+		const body = (await projectsRes.json().catch(() => ({}))) as { error?: string };
 		throw new Error(body.error ?? 'Could not load projects.');
 	}
-	const { projects } = (await res.json()) as { projects: Project[] };
-	return { projects };
+
+	const { projects } = (await projectsRes.json()) as { projects: Project[] };
+	const clients = clientsRes.ok
+		? ((await clientsRes.json()) as { clients: Client[] }).clients
+		: [];
+
+	return { projects, clients };
 };

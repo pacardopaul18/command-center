@@ -14,14 +14,28 @@ import type { ProjectPhase, ProjectStatus } from '$lib/types';
 
 export const projects = new Hono<ApiEnv>();
 
+/**
+ * A foreign key violation here means the caller named a client that does not
+ * exist. That is a bad request, not a server fault, so it gets a 400 and a
+ * message that says which field is wrong rather than a generic 500.
+ */
+function asClientError(err: unknown): unknown {
+	if (String(err).includes('FOREIGN KEY constraint failed')) {
+		return new ApiError(400, 'That client does not exist. Choose an existing client.');
+	}
+	return err;
+}
+
 // Rolls the linked action items up onto every project row, so the list can show
 // what is actually outstanding without a second request per project.
 const LIST_SELECT = `
   SELECT p.*,
+    cl.name AS client_name,
     SUM(CASE WHEN a.id IS NOT NULL AND a.status != 'done' THEN 1 ELSE 0 END) AS open_action_items,
     SUM(CASE WHEN a.id IS NOT NULL AND a.status != 'done'
              AND a.deadline IS NOT NULL AND a.deadline < ?1 THEN 1 ELSE 0 END) AS overdue_action_items
   FROM projects p
+  LEFT JOIN clients cl ON cl.id = p.client_id
   LEFT JOIN action_items a ON a.project_id = p.id
   GROUP BY p.id
 `;
@@ -51,13 +65,14 @@ projects.post('/', async (c) => {
 	const now = nowUtc();
 	const id = crypto.randomUUID();
 
-	await c.env.DB.prepare(
-		`INSERT INTO projects
+	try {
+		await c.env.DB.prepare(
+			`INSERT INTO projects
        (id, client_id, name, phase, status, owner_id, start_date, target_close,
         next_milestone, description, created_at, updated_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-	)
-		.bind(
+		)
+			.bind(
 			id,
 			optionalText(body.client_id, 'client_id', 64),
 			requiredText(body.name, 'Name', 200),
@@ -68,10 +83,13 @@ projects.post('/', async (c) => {
 			optionalDate(body.target_close, 'Target close'),
 			optionalText(body.next_milestone, 'Next milestone', 300),
 			optionalText(body.description, 'Description', 4000),
-			now,
-			now
-		)
-		.run();
+				now,
+				now
+			)
+			.run();
+	} catch (err) {
+		throw asClientError(err);
+	}
 
 	const created = await c.env.DB.prepare('SELECT * FROM projects WHERE id = ?').bind(id).first();
 	return c.json({ project: created }, 201);
@@ -171,9 +189,13 @@ projects.patch('/:id', async (c) => {
 	binds.push(nowUtc());
 	binds.push(id);
 
-	await c.env.DB.prepare(`UPDATE projects SET ${sets.join(', ')} WHERE id = ?`)
-		.bind(...binds)
-		.run();
+	try {
+		await c.env.DB.prepare(`UPDATE projects SET ${sets.join(', ')} WHERE id = ?`)
+			.bind(...binds)
+			.run();
+	} catch (err) {
+		throw asClientError(err);
+	}
 
 	const updated = await c.env.DB.prepare(`${LIST_SELECT} HAVING p.id = ?2`)
 		.bind(todayInWorkingZone(), id)

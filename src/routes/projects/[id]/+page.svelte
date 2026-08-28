@@ -63,6 +63,7 @@
 		errorMessage = '';
 		edit = {
 			name: project.name,
+			client_id: project.client_id ?? '',
 			next_milestone: project.next_milestone ?? '',
 			start_date: project.start_date ?? '',
 			target_close: project.target_close ?? '',
@@ -76,7 +77,9 @@
 	}
 
 	const summary = $derived.by(() => {
-		const bits = [`${PHASE_LABELS[project.phase]} phase`];
+		const bits: string[] = [];
+		if (project.client_name) bits.push(project.client_name);
+		bits.push(`${PHASE_LABELS[project.phase]} phase`);
 		if (project.next_milestone) bits.push(`next milestone ${project.next_milestone}`);
 		if (project.target_close) bits.push(`target close ${formatDay(project.target_close)}`);
 		return bits.join(' · ');
@@ -122,6 +125,16 @@
 					<div class="span-all">
 						<FormField label="Name">
 							<Input bind:value={edit.name} maxlength={200} required />
+						</FormField>
+					</div>
+					<div class="span-all">
+						<FormField label="Client">
+							<Select bind:value={edit.client_id}>
+								<option value="">No client</option>
+								{#each data.clients as client (client.id)}
+									<option value={client.id}>{client.name}</option>
+								{/each}
+							</Select>
 						</FormField>
 					</div>
 					<FormField label="Start date">

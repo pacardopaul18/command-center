@@ -27,6 +27,7 @@
 	function blankDraft() {
 		return {
 			name: '',
+			client_id: '',
 			phase: 'initiating' as ProjectPhase,
 			status: 'on_track',
 			next_milestone: '',
@@ -104,6 +105,14 @@
 							<Input bind:value={draft.name} placeholder="What the engagement is" maxlength={200} required />
 						</FormField>
 					</div>
+					<FormField label="Client">
+						<Select bind:value={draft.client_id}>
+							<option value="">No client</option>
+							{#each data.clients as client (client.id)}
+								<option value={client.id}>{client.name}</option>
+							{/each}
+						</Select>
+					</FormField>
 					<FormField label="Phase">
 						<Select bind:value={draft.phase}>
 							{#each PROJECT_PHASES as phase (phase)}
@@ -146,7 +155,10 @@
 					{#each group.rows as project (project.id)}
 						<li>
 							<a class="row" href="/projects/{project.id}">
-								<span class="name">{project.name}</span>
+								<span class="name">
+									{project.name}
+									{#if project.client_name}<span class="client">{project.client_name}</span>{/if}
+								</span>
 								<span class="milestone mono">
 									{#if project.next_milestone}
 										{project.next_milestone}
@@ -285,6 +297,14 @@
 	.name {
 		font-weight: var(--weight-medium);
 		overflow-wrap: anywhere;
+	}
+
+	.client {
+		display: block;
+		margin-top: 2px;
+		font-size: var(--text-xs);
+		font-weight: var(--weight-regular);
+		color: var(--text-secondary);
 	}
 
 	.milestone,

@@ -9,8 +9,8 @@ Context: [CLAUDE.md](CLAUDE.md), [docs/Command_Center_Build_Plan.md](docs/Comman
 Stage 1 is CLOSED. The app is live at **work.kabuhayan.app**, behind Cloudflare
 Access with One-Time PIN, whitelisting Paul only.
 
-MVP stage in progress. Today cockpit, Action Items, Projects and the SOP library
-are built. Invoicing and the Cron digests are next.
+MVP stage in progress. Today cockpit, Action Items, Projects, the SOP library,
+Clients and Invoicing with aging are built. The Cron and Resend digests are next.
 
 | Resource | State |
 | --- | --- |
@@ -76,6 +76,8 @@ src/routes/+page.svelte         Today cockpit
 src/routes/actions/             Action Items screen
 src/routes/projects/            Projects list and detail
 src/routes/sops/                SOP library and version history
+src/routes/clients/             Clients registry
+src/routes/invoices/            Invoicing, billing periods and aging
 src/app.css                     design tokens and base styles
 wrangler.toml                   bindings: D1 and KV live, R2 pending
 ```
