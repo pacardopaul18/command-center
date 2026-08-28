@@ -9,8 +9,8 @@ Context: [CLAUDE.md](CLAUDE.md), [docs/Command_Center_Build_Plan.md](docs/Comman
 Stage 1 is CLOSED. The app is live at **work.kabuhayan.app**, behind Cloudflare
 Access with One-Time PIN, whitelisting Paul only.
 
-MVP stage in progress. Today cockpit, Action Items and Projects are built. SOPs,
-Invoicing and the Cron digests are next.
+MVP stage in progress. Today cockpit, Action Items, Projects and the SOP library
+are built. Invoicing and the Cron digests are next.
 
 | Resource | State |
 | --- | --- |
@@ -75,6 +75,7 @@ src/routes/api/[...path]/       SvelteKit to Hono bridge
 src/routes/+page.svelte         Today cockpit
 src/routes/actions/             Action Items screen
 src/routes/projects/            Projects list and detail
+src/routes/sops/                SOP library and version history
 src/app.css                     design tokens and base styles
 wrangler.toml                   bindings: D1 and KV live, R2 pending
 ```
@@ -95,6 +96,12 @@ wrangler.toml                   bindings: D1 and KV live, R2 pending
 | GET | `/api/projects/:id` | project plus its linked action items |
 | PATCH | `/api/projects/:id` | partial. Advance phase and set status use this |
 | DELETE | `/api/projects/:id` | action items survive unlinked, not deleted |
+| GET | `/api/sops` | `status=active\|archived\|all`, `q=`, `category=` |
+| POST | `/api/sops` | writes the SOP and version 1 in one batch |
+| GET | `/api/sops/:id` | SOP, history without bodies, and one body via `?version=` |
+| PATCH | `/api/sops/:id` | metadata and archive only. Never the body |
+| POST | `/api/sops/:id/versions` | editing means adding a version |
+| POST | `/api/sops/:id/versions/:vid/restore` | carries an old body forward as a new version |
 
 Overdue and due-today are decided against the America/Denver calendar date, not UTC, so an
 item does not flip to overdue at 6pm local when UTC rolls over.
@@ -131,6 +138,10 @@ Secrets (`ASANA_TOKEN`, `RESEND_API_KEY`, AI keys) go in via `wrangler pages sec
 or the Pages project settings. Never in code, never in wrangler.toml.
 
 ## Schema
+
+[migrations/0002_sops.sql](migrations/0002_sops.sql) creates `sops` and `sop_versions`,
+with triggers enforcing that versions are immutable and undeletable and that the current
+version only ever moves forward. See D32 to D34 in [docs/DECISIONS.md](docs/DECISIONS.md).
 
 [migrations/0001_init_action_items.sql](migrations/0001_init_action_items.sql) creates
 `users`, `projects` and `action_items` per section E of the architecture doc. `projects.client_id`

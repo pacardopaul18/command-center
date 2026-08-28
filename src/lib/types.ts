@@ -122,3 +122,35 @@ export interface ActionItemCounts {
 	waiting: number;
 	done: number;
 }
+
+// --- SOPs ---
+
+export const SOP_STATUSES = ['active', 'archived'] as const;
+export type SopStatus = (typeof SOP_STATUSES)[number];
+
+export interface Sop {
+	id: string;
+	title: string;
+	category: string | null;
+	current_version_id: string | null;
+	owner_id: string | null;
+	review_due: string | null;
+	status: SopStatus;
+	created_at: string;
+	updated_at: string;
+	// Joined by the list and detail queries, not stored on the row.
+	current_version_number?: number | null;
+	current_version_created_at?: string | null;
+	current_change_note?: string | null;
+	version_count?: number;
+}
+
+export interface SopVersion {
+	id: string;
+	sop_id: string;
+	version_number: number;
+	body: string;
+	change_note: string | null;
+	author_id: string | null;
+	created_at: string;
+}

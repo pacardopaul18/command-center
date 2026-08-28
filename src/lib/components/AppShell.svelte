@@ -17,7 +17,8 @@
 	const nav = [
 		{ href: '/', label: 'Today', exact: true },
 		{ href: '/actions', label: 'Action items', exact: false },
-		{ href: '/projects', label: 'Projects', exact: false }
+		{ href: '/projects', label: 'Projects', exact: false },
+		{ href: '/sops', label: 'SOPs', exact: false }
 	];
 
 	let quickAddOpen = $state(false);

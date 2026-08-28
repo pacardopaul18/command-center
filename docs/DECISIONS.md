@@ -309,6 +309,61 @@ The rule that follows: any change to the wrangler target shape is followed by
 that matters lives in a migration or in the seed file, never only in
 `.wrangler/state`, which is gitignored precisely because it is scratch.
 
+### D32: SOP versions are immutable and undeletable
+
+A version is a historical fact. Editing one rewrites the audit trail, which is
+the only reason the table exists. Deleting one puts a hole in it.
+
+Enforced in the database, not by convention. Migration 0002 adds two triggers,
+`sop_versions_immutable` and `sop_versions_undeletable`, that RAISE(ABORT) on any
+UPDATE or DELETE against `sop_versions`. Verified against local D1: both attempts
+return SQLITE_CONSTRAINT_TRIGGER and the row is untouched afterwards.
+
+The API validates the same rules so a caller gets a clear message rather than a
+raw constraint error. PATCH on a SOP rejects a `body` key with "Editing a SOP
+body creates a new version." The triggers are the backstop, not the error text.
+
+One consequence, accepted: local test SOPs cannot be cleaned up. Neither the SOP
+nor its versions can be deleted through any path, so a throwaway SOP written
+while developing is permanent until the local database is reset. That follows
+from D31, which already treats local state as disposable and rebuildable from
+migrations plus the seed.
+
+### D33: SOPs archive, never delete. No destroy path in v1
+
+There is deliberately no DELETE route on `/api/sops`. Archiving is the only way
+to retire a SOP, and it is reversible.
+
+Archiving drops a SOP from the default list, which is the point, but the record
+stays fully readable at its own URL with its history intact. An archived SOP
+cannot take a new version until it is restored to active; the API returns "This
+SOP is archived. Restore it to active before editing." rather than silently
+accepting an edit to a retired procedure.
+
+The foreign keys are `ON DELETE RESTRICT` in both directions, so even a direct
+database delete of a SOP fails while it has versions, and versions cannot be
+deleted at all. There is no accidental path to destruction.
+
+### D34: current_version_id moves forward only
+
+History is linear. Restoring an older version means writing a new version that
+carries the old body forward, never repointing the SOP at an earlier row.
+
+The difference matters. Repointing would make the current version ambiguous and
+would silently orphan everything written after it. Carrying forward keeps every
+revision in sequence, so the history reads as what actually happened.
+
+Enforced by the `sops_current_version_forward_only` trigger, which aborts any
+update setting `current_version_id` to a version whose number is not greater than
+the current one. Verified: moving backwards from v2 to v1 aborts, moving forward
+from v2 to v3 succeeds.
+
+The restore endpoint is `POST /api/sops/:id/versions/:versionId/restore`. It
+copies the old body into a new version and defaults the change note to "Restored
+the content of version N", so the audit trail says plainly what happened.
+Verified end to end: a SOP at v3 restored from v1 becomes v4, v4's body equals
+v1's body exactly, and v1 through v3 remain readable and unchanged.
+
 ## Interpretation notes
 
 Not decisions. Judgment calls made inside an existing decision, recorded so the
@@ -354,6 +409,19 @@ against its own schedule:
 
 Verified through the API as well as in isolation: an item completed at 05:59Z on
 2026-08-28 counts as zero done today, and one completed at 06:01Z counts as one.
+
+### SOP bodies render as plain text, not markdown
+
+`sop_versions.body` is markdown per the architecture's data model, but the detail
+screen renders it as preformatted plain text with whitespace preserved.
+
+Rendering markdown means turning stored text into HTML, which needs a renderer
+and a sanitiser. That is two dependencies and an injection surface, and the
+"boring, standard dependencies" rule says such a choice gets made deliberately
+rather than slipped in. Numbered steps, which is what the SOP template calls for,
+read correctly as plain text today.
+
+Open for Paul whenever formatting is actually wanted.
 
 ### Projects ships three of the design's panels short
 
