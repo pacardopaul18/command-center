@@ -55,11 +55,11 @@ build, one deploy artifact, and the same bindings for pages and API.
 
 ### D18: Pages project must be created git-connected from the dashboard
 
-`wrangler pages project create` produces a direct-upload project, and a
-direct-upload project cannot be converted to git-connected afterwards. Creating
-it from the CLI would burn the project name and force a delete and redo. The
-project is therefore created through the dashboard Connect to Git flow, which is
-the one part of the setup that cannot be scripted.
+SUPERSEDED BY D29. The project is a Worker, not a Pages project, so this entry
+no longer governs. Kept because the reasoning still holds for anyone who
+reintroduces Pages: `wrangler pages project create` produces a direct-upload
+project, a direct-upload project cannot be converted to git-connected
+afterwards, and creating it from the CLI would burn the project name.
 
 ### D19: the Claude Design export is a visual reference spec, never merged as code
 
@@ -224,6 +224,83 @@ This is the only place display and record are allowed to disagree. Any future
 divergence needs its own decision entry before it is built. The rule is not
 "derived display is fine", it is "this one is, and it was argued for".
 
+### D29: Workers with Static Assets, not Pages
+
+The project was created through the Workers Builds flow rather than classic
+Pages, so it exists as a Worker service at `workers/services/view/command-center`.
+Its first build compiled cleanly and then failed at deploy with "Missing
+entry-point to Worker script or to assets directory", because `wrangler.toml`
+was written for Pages: it had `pages_build_output_dir` and neither `main` nor
+`assets`.
+
+The decision is to keep it as a Worker and fix the repo, not to delete it and
+recreate it as Pages. Workers with Static Assets is the platform's current
+direction, it is what `wrangler deploy` expects, and bindings come from
+`wrangler.toml` rather than from dashboard state, which suits a git-driven
+project better.
+
+What the config change is:
+
+| Key | Before, Pages | After, Workers |
+| --- | --- | --- |
+| `pages_build_output_dir` | `.svelte-kit/cloudflare` | removed |
+| `main` | absent | `.svelte-kit/cloudflare/_worker.js` |
+| `[assets] directory` | absent | `.svelte-kit/cloudflare` |
+| `[assets] binding` | absent | `ASSETS` |
+
+`@sveltejs/adapter-cloudflare` needs no code change. It picks its target by
+reading this file: Pages when `pages_build_output_dir` is set or `CF_PAGES` is
+in the environment, Workers when `main` or `assets` is set. The two must never
+both be set. Confirmed by reading the adapter at
+`node_modules/@sveltejs/adapter-cloudflare/index.js`, not by assumption.
+
+The output shape changes accordingly, and was verified after a rebuild:
+`_worker.js` is a single file rather than a directory, `.assetsignore` is
+written so the Worker script is never served as a public asset, and
+`_routes.json` and the `404.html` fallback are gone because both are Pages-only.
+Unmatched requests now fall through to the Worker and render the SvelteKit
+error page, which is better than a static 404.
+
+`wrangler deploy --dry-run` passes and reports the bindings resolving from the
+file: `env.DB`, `env.SESSIONS`, `env.ASSETS`, with 46 assets read.
+
+### D30: Node 24 on the build runner is accepted, and nothing is pinned
+
+Workers Builds ran the build on nodejs 24.18.0 while local development is on
+22.21.0. The build was green either way.
+
+Ruled out rather than assumed: every one of the 55 installed packages that
+declares `engines.node` declares an open ended range or one that explicitly
+includes 24. None caps below it. With `engine-strict=true` in `.npmrc` a cap
+would have failed the install, and there is no cap.
+
+No version is pinned. The root `package.json` declares no `engines`, and no
+`.node-version` file is added. Adding one would assert a mechanism that has not
+been verified in the Workers Builds flow, and an unverified pin is worse than
+none. If a future runner default does break the build, `.node-version` is the
+lever to reach for, and this entry gets amended with the evidence.
+
+### D31: switching the wrangler target orphans the local D1 database
+
+Changing `wrangler.toml` from the Pages shape to the Workers shape changed the
+key miniflare uses to store the local D1 database. A second, empty SQLite file
+appeared under `.wrangler/state/v3/d1/` and the dev server bound to it, so every
+API call returned "no such table: action_items" while the old file still held
+the schema and its rows.
+
+The important part is that the CLI and the dev server stayed consistent with
+each other. After the switch, `wrangler d1 migrations apply --local` and
+`vite dev` both target the new file, so there is no split brain. The recovery is
+just to re-run the local migration and the local seed.
+
+Remote D1 is unaffected. It is addressed by `database_id` through the API and
+never touched by this.
+
+The rule that follows: any change to the wrangler target shape is followed by
+`npm run db:migrate:local`, and local data is treated as disposable. Anything
+that matters lives in a migration or in the seed file, never only in
+`.wrangler/state`, which is gitignored precisely because it is scratch.
+
 ## Risks
 
 ### R6: public pages.dev window, OPEN
@@ -245,15 +322,25 @@ publicly reachable and serves the same Worker against the same D1. Preview
 deployments get their own `<hash>.command-center.pages.dev` hostnames on top of
 that. The architecture doc flags this at line 12 as the known Pages rough edge.
 
-R6 closes only when all three are gated:
+AMENDED AGAIN after D29. The project is a Worker, not a Pages project, so the
+second public hostname is not `command-center.pages.dev`. It is
+`command-center.<account-subdomain>.workers.dev`, and deployed versions get
+their own `<prefix>-command-center.<account-subdomain>.workers.dev`.
 
-1. `work.kabuhayan.app`
-2. `command-center.pages.dev`
-3. `*.command-center.pages.dev`
+For the workers.dev hostname there is a better answer than gating it. Setting
+`workers_dev = false` in wrangler.toml removes the route entirely, so there is
+no hostname to protect rather than a hostname protected by policy. That is the
+intended close path, taken once the custom domain is confirmed working, because
+until then workers.dev is the only way to verify a deploy.
 
-Record the closing evidence here when it lands, and verify it by fetching each
-hostname signed out and confirming the Access login interstitial, not by
-assuming the policy applied.
+R6 closes when both hold:
+
+1. `work.kabuhayan.app` sits behind Access with the One-Time PIN policy
+2. `workers_dev = false` is deployed, or the workers.dev hostnames are gated
+
+Verify by fetching each hostname signed out and confirming the Access login
+interstitial or a dead hostname. Do not assume the policy applied. Record the
+closing evidence and date here.
 
 ## Open questions
 

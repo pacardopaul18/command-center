@@ -1,6 +1,6 @@
 # Command Center
 
-Private, single-user operations command center. Cloudflare Pages + Hono + D1 + KV + R2.
+Private, single-user operations command center. Cloudflare Workers with Static Assets, plus Hono, D1, KV and later R2.
 Context: [CLAUDE.md](CLAUDE.md), [docs/Command_Center_Build_Plan.md](docs/Command_Center_Build_Plan.md),
 [docs/Command_Center_Architecture.md](docs/Command_Center_Architecture.md).
 
@@ -14,7 +14,7 @@ applied to remote D1. Nothing has been deployed. No Pages project exists yet.
 | D1 `command-center-db` | created, id wired, migration 0001 applied remote |
 | KV `SESSIONS` | created, id wired |
 | R2 `command-center-files` | not created. R2 is not enabled on the account |
-| Pages project | not created |
+| Worker service | created via Workers Builds, deploy config fixed, awaiting a green deploy |
 | Custom domain | work.kabuhayan.app, decided, not attached |
 | Cloudflare Access | not configured. Zero Trust not yet activated on the account |
 
@@ -22,25 +22,34 @@ applied to remote D1. Nothing has been deployed. No Pages project exists yet.
 
 | Layer | Choice |
 | --- | --- |
-| Front end | SvelteKit 2 with Svelte 5 runes, `@sveltejs/adapter-cloudflare` |
+| Front end | SvelteKit 2 with Svelte 5 runes, `@sveltejs/adapter-cloudflare` targeting Workers |
 | API | Hono, mounted at `/api` by one catch-all SvelteKit endpoint |
 | Database | D1 (`command-center-db`), binding `DB` |
 | Sessions and settings | KV, binding `SESSIONS` |
 | Files | R2 (`command-center-files`), binding `FILES`, not enabled yet |
 
-### Why one catch-all endpoint instead of a `/functions` directory
+### Why one catch-all endpoint
 
-With `adapter-cloudflare`, a top level `functions/` directory takes precedence over the
-generated `_worker.js` and would shadow the SvelteKit app. Keeping Hono inside the route
-tree at [src/routes/api/[...path]/+server.ts](src/routes/api/%5B...path%5D/+server.ts) gives
-one build, one deploy artifact, and the same bindings for pages and API. That is the clean
-option for git-connected Pages.
+Hono lives inside the SvelteKit route tree at
+[src/routes/api/[...path]/+server.ts](src/routes/api/%5B...path%5D/+server.ts). One build,
+one deploy artifact, the same bindings for pages and API. On Workers with Static Assets, a
+request matching a built asset is served without invoking the Worker, and everything else,
+including every `/api` route, falls through to it.
+
+### Deploy target
+
+Workers with Static Assets, not Pages. See D29 in
+[docs/DECISIONS.md](docs/DECISIONS.md). `adapter-cloudflare` chooses its target by reading
+`wrangler.toml`: Pages when `pages_build_output_dir` is set, Workers when `main` or
+`assets` is set. Never set both.
 
 ## Local development
 
 ```
 npm install
 npm run db:migrate:local     # creates the local D1 database under .wrangler/state
+                             # re-run this after any change to the wrangler
+                             # target shape, see D31
 npm run db:seed:local        # optional sample projects, local only
 npm run dev                  # http://localhost:5173
 ```
@@ -93,17 +102,18 @@ Done:
 
 Still to do, all dashboard work, in this order:
 
-1. Create a Pages project connected to this repo. Build command `npm run build`,
-   output directory `.svelte-kit/cloudflare`, and add the D1 and KV bindings to
-   both Production and Preview.
+1. DONE, with a fix. The Worker was created through Workers Builds. Its first
+   deploy failed because wrangler.toml was still written for Pages. Fixed in the
+   repo, so the next push builds and deploys.
 2. Set the account spend limit. CLOSED BY INSPECTION: Workers Free exposes no
    spend control and hard-stops at its daily limits instead of billing.
-3. Attach `work.kabuhayan.app` to the Pages project.
+3. Attach `work.kabuhayan.app` to the Worker as a custom domain.
 4. Activate Zero Trust (free), then create the Access self-hosted application
    with One-Time PIN, policy allowing pacardopaul18@gmail.com only. It must
-   cover `work.kabuhayan.app`, `command-center.pages.dev` and
-   `*.command-center.pages.dev`, or the app stays publicly reachable on
-   pages.dev while looking gated. See R6 in docs/DECISIONS.md.
+   cover `work.kabuhayan.app`. The second public hostname is
+   `command-center.<account-subdomain>.workers.dev`, which is closed by setting
+   `workers_dev = false` once the custom domain works, rather than by policy.
+   See R6 in docs/DECISIONS.md.
 
 Deferred to the v1 gate (T-v1-0): enable R2 in the dashboard, run
 `npx wrangler r2 bucket create command-center-files`, then uncomment the

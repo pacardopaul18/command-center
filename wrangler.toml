@@ -1,20 +1,34 @@
-# Cloudflare Pages project config for Command Center.
+# Cloudflare Workers config for Command Center.
 #
-# STATUS: D1 and KV are created and wired with real ids. R2 is not created yet
-# because R2 is not enabled on the account; that is a one time dashboard action.
+# TARGET: Workers with Static Assets, not Pages. The project was created through
+# the Workers Builds flow, so it is a Worker service, not a Pages project. See
+# D29 in docs/DECISIONS.md.
+#
+# @sveltejs/adapter-cloudflare picks its target from this file. It builds for
+# Pages when `pages_build_output_dir` is set (or CF_PAGES is in the env), and
+# for Workers when `main` or `assets` is set. Both must never be set at once.
 #
 # Account: pacardopaul18@gmail.com (09d30ac2fb14b703740140910d92b108)
 #
-# Local dev does not need these ids. Vite dev and preview emulate the bindings
-# with miniflare and persist state under .wrangler/state.
+# Local dev does not use the deploy settings. Vite dev and preview emulate the
+# bindings below with miniflare and persist state under .wrangler/state.
 #
 # Never put secrets here. ASANA_TOKEN, RESEND_API_KEY and any AI key go through
-# `wrangler pages secret put NAME` or the Pages project settings.
+# `wrangler secret put NAME` or the Worker's settings in the dashboard.
 
 name = "command-center"
+main = ".svelte-kit/cloudflare/_worker.js"
 compatibility_date = "2026-08-01"
 compatibility_flags = ["nodejs_compat"]
-pages_build_output_dir = ".svelte-kit/cloudflare"
+
+# --- Static assets ---
+# The client bundle and any prerendered pages. A request that matches an asset
+# is served without invoking the Worker; anything else, including every /api
+# route, falls through to the Worker. The adapter writes a .assetsignore into
+# this directory so _worker.js is never served as a public file.
+[assets]
+directory = ".svelte-kit/cloudflare"
+binding = "ASSETS"
 
 # --- D1: relational data (Users, Projects, ActionItems, ...) ---
 # Primary region is APAC, auto-selected at create time from where the request
@@ -31,11 +45,10 @@ binding = "SESSIONS"
 id = "9671c77ef65242ebb96b4e7d771cb530"
 
 # --- R2: transcripts, generated PDFs, SOP exports ---
-# TO BE FILLED. Commented out on purpose: R2 is not enabled on the account, so
-# `wrangler r2 bucket create` returns error 10042 and a deploy carrying this
-# binding would fail. Nothing in Stage 1 writes files. Enable R2 in the
-# dashboard, run `npx wrangler r2 bucket create command-center-files`, then
-# uncomment these three lines.
+# TO BE FILLED at the v1 gate (T-v1-0). Commented out on purpose: R2 is not
+# enabled on the account, so a deploy carrying this binding would fail. Nothing
+# before v1 writes files. Enable R2 in the dashboard, run
+# `npx wrangler r2 bucket create command-center-files`, then uncomment.
 # [[r2_buckets]]
 # binding = "FILES"
 # bucket_name = "command-center-files"
