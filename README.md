@@ -15,8 +15,8 @@ applied to remote D1. Nothing has been deployed. No Pages project exists yet.
 | KV `SESSIONS` | created, id wired |
 | R2 `command-center-files` | not created. R2 is not enabled on the account |
 | Pages project | not created |
-| Custom domain | not attached |
-| Cloudflare Access | not configured |
+| Custom domain | work.kabuhayan.app, decided, not attached |
+| Cloudflare Access | not configured. Zero Trust not yet activated on the account |
 
 ## Stack
 
@@ -96,14 +96,19 @@ Still to do, all dashboard work, in this order:
 1. Create a Pages project connected to this repo. Build command `npm run build`,
    output directory `.svelte-kit/cloudflare`, and add the D1 and KV bindings to
    both Production and Preview.
-2. Set the account spend limit.
-3. Attach the custom domain to the Pages project.
-4. Create the Cloudflare Access self-hosted application on that custom domain,
-   identity provider One-Time PIN, policy allowing pacardopaul18@gmail.com only.
+2. Set the account spend limit. CLOSED BY INSPECTION: Workers Free exposes no
+   spend control and hard-stops at its daily limits instead of billing.
+3. Attach `work.kabuhayan.app` to the Pages project.
+4. Activate Zero Trust (free), then create the Access self-hosted application
+   with One-Time PIN, policy allowing pacardopaul18@gmail.com only. It must
+   cover `work.kabuhayan.app`, `command-center.pages.dev` and
+   `*.command-center.pages.dev`, or the app stays publicly reachable on
+   pages.dev while looking gated. See R6 in docs/DECISIONS.md.
 
-Optional, whenever files are needed: enable R2 in the dashboard, run
+Deferred to the v1 gate (T-v1-0): enable R2 in the dashboard, run
 `npx wrangler r2 bucket create command-center-files`, then uncomment the
-`[[r2_buckets]]` block in wrangler.toml.
+`[[r2_buckets]]` block in wrangler.toml. A payment method already exists on the
+account, so there is no billing step attached.
 
 Secrets (`ASANA_TOKEN`, `RESEND_API_KEY`, AI keys) go in via `wrangler pages secret put NAME`
 or the Pages project settings. Never in code, never in wrangler.toml.

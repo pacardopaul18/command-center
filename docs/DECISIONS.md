@@ -11,7 +11,10 @@ file records what was decided along the way that neither of them says, and why.
 | Id | Task | State |
 | --- | --- | --- |
 | T5 | Cloudflare wiring: login, D1, KV, remote migration | DONE, commit f94faab |
-| T-v1-0 | Enable R2, add payment method, restore the `[[r2_buckets]]` binding | SEEDED at the v1 gate, do not start early |
+| T6 | Dashboard step 2, spend limit | CLOSED BY INSPECTION. Workers Free exposes no spend control; the plan hard-stops at its daily limits instead of billing, so there is nothing to cap |
+| T-v1-0 | Enable R2 in the dashboard, restore the `[[r2_buckets]]` binding, flip `FILES` back to required | SEEDED at the v1 gate. Reduced: a payment method already exists on the account, so this is dashboard clicks plus one binding, no billing step |
+| T7 | Dashboard step 1, git-connected Pages project | OPEN, DRI Paul. Verified not yet created: `wrangler pages project list` shows only `kabuhayan-me`. Blocks T8 |
+| T8 | Dashboard steps 3 and 4, custom domain then Access | OPEN, DRI Paul. Blocked by T7 |
 
 ## Decisions
 
@@ -19,8 +22,12 @@ file records what was decided along the way that neither of them says, and why.
 
 Stage 1 through MVP write zero files. R2 first matters at v1, for transcript
 storage and generated PDFs. `wrangler r2 bucket create` returns error 10042
-because R2 is not enabled on the account, and enabling it requires adding a
-payment method. Not now.
+because R2 is not enabled on the account. Not now.
+
+AMENDED. The original entry said enabling R2 requires adding a payment method.
+A payment method already exists on the account, so T-v1-0 is dashboard clicks
+plus restoring the binding. No billing decision is attached to it any more,
+which removes the only reason this was more than a chore.
 
 The `[[r2_buckets]]` block in [../wrangler.toml](../wrangler.toml) is commented
 out rather than left pointing at a bucket that does not exist, because a Pages
@@ -216,27 +223,53 @@ divergence needs its own decision entry before it is built. The rule is not
 
 ### R6: public pages.dev window, OPEN
 
-From the moment the first Pages deploy succeeds until the Cloudflare Access
-application is live on the custom domain, `command-center.pages.dev` is publicly
-reachable and unauthenticated.
+From the moment the first Pages deploy succeeds until Cloudflare Access is live,
+the app is publicly reachable and unauthenticated.
 
 Mitigation: sample data only. No client names, no real action items, no real
 project names. The remote D1 is empty at the time of writing, and the two seed
 rows in [../seed/dev-seed.sql](../seed/dev-seed.sql) are deliberately generic.
 
-Closes at dashboard step 4, when Access with One-Time PIN allows
-pacardopaul18@gmail.com only. Record the closing commit here when it lands.
+AMENDED, and the amendment matters. The original entry said this closes when
+Access is live on the custom domain. That is wrong, and it would have left the
+app open while looking closed.
+
+An Access application protects the hostnames it names. Gating
+`work.kabuhayan.app` does nothing for `command-center.pages.dev`, which stays
+publicly reachable and serves the same Worker against the same D1. Preview
+deployments get their own `<hash>.command-center.pages.dev` hostnames on top of
+that. The architecture doc flags this at line 12 as the known Pages rough edge.
+
+R6 closes only when all three are gated:
+
+1. `work.kabuhayan.app`
+2. `command-center.pages.dev`
+3. `*.command-center.pages.dev`
+
+Record the closing evidence here when it lands, and verify it by fetching each
+hostname signed out and confirming the Access login interstitial, not by
+assuming the policy applied.
 
 ## Open questions
 
-### O1: custom domain, DRI Paul
+### O1: custom domain, DRI Paul. RESOLVED
 
-Which case applies: (a) a domain already on Cloudflare in this account, (b) a
-domain held elsewhere whose nameservers move to Cloudflare, or (c) no domain,
-buy through Cloudflare Registrar.
+Resolved as case (a). The app lives at **work.kabuhayan.app**. `kabuhayan.app`
+is already active in this Cloudflare account, so the DNS record is created
+automatically when the hostname is attached to the Pages project.
 
-Blocks dashboard steps 3 and 4 only. Access must sit on the custom domain, not
-on `pages.dev`. Steps 1 and 2 are unblocked and run in parallel.
+Corroborated by `wrangler pages project list`: the existing `kabuhayan-me`
+project already serves `me.kabuhayan.app`, which confirms both that the zone is
+in this account and that subdomain attachment is the working pattern here.
 
-Note on (c): buying through Cloudflare Registrar adds a payment method to the
-account, which incidentally unblocks R2 for T-v1-0 at no extra cost.
+The apex may serve a public site. That is unaffected. A subdomain behind Access
+is gated independently of anything else on the zone.
+
+### O2: Zero Trust is not activated on the account, DRI Paul
+
+The dashboard still shows the "Set up Zero Trust" button, so no Zero Trust
+organisation exists yet. Access applications cannot be created until one does.
+
+This is a prerequisite inside dashboard step 4, tracked as step 4.0. Free plan,
+up to 50 users, no card required. It needs a team name, which becomes the
+permanent `<team-name>.cloudflareaccess.com` login domain.
