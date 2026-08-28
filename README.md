@@ -6,8 +6,17 @@ Context: [CLAUDE.md](CLAUDE.md), [docs/Command_Center_Build_Plan.md](docs/Comman
 
 ## Status
 
-Stage 1 scaffold. Action Items module runs end to end against local D1.
-No Cloudflare resources exist yet. Nothing has been deployed.
+Stage 1. Action Items module runs end to end against local D1, and the schema is
+applied to remote D1. Nothing has been deployed. No Pages project exists yet.
+
+| Resource | State |
+| --- | --- |
+| D1 `command-center-db` | created, id wired, migration 0001 applied remote |
+| KV `SESSIONS` | created, id wired |
+| R2 `command-center-files` | not created. R2 is not enabled on the account |
+| Pages project | not created |
+| Custom domain | not attached |
+| Cloudflare Access | not configured |
 
 ## Stack
 
@@ -17,7 +26,7 @@ No Cloudflare resources exist yet. Nothing has been deployed.
 | API | Hono, mounted at `/api` by one catch-all SvelteKit endpoint |
 | Database | D1 (`command-center-db`), binding `DB` |
 | Sessions and settings | KV, binding `SESSIONS` |
-| Files | R2 (`command-center-files`), binding `FILES` |
+| Files | R2 (`command-center-files`), binding `FILES`, not enabled yet |
 
 ### Why one catch-all endpoint instead of a `/functions` directory
 
@@ -53,7 +62,7 @@ src/lib/server/api/             Hono app: action-items, projects, validation
 src/routes/api/[...path]/       SvelteKit to Hono bridge
 src/routes/actions/             Action Items screen
 src/app.css                     design tokens and base styles
-wrangler.toml                   bindings, ids still placeholders
+wrangler.toml                   bindings: D1 and KV live, R2 pending
 ```
 
 ## API
@@ -72,21 +81,29 @@ wrangler.toml                   bindings, ids still placeholders
 Overdue and due-today are decided against the America/Denver calendar date, not UTC, so an
 item does not flip to overdue at 6pm local when UTC rolls over.
 
-## Before this can go to Cloudflare
+## Cloudflare setup
 
-None of these have been run. Each one needs Paul's go-ahead.
+Done:
 
 1. `npx wrangler login`
 2. `npx wrangler d1 create command-center-db`
 3. `npx wrangler kv namespace create SESSIONS`
-4. `npx wrangler r2 bucket create command-center-files`
-5. Paste the three returned ids into [wrangler.toml](wrangler.toml) where it says TO BE FILLED
-6. `npm run db:migrate:remote`
-7. Connect this repo to Cloudflare Pages in the dashboard, build command `npm run build`,
-   output directory `.svelte-kit/cloudflare`
-8. Attach the custom domain, then create the Cloudflare Access self-hosted application with
-   One-Time PIN on that domain, allowing Paul's email only
-9. Set the spend limit
+4. Real ids wired into [wrangler.toml](wrangler.toml)
+5. `npm run db:migrate:remote`
+
+Still to do, all dashboard work, in this order:
+
+1. Create a Pages project connected to this repo. Build command `npm run build`,
+   output directory `.svelte-kit/cloudflare`, and add the D1 and KV bindings to
+   both Production and Preview.
+2. Set the account spend limit.
+3. Attach the custom domain to the Pages project.
+4. Create the Cloudflare Access self-hosted application on that custom domain,
+   identity provider One-Time PIN, policy allowing pacardopaul18@gmail.com only.
+
+Optional, whenever files are needed: enable R2 in the dashboard, run
+`npx wrangler r2 bucket create command-center-files`, then uncomment the
+`[[r2_buckets]]` block in wrangler.toml.
 
 Secrets (`ASANA_TOKEN`, `RESEND_API_KEY`, AI keys) go in via `wrangler pages secret put NAME`
 or the Pages project settings. Never in code, never in wrangler.toml.

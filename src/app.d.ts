@@ -14,7 +14,9 @@ declare global {
 			env: {
 				DB: import('@cloudflare/workers-types').D1Database;
 				SESSIONS: import('@cloudflare/workers-types').KVNamespace;
-				FILES: import('@cloudflare/workers-types').R2Bucket;
+				// Optional until R2 is enabled on the account and the binding in
+				// wrangler.toml is uncommented. Nothing in Stage 1 uses it.
+				FILES?: import('@cloudflare/workers-types').R2Bucket;
 			};
 			cf?: import('@cloudflare/workers-types').CfProperties;
 			ctx: import('@cloudflare/workers-types').ExecutionContext;

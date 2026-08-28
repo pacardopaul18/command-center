@@ -1,14 +1,11 @@
 # Cloudflare Pages project config for Command Center.
 #
-# STATUS: placeholders only. No Cloudflare resources have been created yet.
-# Every id below marked TO BE FILLED must be replaced with the real id printed by
-# the create commands before any remote migration or deploy:
+# STATUS: D1 and KV are created and wired with real ids. R2 is not created yet
+# because R2 is not enabled on the account; that is a one time dashboard action.
 #
-#   npx wrangler d1 create command-center-db
-#   npx wrangler kv namespace create SESSIONS
-#   npx wrangler r2 bucket create command-center-files
+# Account: pacardopaul18@gmail.com (09d30ac2fb14b703740140910d92b108)
 #
-# Local dev does not need real ids. Vite dev and preview emulate these bindings
+# Local dev does not need these ids. Vite dev and preview emulate the bindings
 # with miniflare and persist state under .wrangler/state.
 #
 # Never put secrets here. ASANA_TOKEN, RESEND_API_KEY and any AI key go through
@@ -20,20 +17,25 @@ compatibility_flags = ["nodejs_compat"]
 pages_build_output_dir = ".svelte-kit/cloudflare"
 
 # --- D1: relational data (Users, Projects, ActionItems, ...) ---
+# Primary region is APAC, auto-selected at create time from where the request
+# came from. Correct for a single user working from APAC.
 [[d1_databases]]
 binding = "DB"
 database_name = "command-center-db"
-# TO BE FILLED after `npx wrangler d1 create command-center-db`
-database_id = "00000000-0000-0000-0000-000000000000"
+database_id = "00922b27-9b84-4097-ba4e-568a8f06c6ee"
 migrations_dir = "migrations"
 
 # --- KV: sessions and settings ---
 [[kv_namespaces]]
 binding = "SESSIONS"
-# TO BE FILLED after `npx wrangler kv namespace create SESSIONS`
-id = "0000000000000000000000000000000000"
+id = "9671c77ef65242ebb96b4e7d771cb530"
 
 # --- R2: transcripts, generated PDFs, SOP exports ---
-[[r2_buckets]]
-binding = "FILES"
-bucket_name = "command-center-files"
+# TO BE FILLED. Commented out on purpose: R2 is not enabled on the account, so
+# `wrangler r2 bucket create` returns error 10042 and a deploy carrying this
+# binding would fail. Nothing in Stage 1 writes files. Enable R2 in the
+# dashboard, run `npx wrangler r2 bucket create command-center-files`, then
+# uncomment these three lines.
+# [[r2_buckets]]
+# binding = "FILES"
+# bucket_name = "command-center-files"
