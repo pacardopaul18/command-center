@@ -16,7 +16,8 @@ file records what was decided along the way that neither of them says, and why.
 | T7 | Dashboard step 1, git-connected build project | DONE. Created via Workers Builds, not Pages. First deploy failed on a Pages-shaped config; fixed in 8bfc68b. Version f6d05619 deployed 2026-08-28T21:18Z with DB, SESSIONS and ASSETS all resolving |
 | T8 | Dashboard steps 3 and 4, custom domain then Access | DONE. work.kabuhayan.app is attached and behind Access with a single Paul-only Allow policy, verified from incognito |
 | T9 | Close the workers.dev surface | DONE. `workers_dev = false` and `preview_urls = false` |
-| T-clients-0 | Rebuild `projects` with a real `client_id` foreign key when the Clients table lands | OWED. SQLite cannot add a foreign key to an existing table, so the Clients migration rebuilds `projects`. Same pattern owed for `action_items.meeting_id` at Meetings |
+| T-clients-0 | Rebuild `projects` with a real `client_id` foreign key | DONE, migration 0003. Verified: rows survive byte-for-byte, action item links survive, a bogus client_id is rejected on INSERT and UPDATE |
+| T-meetings-0 | Rebuild `action_items` with a real `meeting_id` foreign key when Meetings lands | OWED. Same pattern as T-clients-0, and subject to D38 |
 
 ## Decisions
 
@@ -364,6 +365,67 @@ the content of version N", so the audit trail says plainly what happened.
 Verified end to end: a SOP at v3 restored from v1 becomes v4, v4's body equals
 v1's body exactly, and v1 through v3 remain readable and unchanged.
 
+### D35: local D1 is reset rather than cleaned, and the corollary for immutability tests
+
+Local D1 is reset by deleting `.wrangler`, re-running the migrations and
+re-running the seed. There is no cleanup path and there should not be one.
+
+The corollary matters for testing D32. SOP versions cannot be updated or deleted
+through any path, so any SOP written while developing is permanent for the life
+of that local database. Immutability tests therefore run on data created for the
+test after a reset, and the test data is not undone afterwards, by design. That
+is the feature working, not a gap.
+
+Nothing that matters may live only in `.wrangler/state`. Anything worth keeping
+belongs in a migration or in `seed/dev-seed.sql`, both of which are in the repo.
+
+### D36: markdown rendering deferred to v1, decided once for SOPs and Meetings
+
+SOP bodies render as preformatted plain text for the MVP. Deferred, not
+rejected.
+
+The revisit point is v1, when Meetings arrives. Meeting summaries and imported
+transcripts have the same question, and answering it twice invites two different
+answers. One renderer and one sanitiser, chosen once, covering SOP bodies,
+meeting summaries and AI-drafted content.
+
+Until then plain text stands. Numbered steps, which is what the SOP template
+asks for, read correctly without it.
+
+### D37: Clients ships as a thin module alongside Invoicing
+
+Invoicing needs a real clients table. A table with no screens is a phantom: rows
+appear only through migrations or the API, nobody can correct them, and the data
+rots without anyone seeing it.
+
+So Clients ships in the same pass as Invoicing, thin but complete: list, create,
+edit, and archive. Archive rather than delete, consistent with SOPs under D33 and
+with the `ON DELETE RESTRICT` on `projects.client_id`. Contacts, billing history
+and the rest of the registry wait for v1.
+
+### D38: DROP TABLE fires referential actions, so table rebuilds must stash and restore links
+
+Caught by verification, not by reading. The first version of migration 0003
+silently nulled every `action_items.project_id`.
+
+`DROP TABLE` performs an implicit delete of every row, which fires `ON DELETE`
+actions on child tables. `action_items.project_id` is `ON DELETE SET NULL`, so
+dropping `projects` during the rebuild wiped every link. `PRAGMA
+defer_foreign_keys` does not help: it defers constraint *checking*, not the
+actions themselves. `PRAGMA foreign_keys = OFF` would stop them but is a no-op
+inside a transaction, and D1 runs migrations in one.
+
+The standard for every future table rebuild, including T-meetings-0:
+
+1. Stash the child links in an ordinary scratch table before the drop.
+2. Rebuild, drop, rename, recreate indexes.
+3. Restore the links from the scratch table, then drop it.
+4. Verify by diffing before and after, not by reading the SQL.
+
+The verification is the point. This migration read correctly and was wrong. It
+was caught because the check compared actual rows before and after rather than
+asserting that the migration looked right.
+
 ## Interpretation notes
 
 Not decisions. Judgment calls made inside an existing decision, recorded so the
@@ -409,19 +471,6 @@ against its own schedule:
 
 Verified through the API as well as in isolation: an item completed at 05:59Z on
 2026-08-28 counts as zero done today, and one completed at 06:01Z counts as one.
-
-### SOP bodies render as plain text, not markdown
-
-`sop_versions.body` is markdown per the architecture's data model, but the detail
-screen renders it as preformatted plain text with whitespace preserved.
-
-Rendering markdown means turning stored text into HTML, which needs a renderer
-and a sanitiser. That is two dependencies and an injection surface, and the
-"boring, standard dependencies" rule says such a choice gets made deliberately
-rather than slipped in. Numbered steps, which is what the SOP template calls for,
-read correctly as plain text today.
-
-Open for Paul whenever formatting is actually wanted.
 
 ### Projects ships three of the design's panels short
 
