@@ -1,0 +1,222 @@
+/* Command Center design tokens and base styles.
+   Palette and fonts are fixed in CLAUDE.md. Gold is accent only, never a
+   background for body text. Mobile first: the base layout is built for a 412px
+   viewport and widens from there. */
+
+@import '@fontsource/dm-sans/400.css';
+@import '@fontsource/dm-sans/500.css';
+@import '@fontsource/dm-sans/700.css';
+@import '@fontsource/dm-mono/400.css';
+@import '@fontsource/dm-mono/500.css';
+
+:root {
+	--navy: #102a4c;
+	--gold: #c9a84c;
+	--cream: #faf6ec;
+	--ink: #1b2433;
+	--muted: #5b6470;
+	--green: #2e7d5b;
+
+	/* Derived. Contrast against --surface #ffffff:
+	   ink 13.9:1, muted 5.5:1, navy 12.7:1, green 4.9:1, red 5.9:1.
+	   All clear WCAG 2.1 AA for body text. Gold on white is 2.0:1 so it is
+	   only ever used as a rule, a fill behind ink, or a non-essential mark. */
+	--red: #b3261e;
+	--surface: #ffffff;
+	--surface-sunken: var(--cream);
+	--line: #e4ddcc;
+	--line-strong: #cfc6b0;
+
+	--radius: 10px;
+	--radius-sm: 6px;
+	--shadow: 0 1px 2px rgba(16, 42, 76, 0.06), 0 4px 14px rgba(16, 42, 76, 0.05);
+
+	--font-sans: 'DM Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+	--font-mono: 'DM Mono', ui-monospace, 'Cascadia Mono', 'Consolas', monospace;
+
+	--space-1: 4px;
+	--space-2: 8px;
+	--space-3: 12px;
+	--space-4: 16px;
+	--space-5: 24px;
+	--space-6: 32px;
+
+	/* Minimum tap target. */
+	--tap: 44px;
+}
+
+*,
+*::before,
+*::after {
+	box-sizing: border-box;
+}
+
+html {
+	background: var(--surface-sunken);
+}
+
+body {
+	margin: 0;
+	font-family: var(--font-sans);
+	font-size: 16px;
+	line-height: 1.5;
+	color: var(--ink);
+	background: var(--surface-sunken);
+	-webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3 {
+	margin: 0;
+	line-height: 1.25;
+	color: var(--navy);
+	font-weight: 700;
+	letter-spacing: -0.01em;
+}
+
+h1 {
+	font-size: 1.5rem;
+}
+h2 {
+	font-size: 1.125rem;
+}
+h3 {
+	font-size: 1rem;
+}
+
+p {
+	margin: 0;
+}
+
+a {
+	color: var(--navy);
+	text-underline-offset: 2px;
+}
+
+:focus-visible {
+	outline: 2px solid var(--navy);
+	outline-offset: 2px;
+	border-radius: var(--radius-sm);
+}
+
+/* Forms */
+label {
+	display: block;
+	font-size: 0.8125rem;
+	font-weight: 500;
+	color: var(--muted);
+	margin-bottom: var(--space-1);
+}
+
+input,
+select,
+textarea,
+button {
+	font-family: inherit;
+	font-size: 1rem;
+	color: inherit;
+}
+
+input[type='text'],
+input[type='date'],
+input[type='search'],
+select,
+textarea {
+	width: 100%;
+	min-height: var(--tap);
+	padding: var(--space-2) var(--space-3);
+	background: var(--surface);
+	border: 1px solid var(--line-strong);
+	border-radius: var(--radius-sm);
+	color: var(--ink);
+}
+
+textarea {
+	min-height: 76px;
+	resize: vertical;
+	line-height: 1.45;
+}
+
+input::placeholder,
+textarea::placeholder {
+	color: var(--muted);
+	opacity: 1;
+}
+
+.btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: var(--space-2);
+	min-height: var(--tap);
+	min-width: var(--tap);
+	padding: 0 var(--space-4);
+	border-radius: var(--radius-sm);
+	border: 1px solid transparent;
+	background: var(--navy);
+	color: var(--cream);
+	font-weight: 500;
+	cursor: pointer;
+	text-decoration: none;
+	white-space: nowrap;
+}
+
+.btn:hover {
+	background: #0b1f39;
+}
+
+.btn[disabled] {
+	opacity: 0.55;
+	cursor: not-allowed;
+}
+
+.btn-secondary {
+	background: var(--surface);
+	color: var(--navy);
+	border-color: var(--line-strong);
+}
+
+.btn-secondary:hover {
+	background: var(--cream);
+}
+
+.btn-quiet {
+	background: transparent;
+	color: var(--muted);
+	border-color: transparent;
+	padding: 0 var(--space-3);
+}
+
+.btn-quiet:hover {
+	background: var(--cream);
+	color: var(--ink);
+}
+
+.btn-danger {
+	background: transparent;
+	color: var(--red);
+	border-color: transparent;
+	padding: 0 var(--space-3);
+}
+
+.btn-danger:hover {
+	background: #fbeceb;
+}
+
+.mono {
+	font-family: var(--font-mono);
+	font-variant-numeric: tabular-nums;
+}
+
+.visually-hidden {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	margin: -1px;
+	padding: 0;
+	overflow: hidden;
+	clip-path: inset(50%);
+	white-space: nowrap;
+	border: 0;
+}

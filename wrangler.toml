@@ -1,0 +1,39 @@
+# Cloudflare Pages project config for Command Center.
+#
+# STATUS: placeholders only. No Cloudflare resources have been created yet.
+# Every id below marked TO BE FILLED must be replaced with the real id printed by
+# the create commands before any remote migration or deploy:
+#
+#   npx wrangler d1 create command-center-db
+#   npx wrangler kv namespace create SESSIONS
+#   npx wrangler r2 bucket create command-center-files
+#
+# Local dev does not need real ids. Vite dev and preview emulate these bindings
+# with miniflare and persist state under .wrangler/state.
+#
+# Never put secrets here. ASANA_TOKEN, RESEND_API_KEY and any AI key go through
+# `wrangler pages secret put NAME` or the Pages project settings.
+
+name = "command-center"
+compatibility_date = "2026-08-01"
+compatibility_flags = ["nodejs_compat"]
+pages_build_output_dir = ".svelte-kit/cloudflare"
+
+# --- D1: relational data (Users, Projects, ActionItems, ...) ---
+[[d1_databases]]
+binding = "DB"
+database_name = "command-center-db"
+# TO BE FILLED after `npx wrangler d1 create command-center-db`
+database_id = "00000000-0000-0000-0000-000000000000"
+migrations_dir = "migrations"
+
+# --- KV: sessions and settings ---
+[[kv_namespaces]]
+binding = "SESSIONS"
+# TO BE FILLED after `npx wrangler kv namespace create SESSIONS`
+id = "0000000000000000000000000000000000"
+
+# --- R2: transcripts, generated PDFs, SOP exports ---
+[[r2_buckets]]
+binding = "FILES"
+bucket_name = "command-center-files"
