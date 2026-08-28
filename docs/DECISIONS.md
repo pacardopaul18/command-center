@@ -13,8 +13,9 @@ file records what was decided along the way that neither of them says, and why.
 | T5 | Cloudflare wiring: login, D1, KV, remote migration | DONE, commit f94faab |
 | T6 | Dashboard step 2, spend limit | CLOSED BY INSPECTION. Workers Free exposes no spend control; the plan hard-stops at its daily limits instead of billing, so there is nothing to cap |
 | T-v1-0 | Enable R2 in the dashboard, restore the `[[r2_buckets]]` binding, flip `FILES` back to required | SEEDED at the v1 gate. Reduced: a payment method already exists on the account, so this is dashboard clicks plus one binding, no billing step |
-| T7 | Dashboard step 1, git-connected Pages project | OPEN, DRI Paul. Verified not yet created: `wrangler pages project list` shows only `kabuhayan-me`. Blocks T8 |
-| T8 | Dashboard steps 3 and 4, custom domain then Access | OPEN, DRI Paul. Blocked by T7 |
+| T7 | Dashboard step 1, git-connected build project | DONE. Created via Workers Builds, not Pages. First deploy failed on a Pages-shaped config; fixed in 8bfc68b. Version f6d05619 deployed 2026-08-28T21:18Z with DB, SESSIONS and ASSETS all resolving |
+| T8 | Dashboard steps 3 and 4, custom domain then Access | DONE. work.kabuhayan.app is attached and behind Access with a single Paul-only Allow policy, verified from incognito |
+| T9 | Close the workers.dev surface | DONE. `workers_dev = false` and `preview_urls = false` |
 
 ## Decisions
 
@@ -303,44 +304,44 @@ that matters lives in a migration or in the seed file, never only in
 
 ## Risks
 
-### R6: public pages.dev window, OPEN
+### R6: public unauthenticated window. CLOSED 2026-08-29
 
-From the moment the first Pages deploy succeeds until Cloudflare Access is live,
-the app is publicly reachable and unauthenticated.
+From the first successful deploy until Cloudflare Access went live, the app was
+publicly reachable and unauthenticated. Mitigation while it was open: sample
+data only. Remote D1 held zero rows for the whole window, and the seed rows are
+deliberately generic.
 
-Mitigation: sample data only. No client names, no real action items, no real
-project names. The remote D1 is empty at the time of writing, and the two seed
-rows in [../seed/dev-seed.sql](../seed/dev-seed.sql) are deliberately generic.
+The entry was amended twice while open, and both amendments mattered.
 
-AMENDED, and the amendment matters. The original entry said this closes when
-Access is live on the custom domain. That is wrong, and it would have left the
-app open while looking closed.
+First amendment. The original text said the risk closes when Access is live on
+the custom domain. That was wrong. An Access application protects only the
+hostnames it names, so the platform hostname would have stayed public while the
+app looked gated.
 
-An Access application protects the hostnames it names. Gating
-`work.kabuhayan.app` does nothing for `command-center.pages.dev`, which stays
-publicly reachable and serves the same Worker against the same D1. Preview
-deployments get their own `<hash>.command-center.pages.dev` hostnames on top of
-that. The architecture doc flags this at line 12 as the known Pages rough edge.
+Second amendment, after D29. The platform hostname is not
+`command-center.pages.dev`. The project is a Worker, so it is
+`command-center.<subdomain>.workers.dev`, plus a per version
+`<version>-command-center.<subdomain>.workers.dev`.
 
-AMENDED AGAIN after D29. The project is a Worker, not a Pages project, so the
-second public hostname is not `command-center.pages.dev`. It is
-`command-center.<account-subdomain>.workers.dev`, and deployed versions get
-their own `<prefix>-command-center.<account-subdomain>.workers.dev`.
+Closed by two independent measures, not one:
 
-For the workers.dev hostname there is a better answer than gating it. Setting
-`workers_dev = false` in wrangler.toml removes the route entirely, so there is
-no hostname to protect rather than a hostname protected by policy. That is the
-intended close path, taken once the custom domain is confirmed working, because
-until then workers.dev is the only way to verify a deploy.
+| Surface | How it is closed |
+| --- | --- |
+| `work.kabuhayan.app` | Cloudflare Access self-hosted application, One-Time PIN, a single Allow policy naming pacardopaul18@gmail.com |
+| `command-center.<subdomain>.workers.dev` | `workers_dev = false` |
+| `<version>-command-center.<subdomain>.workers.dev` | `preview_urls = false` |
 
-R6 closes when both hold:
+Both flags are set explicitly rather than left to their defaults, because these
+are the settings that decide whether an unauthenticated copy of the app is on
+the public internet, and a default is not a decision.
 
-1. `work.kabuhayan.app` sits behind Access with the One-Time PIN policy
-2. `workers_dev = false` is deployed, or the workers.dev hostnames are gated
+Evidence for the Access half, verified by Paul rather than assumed: an incognito
+request to `work.kabuhayan.app` returned the Access login wall, a One-Time PIN
+arrived at pacardopaul18@gmail.com, the PIN was accepted, and the session landed
+on Action items with existing data intact.
 
-Verify by fetching each hostname signed out and confirming the Access login
-interstitial or a dead hostname. Do not assume the policy applied. Record the
-closing evidence and date here.
+Standing rule, now in CLAUDE.md: `workers_dev` and `preview_urls` stay false.
+Turning either on reopens this risk.
 
 ## Open questions
 
@@ -365,3 +366,30 @@ organisation exists yet. Access applications cannot be created until one does.
 This is a prerequisite inside dashboard step 4, tracked as step 4.0. Free plan,
 up to 50 users, no card required. It needs a team name, which becomes the
 permanent `<team-name>.cloudflareaccess.com` login domain.
+
+## Stage gates
+
+### Stage 1: CLOSED 2026-08-29
+
+The threshold from the build plan was: Paul can log in by emailed PIN and create,
+read and update action items that persist in D1. That is met.
+
+| Requirement | Evidence |
+| --- | --- |
+| Scaffold, Hono API, D1, KV | Worker version f6d05619 deployed with `env.DB`, `env.SESSIONS`, `env.ASSETS` all resolving from wrangler.toml |
+| Custom domain | work.kabuhayan.app attached and serving |
+| Access OTP | Incognito hits the Access wall, PIN delivered to pacardopaul18@gmail.com, accepted, session lands on the app |
+| Action Items end to end | Create, read, edit, mark done, reopen and delete, all persisting. Exercised by hand in the browser as well as by API |
+| Schema through migrations only | `0001_init_action_items.sql`, applied local and remote. No hand editing of any live database at any point |
+
+Two things carried out of Stage 1 that were not in its scope. The design system
+was ported (D19 to D28), which was pulled forward because restyling later would
+have meant redoing the module. And the deploy target moved from Pages to Workers
+(D29), which was forced by how the project got created.
+
+Two things deliberately left undone. R2 is deferred to the v1 gate (D15,
+T-v1-0). No auth UI exists and none will (D25).
+
+Next is the MVP stage: Today cockpit, Projects with the five PMI phases, SOP
+library with version history, Invoicing with aging, and the start-of-day and
+end-of-day digests via Cron and Resend.

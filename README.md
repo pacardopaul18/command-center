@@ -6,17 +6,18 @@ Context: [CLAUDE.md](CLAUDE.md), [docs/Command_Center_Build_Plan.md](docs/Comman
 
 ## Status
 
-Stage 1. Action Items module runs end to end against local D1, and the schema is
-applied to remote D1. Nothing has been deployed. No Pages project exists yet.
+Stage 1 is CLOSED. The app is live at **work.kabuhayan.app**, behind Cloudflare
+Access with One-Time PIN, whitelisting Paul only. Action Items runs end to end
+against remote D1.
 
 | Resource | State |
 | --- | --- |
 | D1 `command-center-db` | created, id wired, migration 0001 applied remote |
 | KV `SESSIONS` | created, id wired |
-| R2 `command-center-files` | not created. R2 is not enabled on the account |
-| Worker service | created via Workers Builds, deploy config fixed, awaiting a green deploy |
-| Custom domain | work.kabuhayan.app, decided, not attached |
-| Cloudflare Access | not configured. Zero Trust not yet activated on the account |
+| R2 `command-center-files` | not created, deferred to the v1 gate (T-v1-0) |
+| Worker service | live, git-connected Workers Builds |
+| Custom domain | work.kabuhayan.app, attached |
+| Cloudflare Access | live, One-Time PIN, single Paul-only Allow policy |
 
 ## Stack
 
@@ -100,20 +101,18 @@ Done:
 4. Real ids wired into [wrangler.toml](wrangler.toml)
 5. `npm run db:migrate:remote`
 
-Still to do, all dashboard work, in this order:
+All dashboard work is done:
 
-1. DONE, with a fix. The Worker was created through Workers Builds. Its first
-   deploy failed because wrangler.toml was still written for Pages. Fixed in the
-   repo, so the next push builds and deploys.
-2. Set the account spend limit. CLOSED BY INSPECTION: Workers Free exposes no
-   spend control and hard-stops at its daily limits instead of billing.
-3. Attach `work.kabuhayan.app` to the Worker as a custom domain.
-4. Activate Zero Trust (free), then create the Access self-hosted application
-   with One-Time PIN, policy allowing pacardopaul18@gmail.com only. It must
-   cover `work.kabuhayan.app`. The second public hostname is
-   `command-center.<account-subdomain>.workers.dev`, which is closed by setting
-   `workers_dev = false` once the custom domain works, rather than by policy.
-   See R6 in docs/DECISIONS.md.
+1. Worker created through Workers Builds, git-connected to this repo.
+2. Spend limit closed by inspection. Workers Free exposes no control and
+   hard-stops at its daily limits instead of billing.
+3. `work.kabuhayan.app` attached as a custom domain.
+4. Zero Trust activated, Access self-hosted application with One-Time PIN and a
+   single Allow policy naming pacardopaul18@gmail.com.
+
+The workers.dev surfaces are switched off in wrangler.toml rather than gated:
+`workers_dev = false` and `preview_urls = false`. Both stay false. Turning
+either on puts an unauthenticated copy of the app on the public internet.
 
 Deferred to the v1 gate (T-v1-0): enable R2 in the dashboard, run
 `npx wrangler r2 bucket create command-center-files`, then uncomment the

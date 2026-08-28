@@ -21,6 +21,21 @@ main = ".svelte-kit/cloudflare/_worker.js"
 compatibility_date = "2026-08-01"
 compatibility_flags = ["nodejs_compat"]
 
+# --- Public surface ---
+# The app is reachable only at work.kabuhayan.app, which sits behind Cloudflare
+# Access with One-Time PIN. Both workers.dev routes are switched off rather than
+# gated by policy, because a hostname that does not exist cannot be misconfigured
+# later. Closes R6. See docs/DECISIONS.md.
+#
+#   workers_dev   <name>.<subdomain>.workers.dev              defaults to true
+#   preview_urls  <version>-<name>.<subdomain>.workers.dev    per version
+#
+# Both are set explicitly. Leaving preview_urls to its default would mean
+# trusting a default to stay put on the one setting that decides whether an
+# unauthenticated copy of the app is on the public internet.
+workers_dev = false
+preview_urls = false
+
 # --- Static assets ---
 # The client bundle and any prerendered pages. A request that matches an asset
 # is served without invoking the Worker; anything else, including every /api
