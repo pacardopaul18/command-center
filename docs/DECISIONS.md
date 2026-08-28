@@ -61,13 +61,100 @@ had already assigned D17 to the Hono catch-all endpoint decision above, and this
 file owns the numbering, so the design decision is D19. There is exactly one D17
 and it is the Hono one. Any PM side reference to "D17, design export" means D19.
 
-The export in [../design/](../design/) is a reference specification. Its files are
+The export in [design/](design/) is a reference specification. Its files are
 never merged into the app as code. It is React JSX, the app is Svelte, so the
 patterns get ported into Svelte components rather than copied.
 
 It is a starting point, not a contract. The design improves as the build goes.
 Where the export and a real usability need disagree, the need wins, and the
 change gets recorded rather than silently absorbed.
+
+### D20: overdue gets a dedicated red token, gold keeps at risk and due soon
+
+The export ships no red at all and paints overdue gold, the same hue as at risk,
+separated only by shade. For an app whose whole purpose is that nothing slips,
+that is too weak a signal on the most important state.
+
+One red is added, used for overdue only. Verified in every role it takes:
+
+| Role | Pair | Ratio | Need |
+| --- | --- | --- | --- |
+| Text on card | `#B3261E` on `#FFFFFF` | 6.54 | 4.5 |
+| Text on page | `#B3261E` on `#FDFCF8` | 6.37 | 4.5 |
+| Text on cream | `#B3261E` on `#FAF6EC` | 6.06 | 4.5 |
+| Chip | `#B3261E` on `#FBEBE9` | 5.65 | 4.5 |
+| Border or left rule | `#B3261E` on `#FFFFFF` | 6.54 | 3.0 |
+
+No adjustment was needed. Gold remains the only accent for at risk and due soon,
+so the palette still reads as one accent plus one alarm, not a rainbow.
+
+### D21: four accessibility fixes applied against the export
+
+The export fails WCAG 2.1 AA in four places. All four are corrected in the app.
+Ratios were computed, not estimated.
+
+| Item | Export | Ratio | Fixed to | Ratio |
+| --- | --- | --- | --- | --- |
+| Chip done foreground | `#2E7D5B` on `#E3F0EA` | 4.27 | `#245F47` | 6.39 |
+| Chip at risk foreground | `#8A6D1E` on `#F6EED8` | 4.23 | `#7A5F19` | 5.21 |
+| Input border | `#D9D5C9` on white | 1.47 | `#949484` | 3.08 |
+| Focus indicator | soft ring flattens to `#DDE1E5` | 1.31 | solid navy outline | 14.41 |
+
+Chips are 11px mono, so the 4.5 threshold applies rather than the large-text 3.0.
+The input border and the focus ring are the serious two: the export carried the
+whole input boundary on a 1.47 border, and gave keyboard users a 1.31 focus cue.
+
+### D22: mobile first responsive layer, and a 44x44 tap target floor
+
+The export contains no `@media` query in any of its 76 files. It is desktop
+first, with a fixed 224px sidebar and a 1200px content cap. Paul tests at 412px
+on a Samsung A35, so the entire responsive layer is ours to specify.
+
+Every multi column block declares its single column fallback first and widens
+from there. Tap targets are 44x44 minimum everywhere, which the export violates:
+its medium button is about 32px tall, and `IconButton` defaults to 32 and is
+called at 26 inside ActionItemsScreen.
+
+### D23: 14px type scale adopted, inputs render 16px on touch
+
+The export's 14px base is adopted over the 16px the app shipped in Stage 1, along
+with the rest of its scale.
+
+One exception. Any input, select or textarea renders at 16px on touch pointers,
+because iOS Safari auto zooms the viewport on focus of any field below 16px and
+never zooms back out. The rule is scoped with a coarse pointer media query so
+desktop keeps 14px.
+
+### D24: brand-voice.html wins over screen copy
+
+The export contradicts itself. Its `guidelines/brand-voice.html` says second
+person is avoided, and seven of the eleven screens use "your" or "you". The two
+also disagree on the flagship empty state.
+
+The guideline wins. Second person is stripped during each port. The Action Items
+empty state follows the guideline wording, not the screen wording.
+
+The guideline's other rules already hold and stay: no em dashes, no emoji, no
+exclamation points, sentence case everywhere, DM Mono for numbers, dates and
+codes, and the fixed status vocabulary.
+
+### D25: no auth UI is ever built
+
+`ui_kits/command-center/LoginScreen.jsx` is never ported and no login route is
+ever added.
+
+Cloudflare Access with One-Time PIN is enforced at the edge, before a request
+reaches Pages. By the time any app code runs the user is already authenticated,
+so a login screen would be unreachable, and a hand rolled one would be a second
+auth path to get wrong. The Worker based hashed password fallback in the
+architecture doc stays documented and unbuilt.
+
+### D26: the design export lives at docs/design/
+
+Moved from `design/Command Center Design System/`, which had spaces in the path,
+to [design/](design/). All 76 files were diffed against the source and confirmed
+identical before the original was removed. It is committed to the repo so the
+reference travels with the code, and it stays reference only per D19.
 
 ## Risks
 

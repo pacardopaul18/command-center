@@ -1,0 +1,3 @@
+body{margin:0;font-family:var(--font-sans);color:var(--text-body);background:var(--surface-page);font-size:var(--text-base);line-height:var(--leading-normal);-webkit-font-smoothing:antialiased}
+a{color:var(--text-link);text-decoration:none}
+a:hover{color:var(--navy);text-decoration:underline}

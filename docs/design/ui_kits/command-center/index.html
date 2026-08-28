@@ -1,0 +1,88 @@
+<!-- @dsCard group="Command Center" viewport="1440x900" name="App" subtitle="Login, Today, Action items, Projects, Invoicing (interactive)" -->
+<!DOCTYPE html><html><head><meta charset="utf-8"><title>Command Center</title>
+<link rel="stylesheet" href="../../styles.css">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../_ds_bundle.js"></script>
+<style>html,body{height:100%}</style></head>
+<body><div id="root"></div>
+<script type="text/babel">
+const NS=window.CommandCenterDesignSystem_a34f56;
+const {Sidebar,Button,Input,Select,FormField,Card,TodayScreen,ActionItemsScreen,ProjectsScreen,ProjectDetailScreen,InvoicingScreen,LoginScreen,MeetingsScreen,SopsScreen,ClientsScreen,TemplatesScreen,ReportsScreen}=NS;
+const I=(d)=><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d={d}/></svg>;
+const NAV=[
+ {id:'today',label:'Today',icon:I('M12 3v2M12 19v2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M3 12h2M19 12h2M5.6 18.4 7 17M17 7l1.4-1.4M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z')},
+ {id:'projects',label:'Projects',icon:I('M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.7-.9L9.2 3.9A2 2 0 0 0 7.5 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z')},
+ {id:'actions',label:'Action Items',icon:I('M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11')},
+ {id:'meetings',label:'Meetings',icon:I('M16 10l6-4v12l-6-4M2 8a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8z')},
+ {id:'sops',label:'SOPs',icon:I('M4 19.5A2.5 2.5 0 0 1 6.5 17H20M4 19.5A2.5 2.5 0 0 0 6.5 22H20V2H6.5A2.5 2.5 0 0 0 4 4.5v15z')},
+ {id:'invoicing',label:'Invoicing',icon:I('M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M16 13H8M16 17H8M10 9H8')},
+ {id:'clients',label:'Clients',icon:I('M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75')},
+ {id:'templates',label:'Templates',icon:I('M20 9H11a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2v-9a2 2 0 0 0-2-2zM5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1')},
+ {id:'reports',label:'Reports',icon:I('M3 3v18h18M18 17V9M13 17V5M8 17v-3')},
+];
+function QuickAdd({onClose}){
+  return <div onClick={onClose} style={{position:'fixed',inset:0,background:'rgba(27,36,51,.4)',display:'flex',alignItems:'flex-start',justifyContent:'center',paddingTop:'12vh',zIndex:50}}>
+    <div onClick={e=>e.stopPropagation()} style={{width:480,background:'var(--surface-card)',border:'1px solid var(--border-thin)',borderRadius:'var(--radius-lg)',boxShadow:'var(--shadow-pop)',padding:24}}>
+      <h3 style={{margin:'0 0 16px',fontSize:'var(--text-md)',fontWeight:700}}>Quick add</h3>
+      <div style={{display:'flex',flexDirection:'column',gap:14}}>
+        <FormField label="Title"><Input autoFocus placeholder="Follow up with Meridian on scope"/></FormField>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+          <FormField label="Client"><Select options={['Meridian Health','Halcyon Labs','Northgate Partners','Beacon and Cole']}/></FormField>
+          <FormField label="Project"><Select options={['Onboarding program design','Ops retainer','Discovery engagement']}/></FormField>
+        </div>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+          <FormField label="Deadline" hint="Defaults to two business days out."><Input mono defaultValue="Sep 2"/></FormField>
+          <FormField label="Status"><Select options={['open','waiting']}/></FormField>
+        </div>
+      </div>
+      <div style={{display:'flex',gap:8,justifyContent:'flex-end',marginTop:20}}>
+        <Button variant="secondary" onClick={onClose}>Cancel</Button>
+        <Button onClick={onClose}>Create action item</Button>
+      </div>
+    </div>
+  </div>;
+}
+function Placeholder({label}){
+  return <div>
+    <h1 style={{margin:'0 0 20px',fontSize:'var(--text-2xl)',fontWeight:700}}>{label}</h1>
+    <div style={{background:'var(--surface-callout)',border:'1px solid var(--border-thin)',borderRadius:'var(--radius-md)',padding:24,maxWidth:560,fontSize:'var(--text-base)',color:'var(--text-secondary)'}}>Not built in this UI kit yet. This screen is intentionally blank; see readme.md.</div>
+  </div>;
+}
+function App(){
+  const [signedIn,setSignedIn]=React.useState(false);
+  const [screen,setScreen]=React.useState('today');
+  const [detail,setDetail]=React.useState(false);
+  const [qa,setQa]=React.useState(false);
+  React.useEffect(()=>{
+    const h=e=>{
+      if(!signedIn)return;
+      if(e.key==='Escape')setQa(false);
+      if((e.key==='n'||e.key==='N')&&!qa&&!/input|select|textarea/i.test(e.target.tagName)){e.preventDefault();setQa(true);}
+    };
+    window.addEventListener('keydown',h);return ()=>window.removeEventListener('keydown',h);
+  },[signedIn,qa]);
+  if(!signedIn)return <LoginScreen onSignIn={()=>setSignedIn(true)}/>;
+  const go=id=>{setScreen(id);setDetail(false);};
+  const gear=I('M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3h0a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9v0a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z');
+  return <div style={{display:'flex',minHeight:'100vh',background:'var(--cream)'}}>
+    <Sidebar items={NAV} activeId={screen} onNavigate={go} onQuickAdd={()=>setQa(true)}
+      footer={<button onClick={()=>go('settings')} style={{display:'flex',alignItems:'center',gap:10,width:'100%',textAlign:'left',padding:'8px 12px',borderRadius:'var(--radius-sm)',border:'none',cursor:'pointer',fontFamily:'var(--font-sans)',fontSize:'var(--text-base)',color:'var(--text-inverse-muted)',background:'transparent'}}>{gear}Settings</button>}/>
+    <main style={{flex:1,padding:'32px 40px',maxWidth:'var(--content-max)',boxSizing:'border-box',width:'100%'}}>
+      {screen==='today'&&<TodayScreen onNavigate={go}/>}
+      {screen==='actions'&&<ActionItemsScreen/>}
+      {screen==='projects'&&(detail?<ProjectDetailScreen onBack={()=>setDetail(false)} onNavigate={go}/>:<ProjectsScreen onOpenProject={()=>setDetail(true)}/>)}
+      {screen==='invoicing'&&<InvoicingScreen/>}
+      {screen==='meetings'&&<MeetingsScreen onNavigate={go}/>}
+      {screen==='sops'&&<SopsScreen/>}
+      {screen==='clients'&&<ClientsScreen onNavigate={go}/>}
+      {screen==='templates'&&<TemplatesScreen/>}
+      {screen==='reports'&&<ReportsScreen/>}
+      {screen==='settings'&&<Placeholder label="Settings"/>}
+    </main>
+    {qa&&<QuickAdd onClose={()=>setQa(false)}/>}
+  </div>;
+}
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script></body></html>

@@ -1,0 +1,23 @@
+:root{
+/* Base palette */
+--navy:#102A4C;--navy-700:#1C3A63;--navy-500:#2E4E7E;--navy-100:#E8EDF4;--navy-50:#F2F5F9;
+--gold:#C9A84C;--gold-600:#8A6D1E;--gold-100:#F6EED8;--gold-50:#FBF6E9;
+--cream:#FAF6EC;
+--ink:#1B2433;--muted:#5B6470;
+--green:#2E7D5B;--green-700:#245F47;--green-100:#E3F0EA;
+--white:#FFFFFF;
+/* Semantic surfaces */
+--surface-page:#FDFCF8;--surface-card:#FFFFFF;--surface-callout:var(--cream);--surface-sidebar:var(--navy);--surface-hover:#F5F4EE;--surface-row-alt:#FBFAF5;
+/* Semantic text */
+--text-body:var(--ink);--text-secondary:var(--muted);--text-inverse:#F4F6F9;--text-inverse-muted:#9FB0C6;--text-link:var(--navy-700);--text-positive:var(--green);--text-warn:var(--gold-600);
+/* Borders */
+--border-thin:#E9E6DC;--border-strong:#D9D5C9;--border-inverse:rgba(255,255,255,.12);
+/* Status chips: bg / fg pairs */
+--chip-ontrack-bg:var(--green-100);--chip-ontrack-fg:var(--green-700);
+--chip-done-bg:var(--green-100);--chip-done-fg:var(--green);
+--chip-atrisk-bg:var(--gold-100);--chip-atrisk-fg:var(--gold-600);
+--chip-overdue-bg:#F3E5C2;--chip-overdue-fg:#77590F;
+--chip-blocked-bg:var(--navy-100);--chip-blocked-fg:var(--navy);
+--chip-waiting-bg:#F0EFEA;--chip-waiting-fg:var(--muted);
+--chip-open-bg:var(--navy-50);--chip-open-fg:var(--navy-500);
+}
