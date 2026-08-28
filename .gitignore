@@ -5,6 +5,11 @@ node_modules
 /build
 .output
 
+# Database snapshots. These are exports of the live database and can contain
+# real client data, so they never go to the remote repository. Keep them local
+# or move them somewhere private. See D39.
+backups/
+
 # Cloudflare / wrangler local state
 .wrangler
 .dev.vars

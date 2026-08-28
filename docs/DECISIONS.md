@@ -446,6 +446,16 @@ Remote migrations are also batched rather than applied one at a time, so a
 verified local sequence lands as a single remote change with a single snapshot
 in front of it.
 
+Snapshots are gitignored. An export of the live database can contain real client
+data, and the repository is not the place for it.
+
+The habit paid for itself the first time it ran. The snapshot taken before the
+0002 to 0004 batch showed `d1_migrations` containing only `0001`, contradicting
+a claim made earlier in the session that remote was already at 0002. Nothing had
+been checked; it had been assumed. The batch was three migrations, not two. That
+is the whole argument for the rule: the snapshot is a reading of what is
+actually there, taken at the moment it matters.
+
 ## Interpretation notes
 
 Not decisions. Judgment calls made inside an existing decision, recorded so the
