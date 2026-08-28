@@ -9,7 +9,7 @@ Context: [CLAUDE.md](CLAUDE.md), [docs/Command_Center_Build_Plan.md](docs/Comman
 Stage 1 is CLOSED. The app is live at **work.kabuhayan.app**, behind Cloudflare
 Access with One-Time PIN, whitelisting Paul only.
 
-MVP stage in progress. Today cockpit and Action Items are built. Projects, SOPs,
+MVP stage in progress. Today cockpit, Action Items and Projects are built. SOPs,
 Invoicing and the Cron digests are next.
 
 | Resource | State |
@@ -74,6 +74,7 @@ src/lib/server/api/             Hono app: action-items, projects, validation
 src/routes/api/[...path]/       SvelteKit to Hono bridge
 src/routes/+page.svelte         Today cockpit
 src/routes/actions/             Action Items screen
+src/routes/projects/            Projects list and detail
 src/app.css                     design tokens and base styles
 wrangler.toml                   bindings: D1 and KV live, R2 pending
 ```
@@ -89,8 +90,11 @@ wrangler.toml                   bindings: D1 and KV live, R2 pending
 | GET | `/api/action-items/:id` | |
 | PATCH | `/api/action-items/:id` | partial, only the fields sent are written |
 | DELETE | `/api/action-items/:id` | |
-| GET | `/api/projects` | with open action item counts |
+| GET | `/api/projects` | with open and overdue action item rollups |
 | POST | `/api/projects` | |
+| GET | `/api/projects/:id` | project plus its linked action items |
+| PATCH | `/api/projects/:id` | partial. Advance phase and set status use this |
+| DELETE | `/api/projects/:id` | action items survive unlinked, not deleted |
 
 Overdue and due-today are decided against the America/Denver calendar date, not UTC, so an
 item does not flip to overdue at 6pm local when UTC rolls over.

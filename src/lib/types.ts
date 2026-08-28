@@ -40,12 +40,50 @@ export interface ActionItem {
 	project_name?: string | null;
 }
 
+// The PMI five-phase lifecycle, in order. Order matters: it drives the phase
+// rail, the "advance to next" action, and the list grouping.
+export const PROJECT_PHASES = [
+	'initiating',
+	'planning',
+	'executing',
+	'monitoring',
+	'closing'
+] as const;
+export type ProjectPhase = (typeof PROJECT_PHASES)[number];
+
+export const PHASE_LABELS: Record<ProjectPhase, string> = {
+	initiating: 'Initiating',
+	planning: 'Planning',
+	executing: 'Executing',
+	monitoring: 'Monitoring',
+	closing: 'Closing'
+};
+
+export const PROJECT_STATUSES = ['on_track', 'at_risk', 'blocked', 'done'] as const;
+export type ProjectStatus = (typeof PROJECT_STATUSES)[number];
+
+export const PROJECT_STATUS_LABELS: Record<ProjectStatus, string> = {
+	on_track: 'On track',
+	at_risk: 'At risk',
+	blocked: 'Blocked',
+	done: 'Done'
+};
+
+/** Maps a project status onto the design system's fixed chip vocabulary. */
+export const PROJECT_STATUS_TONE: Record<ProjectStatus, 'ontrack' | 'atrisk' | 'blocked' | 'done'> =
+	{
+		on_track: 'ontrack',
+		at_risk: 'atrisk',
+		blocked: 'blocked',
+		done: 'done'
+	};
+
 export interface Project {
 	id: string;
 	client_id: string | null;
 	name: string;
-	phase: 'initiating' | 'planning' | 'executing' | 'monitoring' | 'closing';
-	status: 'on_track' | 'at_risk' | 'blocked' | 'done';
+	phase: ProjectPhase;
+	status: ProjectStatus;
 	owner_id: string | null;
 	start_date: string | null;
 	target_close: string | null;
@@ -53,6 +91,15 @@ export interface Project {
 	description: string | null;
 	created_at: string;
 	updated_at: string;
+	// Rolled up by the list and detail queries, not stored on the row.
+	open_action_items?: number;
+	overdue_action_items?: number;
+}
+
+/** The next phase in the lifecycle, or null at Closing. */
+export function nextPhase(phase: ProjectPhase): ProjectPhase | null {
+	const i = PROJECT_PHASES.indexOf(phase);
+	return i >= 0 && i < PROJECT_PHASES.length - 1 ? PROJECT_PHASES[i + 1] : null;
 }
 
 export const ACTION_VIEWS = ['all', 'open', 'overdue', 'today', 'waiting', 'done'] as const;

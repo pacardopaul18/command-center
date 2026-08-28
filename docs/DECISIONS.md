@@ -16,6 +16,7 @@ file records what was decided along the way that neither of them says, and why.
 | T7 | Dashboard step 1, git-connected build project | DONE. Created via Workers Builds, not Pages. First deploy failed on a Pages-shaped config; fixed in 8bfc68b. Version f6d05619 deployed 2026-08-28T21:18Z with DB, SESSIONS and ASSETS all resolving |
 | T8 | Dashboard steps 3 and 4, custom domain then Access | DONE. work.kabuhayan.app is attached and behind Access with a single Paul-only Allow policy, verified from incognito |
 | T9 | Close the workers.dev surface | DONE. `workers_dev = false` and `preview_urls = false` |
+| T-clients-0 | Rebuild `projects` with a real `client_id` foreign key when the Clients table lands | OWED. SQLite cannot add a foreign key to an existing table, so the Clients migration rebuilds `projects`. Same pattern owed for `action_items.meeting_id` at Meetings |
 
 ## Decisions
 
@@ -307,6 +308,67 @@ The rule that follows: any change to the wrangler target shape is followed by
 `npm run db:migrate:local`, and local data is treated as disposable. Anything
 that matters lives in a migration or in the seed file, never only in
 `.wrangler/state`, which is gitignored precisely because it is scratch.
+
+## Interpretation notes
+
+Not decisions. Judgment calls made inside an existing decision, recorded so the
+reasoning is not lost and so nobody relitigates them as if they were open.
+
+### Favicon: a gold square on navy, matching the sidebar mark
+
+The design says plainly that no logo exists and that a mark must not be
+invented. The favicon is therefore not a new mark: it is the gold square already
+in the sidebar, on the navy the sidebar already uses. Nothing was designed, only
+relocated. The Svelte logo it replaces was scaffold residue and was never ours.
+
+### One dev server at a time
+
+Following the spirit of D31. When the wrangler target changed, a stopped dev
+server left its child process holding port 5173 while a new one came up on 5174,
+so two servers were live against the same local D1. That is the same class of
+problem D31 records: two things disagreeing about which local database is real.
+One dev server, and if a port is held, find the process and kill it rather than
+letting Vite silently pick the next port.
+
+### workingDayStartUtc is the reference implementation for the digest work
+
+The Cron digests are UTC only and have to convert Mountain Time and survive DST.
+That conversion is already solved and already tested in `src/lib/server/dates.ts`.
+Do not re-derive it when building the digests.
+
+`workingDayStartUtc(day)` returns the UTC instant at which a Mountain calendar
+day begins. It checks both candidate offsets and keeps the one that formats back
+to 00:00 on that date in the zone, which is what makes it correct on the two DST
+changeover days. An earlier version read the offset at midday and was an hour
+wrong on exactly those two days.
+
+The boundary tests that matter, and that any digest work should reproduce
+against its own schedule:
+
+| Date | Expected | Why |
+| --- | --- | --- |
+| 2026-08-28 | 06:00Z | MDT, UTC-6 |
+| 2026-01-15 | 07:00Z | MST, UTC-7 |
+| 2026-03-08 | 07:00Z | Spring forward day. Midnight is still MST |
+| 2026-11-01 | 06:00Z | Fall back day. Midnight is still MDT |
+
+Verified through the API as well as in isolation: an item completed at 05:59Z on
+2026-08-28 counts as zero done today, and one completed at 06:01Z counts as one.
+
+### Projects ships three of the design's panels short
+
+`ProjectDetailScreen.jsx` shows a phase checklist and panels for Meetings, Time
+and Invoices. None are built:
+
+- The checklist has no data model. Adding one is a table and a module of its own,
+  not part of "five phases, status, next milestone".
+- Meetings, Time entries and Invoices are later stages. Per D27 they are neither
+  built nor referenced.
+
+`ProjectsScreen.jsx` also shows a client column. `client_id` exists on the row
+and stays unconstrained per the Stage 1 foreign key pattern, but nothing can set
+it until Clients exists, so the column would read "no client" on every row. It is
+omitted rather than shipped empty. Tracked as T-clients-0.
 
 ## Risks
 
