@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import type { ApiEnv } from './env';
 import { actionItems } from './action-items';
 import { projects } from './projects';
+import { today } from './today';
 import { ApiError } from './validate';
 import { todayInWorkingZone, WORKING_TIME_ZONE } from '../dates';
 
@@ -25,6 +26,7 @@ api.get('/health', (c) =>
 	})
 );
 
+api.route('/today', today);
 api.route('/action-items', actionItems);
 api.route('/projects', projects);
 

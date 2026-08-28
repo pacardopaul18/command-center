@@ -272,7 +272,7 @@
 		{:else if data.q || data.projectId}
 			No action items match these filters.
 		{:else}
-			No action items yet. Add the first one above.
+			No action items yet. Add one with quick add, or press N.
 		{/if}
 	</p>
 {:else}

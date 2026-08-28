@@ -204,8 +204,14 @@ two affordances that are not there. The empty state follows the guideline's rule
 instead, and reads "No action items yet. Add the first one above."
 
 A guideline string blocked this way is adopted verbatim the moment its feature
-ships. Quick add and the N shortcut are the outstanding case; when the quick add
-component lands, the empty state changes to the guideline's exact wording.
+ships.
+
+RESOLVED for the outstanding case. Quick add and the N shortcut shipped with the
+Today cockpit: a dialog reachable from the sidebar button on every screen and
+from the N key, which is ignored while typing and while a modifier is held. The
+Action Items empty state now reads the guideline's exact wording, "No action
+items yet. Add one with quick add, or press N." The rule stands for the next
+case.
 
 This is a claim discipline rule, the same family as never stating a proposed
 regulation as enacted. UI copy is a claim about what the software does.

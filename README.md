@@ -7,8 +7,10 @@ Context: [CLAUDE.md](CLAUDE.md), [docs/Command_Center_Build_Plan.md](docs/Comman
 ## Status
 
 Stage 1 is CLOSED. The app is live at **work.kabuhayan.app**, behind Cloudflare
-Access with One-Time PIN, whitelisting Paul only. Action Items runs end to end
-against remote D1.
+Access with One-Time PIN, whitelisting Paul only.
+
+MVP stage in progress. Today cockpit and Action Items are built. Projects, SOPs,
+Invoicing and the Cron digests are next.
 
 | Resource | State |
 | --- | --- |
@@ -70,6 +72,7 @@ src/lib/format.ts               deadline and date display helpers
 src/lib/server/dates.ts         Mountain Time date logic for overdue and due today
 src/lib/server/api/             Hono app: action-items, projects, validation
 src/routes/api/[...path]/       SvelteKit to Hono bridge
+src/routes/+page.svelte         Today cockpit
 src/routes/actions/             Action Items screen
 src/app.css                     design tokens and base styles
 wrangler.toml                   bindings: D1 and KV live, R2 pending
@@ -80,6 +83,7 @@ wrangler.toml                   bindings: D1 and KV live, R2 pending
 | Method | Path | Notes |
 | --- | --- | --- |
 | GET | `/api/health` | returns today's Mountain Time date |
+| GET | `/api/today` | cockpit bands: overdue, due today, what will slip, plus totals |
 | GET | `/api/action-items` | `view=all\|open\|overdue\|today\|waiting\|done`, `q=`, `project_id=` |
 | POST | `/api/action-items` | |
 | GET | `/api/action-items/:id` | |

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 	import { page } from '$app/state';
+	import QuickAdd from './QuickAdd.svelte';
 
 	// Ported from docs/design/components/shell/Sidebar.jsx.
 	//
@@ -11,10 +12,41 @@
 	// Only Action Items exists. The rest of the site map in architecture section
 	// B gets a nav entry when its module ships, not before. No dead links.
 
-	let { children }: { children: Snippet } = $props();
+	let { children, today }: { children: Snippet; today: string } = $props();
 
-	const nav = [{ href: '/actions', label: 'Action items' }];
+	const nav = [
+		{ href: '/', label: 'Today', exact: true },
+		{ href: '/actions', label: 'Action items', exact: false }
+	];
+
+	let quickAddOpen = $state(false);
+
+	function isCurrent(item: { href: string; exact: boolean }) {
+		return item.exact
+			? page.url.pathname === item.href
+			: page.url.pathname.startsWith(item.href);
+	}
+
+	/**
+	 * Global quick add on N, per the architecture's keyboard-first principle.
+	 * Ignored while typing, while a modifier is held, and while the dialog is
+	 * already open, so it never eats a keystroke meant for a field.
+	 */
+	function onKeydown(event: KeyboardEvent) {
+		if (quickAddOpen) return;
+		if (event.metaKey || event.ctrlKey || event.altKey) return;
+		if (event.key !== 'n' && event.key !== 'N') return;
+
+		const target = event.target as HTMLElement | null;
+		if (target?.isContentEditable) return;
+		if (target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return;
+
+		event.preventDefault();
+		quickAddOpen = true;
+	}
 </script>
+
+<svelte:window onkeydown={onKeydown} />
 
 <a class="skip" href="#main">Skip to content</a>
 
@@ -24,14 +56,20 @@
 			<span class="mark" aria-hidden="true"></span>
 			Command Center
 		</a>
+		<button type="button" class="quick-add" onclick={() => (quickAddOpen = true)}>
+			<span class="plus" aria-hidden="true">
+				<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+					<path d="M12 5v14M5 12h14" />
+				</svg>
+			</span>
+			Quick add
+			<kbd class="mono">N</kbd>
+		</button>
+
 		<ul>
 			{#each nav as item (item.href)}
 				<li>
-					<a
-						href={item.href}
-						class="nav-link"
-						aria-current={page.url.pathname.startsWith(item.href) ? 'page' : undefined}
-					>
+					<a href={item.href} class="nav-link" aria-current={isCurrent(item) ? 'page' : undefined}>
 						{item.label}
 					</a>
 				</li>
@@ -45,6 +83,8 @@
 		</div>
 	</main>
 </div>
+
+<QuickAdd bind:open={quickAddOpen} {today} />
 
 <style>
 	.skip {
@@ -99,6 +139,38 @@
 		height: 10px;
 		border-radius: 2px;
 		background: var(--gold);
+	}
+
+	.quick-add {
+		display: inline-flex;
+		align-items: center;
+		gap: var(--space-2);
+		min-height: var(--tap);
+		padding: 0 var(--space-3);
+		border: none;
+		border-radius: var(--radius-sm);
+		background: #ffffff;
+		color: var(--navy);
+		font-family: var(--font-sans);
+		font-size: var(--text-base);
+		font-weight: var(--weight-medium);
+		cursor: pointer;
+	}
+
+	.quick-add:hover {
+		background: var(--cream);
+	}
+
+	.plus {
+		display: inline-flex;
+	}
+
+	kbd {
+		padding: 1px var(--space-2);
+		border: 1px solid var(--border-strong);
+		border-radius: var(--radius-sm);
+		font-size: var(--text-xs);
+		color: var(--muted);
 	}
 
 	ul {
@@ -164,6 +236,10 @@
 
 		.brand {
 			padding-inline: var(--space-3);
+		}
+
+		.quick-add {
+			justify-content: space-between;
 		}
 
 		ul {
