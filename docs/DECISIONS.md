@@ -395,7 +395,7 @@ permanent `<team-name>.cloudflareaccess.com` login domain.
 
 ## Stage gates
 
-### Stage 1: CLOSED 2026-08-29
+### Stage 1: CLOSED 2026-08-29, re-closed 2026-08-29 on corrected evidence
 
 The threshold from the build plan was: Paul can log in by emailed PIN and create,
 read and update action items that persist in D1. That is met.
@@ -404,9 +404,40 @@ read and update action items that persist in D1. That is met.
 | --- | --- |
 | Scaffold, Hono API, D1, KV | Worker version f6d05619 deployed with `env.DB`, `env.SESSIONS`, `env.ASSETS` all resolving from wrangler.toml |
 | Custom domain | work.kabuhayan.app attached and serving |
-| Access OTP | Incognito hits the Access wall, PIN delivered to pacardopaul18@gmail.com, accepted, session lands on the app |
+| Access OTP | Incognito hits the Access wall, the One-Time PIN option is offered, a code is delivered to pacardopaul18@gmail.com, accepted, session lands on Action items. Re-verified 2026-08-29 after the IdP correction below |
 | Action Items end to end | Create, read, edit, mark done, reopen and delete, all persisting. Exercised by hand in the browser as well as by API |
 | Schema through migrations only | `0001_init_action_items.sql`, applied local and remote. No hand editing of any live database at any point |
+
+#### Correction to the first closure, and the IdP history
+
+The first closure of this gate recorded the criterion as met on the strength of a
+successful Access login. That was not good enough. The criterion in the build
+plan is specifically "log in by **emailed PIN**", and at that moment the login
+that succeeded was not the One-Time PIN flow.
+
+What actually happened: Zero Trust onboarding auto-added the **Cloudflare SSO**
+identity provider, which displaced One-Time PIN as the default. The first
+verified login went through Cloudflare SSO. The wall was real and the policy was
+real, so R6 was genuinely closed, but the specific Stage 1 criterion was not the
+one that had been demonstrated.
+
+Fixed by adding One-Time PIN at the team level. Both providers are now active and
+both are gated by the same single Paul-only email policy. Re-verified from a
+fresh incognito session on 2026-08-29: the PIN option was offered, the code
+arrived at pacardopaul18@gmail.com, the code was accepted, and the session landed
+on Action items.
+
+Worth stating because it changes where the security actually lives: the identity
+provider list decides *how* somebody can attempt to log in, and the Access policy
+decides *who* gets through. Two providers are active, not one, which was not in
+the locked decisions. That is acceptable precisely because neither provider
+grants anything on its own; the email policy is the gate. Adding a third provider
+would still be safe for the same reason, and would still need a note here.
+
+The lesson recorded: "the login worked" is not evidence for "the login worked by
+the method the gate names". Verify the mechanism, not just the outcome.
+
+#### Scope notes
 
 Two things carried out of Stage 1 that were not in its scope. The design system
 was ported (D19 to D28), which was pulled forward because restyling later would
