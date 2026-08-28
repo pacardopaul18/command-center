@@ -1,0 +1,147 @@
+/* Command Center design tokens.
+   Flattened from docs/design/tokens/ (colors, typography, spacing, effects).
+   The export is reference only per D19; this file is the app's source of truth.
+
+   Deviations from the export, all logged in docs/DECISIONS.md:
+   - D20 one red token, overdue only. The export ships no red.
+   - D21 four contrast fixes: chip done fg, chip at risk fg, input border,
+     focus indicator.
+   - D22 mobile first, 44x44 tap floor.
+   - D23 14px scale, inputs 16px on touch.
+   Fonts are self hosted through @fontsource rather than the export's Google
+   Fonts @import, so an Access gated app never phones out on load. */
+
+@import '@fontsource/dm-sans/400.css';
+@import '@fontsource/dm-sans/500.css';
+@import '@fontsource/dm-sans/700.css';
+@import '@fontsource/dm-mono/400.css';
+@import '@fontsource/dm-mono/500.css';
+
+:root {
+	/* --- Base palette. The six house colors are exact. --- */
+	--navy: #102a4c;
+	--navy-700: #1c3a63;
+	--navy-500: #2e4e7e;
+	--navy-100: #e8edf4;
+	--navy-50: #f2f5f9;
+
+	--gold: #c9a84c;
+	--gold-600: #8a6d1e;
+	--gold-100: #f6eed8;
+	--gold-50: #fbf6e9;
+
+	--cream: #faf6ec;
+	--ink: #1b2433;
+	--muted: #5b6470;
+
+	--green: #2e7d5b;
+	--green-700: #245f47;
+	--green-100: #e3f0ea;
+
+	--white: #ffffff;
+
+	/* D20. Overdue only. Never used for at risk or due soon.
+	   6.54 on white, 6.37 on page, 6.06 on cream, 5.65 as chip. */
+	--red: #b3261e;
+	--red-100: #fbebe9;
+	--red-200: #f0cfcc;
+
+	/* --- Semantic surfaces --- */
+	--surface-page: #fdfcf8;
+	--surface-card: #ffffff;
+	--surface-callout: var(--cream);
+	--surface-sidebar: var(--navy);
+	--surface-hover: #f5f4ee;
+	--surface-row-alt: #fbfaf5;
+
+	/* --- Semantic text --- */
+	--text-body: var(--ink);
+	--text-secondary: var(--muted);
+	--text-inverse: #f4f6f9;
+	--text-inverse-muted: #9fb0c6;
+	--text-link: var(--navy-700);
+	--text-positive: var(--green);
+	--text-warn: var(--gold-600);
+	--text-alarm: var(--red);
+
+	/* --- Borders ---
+	   border-thin is decorative only: card outlines and table rules.
+	   border-control carries a form control boundary, so it clears the 3:1
+	   required by WCAG 1.4.11. The export used #D9D5C9 at 1.47:1 (D21). */
+	--border-thin: #e9e6dc;
+	--border-strong: #d9d5c9;
+	--border-control: #949484;
+
+	/* --- Status chips, background and foreground pairs ---
+	   Every pair clears 4.5:1. Chips are 11px so the large text
+	   allowance does not apply. */
+	--chip-ontrack-bg: var(--green-100);
+	--chip-ontrack-fg: var(--green-700); /* 6.39 */
+	--chip-done-bg: var(--green-100);
+	--chip-done-fg: #245f47; /* D21, was #2E7D5B at 4.27 */
+	--chip-atrisk-bg: var(--gold-100);
+	--chip-atrisk-fg: #7a5f19; /* D21, was #8A6D1E at 4.23 */
+	--chip-overdue-bg: var(--red-100);
+	--chip-overdue-fg: var(--red); /* D20, 5.65 */
+	--chip-blocked-bg: var(--navy-100);
+	--chip-blocked-fg: var(--navy); /* 12.25 */
+	--chip-waiting-bg: #f0efea;
+	--chip-waiting-fg: var(--muted); /* 5.21 */
+	--chip-open-bg: var(--navy-50);
+	--chip-open-fg: var(--navy-500); /* 7.66 */
+	--chip-ambiguous-bg: var(--gold-100);
+	--chip-ambiguous-fg: #7a5f19;
+
+	/* --- Typography (D23) --- */
+	--font-sans: 'DM Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+	--font-mono: 'DM Mono', ui-monospace, 'Cascadia Mono', Consolas, monospace;
+
+	--text-xs: 11px;
+	--text-sm: 12.5px;
+	--text-base: 14px;
+	--text-md: 16px;
+	--text-lg: 20px;
+	--text-xl: 24px;
+	--text-2xl: 30px;
+
+	--weight-regular: 400;
+	--weight-medium: 500;
+	--weight-bold: 700;
+
+	--leading-tight: 1.2;
+	--leading-normal: 1.5;
+	--tracking-label: 0.06em;
+
+	/* --- Spacing, 4px base --- */
+	--space-1: 4px;
+	--space-2: 8px;
+	--space-3: 12px;
+	--space-4: 16px;
+	--space-5: 24px;
+	--space-6: 32px;
+	--space-7: 48px;
+	--space-8: 64px;
+
+	--radius-sm: 8px;
+	--radius-md: 12px;
+	--radius-lg: 16px;
+	--radius-pill: 999px;
+
+	--sidebar-width: 224px;
+	--content-max: 1200px;
+
+	/* D22. Minimum interactive target, applied everywhere. */
+	--tap: 44px;
+
+	/* --- Effects --- */
+	--shadow-card: 0 1px 2px rgba(16, 42, 76, 0.04), 0 4px 12px rgba(16, 42, 76, 0.05);
+	--shadow-pop: 0 8px 30px rgba(16, 42, 76, 0.14);
+	--transition-fast: 120ms ease;
+	--transition-base: 180ms ease;
+}
+
+/* D22. The app has one breakpoint, 720px. Below it every layout is a single
+   column built for a 412px Samsung A35. Above it, blocks widen. It is written
+   out as `@media (min-width: 720px)` at each use site rather than declared as a
+   custom media, because @custom-media needs a PostCSS plugin and the dependency
+   is not worth one number. */
