@@ -54,6 +54,21 @@ it from the CLI would burn the project name and force a delete and redo. The
 project is therefore created through the dashboard Connect to Git flow, which is
 the one part of the setup that cannot be scripted.
 
+### D19: the Claude Design export is a visual reference spec, never merged as code
+
+Renumber note. This decision was originally issued PM side as D17. This ledger
+had already assigned D17 to the Hono catch-all endpoint decision above, and this
+file owns the numbering, so the design decision is D19. There is exactly one D17
+and it is the Hono one. Any PM side reference to "D17, design export" means D19.
+
+The export in [../design/](../design/) is a reference specification. Its files are
+never merged into the app as code. It is React JSX, the app is Svelte, so the
+patterns get ported into Svelte components rather than copied.
+
+It is a starting point, not a contract. The design improves as the build goes.
+Where the export and a real usability need disagree, the need wins, and the
+change gets recorded rather than silently absorbed.
+
 ## Risks
 
 ### R6: public pages.dev window, OPEN
