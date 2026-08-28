@@ -115,6 +115,28 @@ from there. Tap targets are 44x44 minimum everywhere, which the export violates:
 its medium button is about 32px tall, and `IconButton` defaults to 32 and is
 called at 26 inside ActionItemsScreen.
 
+AMENDED, session of the Action Items restyle, commit 8015ce8. This entry
+originally specified a single breakpoint at 720px. Building the restyle showed
+that one number cannot serve both cases, so there are two:
+
+| Breakpoint | What changes |
+| --- | --- |
+| 720px | Content blocks. Form grids go from one column to two. |
+| 960px | Shell and tables. The top bar becomes the 224px sidebar, and the card list becomes the table. |
+
+They are separate because they answer different questions. A two column form
+works from 720px, but a seven column table and a fixed 224px rail do not: at
+720px the rail would leave 496px of content, and at 412px it would leave 188px,
+which is unusable. Adding no further breakpoints without amending this entry
+again.
+
+State of the code as of 8015ce8: only 960px is exercised. Action Items is the
+only screen, and its form grid was written at 960px alongside the table and the
+shell, so 720px is sanctioned but not yet used anywhere. Moving that form grid
+to 720px is a one line change, deliberately not made here because it alters
+layout and the build is on hold. Whichever way it goes, this entry gets updated
+so the ledger never describes a breakpoint the code does not have.
+
 ### D23: 14px type scale adopted, inputs render 16px on touch
 
 The export's 14px base is adopted over the 16px the app shipped in Stage 1, along
@@ -155,6 +177,40 @@ Moved from `design/Command Center Design System/`, which had spaces in the path,
 to [design/](design/). All 76 files were diffed against the source and confirmed
 identical before the original was removed. It is committed to the repo so the
 reference travels with the code, and it stays reference only per D19.
+
+### D27: UI copy never references an affordance that does not exist
+
+No string may name a button, shortcut, screen or capability that is not built
+and reachable at the time the string ships. This holds even when a design
+guideline prescribes the exact wording.
+
+The case that produced it: `guidelines/brand-voice.html` prescribes the Action
+Items empty state as "No action items yet. Add one with quick add, or press N."
+Neither quick add nor the N shortcut exists, so that string would have promised
+two affordances that are not there. The empty state follows the guideline's rule
+instead, and reads "No action items yet. Add the first one above."
+
+A guideline string blocked this way is adopted verbatim the moment its feature
+ships. Quick add and the N shortcut are the outstanding case; when the quick add
+component lands, the empty state changes to the guideline's exact wording.
+
+This is a claim discipline rule, the same family as never stating a proposed
+regulation as enacted. UI copy is a claim about what the software does.
+
+### D28: one sanctioned divergence between display and record
+
+An action item stored as `open` whose deadline has passed renders the overdue
+chip, not the open chip. The stored status stays `open` in D1, and the edit
+panel shows the real stored value.
+
+This is deliberate. Overdue is derived from the deadline against the Mountain
+Time date, and it is the single state the whole product exists to surface. A row
+that reads "Open" while being eight days late would be the app failing at its
+one job.
+
+This is the only place display and record are allowed to disagree. Any future
+divergence needs its own decision entry before it is built. The rule is not
+"derived display is fine", it is "this one is, and it was argued for".
 
 ## Risks
 

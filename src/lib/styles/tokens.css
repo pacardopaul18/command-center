@@ -140,8 +140,17 @@
 	--transition-base: 180ms ease;
 }
 
-/* D22. The app has one breakpoint, 720px. Below it every layout is a single
-   column built for a 412px Samsung A35. Above it, blocks widen. It is written
-   out as `@media (min-width: 720px)` at each use site rather than declared as a
-   custom media, because @custom-media needs a PostCSS plugin and the dependency
-   is not worth one number. */
+/* D22, as amended. The app has two breakpoints and no others:
+
+     720px  content blocks. Form grids go from one column to two.
+     960px  shell and tables. The top bar becomes the 224px sidebar, and the
+            card list becomes the table.
+
+   Below 720px every layout is a single column built for a 412px Samsung A35.
+   Both are written out as `@media (min-width: ...)` at each use site rather
+   than declared as custom media, because @custom-media needs a PostCSS plugin
+   and the dependency is not worth two numbers.
+
+   Only 960px is exercised today. Action Items is the only screen and its form
+   grid sits at 960px with the table and the shell, so 720px is sanctioned but
+   unused. See D22 in docs/DECISIONS.md. */
