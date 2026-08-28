@@ -335,10 +335,36 @@ Both flags are set explicitly rather than left to their defaults, because these
 are the settings that decide whether an unauthenticated copy of the app is on
 the public internet, and a default is not a decision.
 
-Evidence for the Access half, verified by Paul rather than assumed: an incognito
-request to `work.kabuhayan.app` returned the Access login wall, a One-Time PIN
-arrived at pacardopaul18@gmail.com, the PIN was accepted, and the session landed
-on Action items with existing data intact.
+Evidence, all verified rather than assumed. Deployed version
+`4d8e76c4-55bc-45ef-8107-4bcab7d308bb`.
+
+Access half, verified by Paul: an incognito request to `work.kabuhayan.app`
+returned the Access login wall, a One-Time PIN arrived at
+pacardopaul18@gmail.com, the PIN was accepted, and the session landed on Action
+items with existing data intact.
+
+Access half, verified again by request: an unauthenticated GET to
+`https://work.kabuhayan.app/` redirects to
+`green-art-143b.cloudflareaccess.com/cdn-cgi/access/login/work.kabuhayan.app`
+with `auth_status: NONE` in the meta token. Nothing from the app is served
+before authentication.
+
+workers.dev half, verified by request against the real hostnames. The account
+subdomain is `pacardopaul18`, read from
+`GET /accounts/{id}/workers/subdomain`, because wrangler exposes no command for
+it and guessing would have proved nothing.
+
+| Hostname | Result |
+| --- | --- |
+| `command-center.pacardopaul18.workers.dev/` | HTTP 404 |
+| `command-center.pacardopaul18.workers.dev/api/health` | Cloudflare error 1042, no app response |
+| `4d8e76c4-command-center.pacardopaul18.workers.dev/` | HTTP 404 |
+
+One caveat worth stating plainly. All three hostnames still resolve in DNS,
+because `*.workers.dev` is a wildcard. They return 404 because no Worker is
+bound to the route, not because the name is gone. Flipping `workers_dev` or
+`preview_urls` back to true would bring them live again immediately. That is
+exactly why the standing rule is in CLAUDE.md rather than only here.
 
 Standing rule, now in CLAUDE.md: `workers_dev` and `preview_urls` stay false.
 Turning either on reopens this risk.
