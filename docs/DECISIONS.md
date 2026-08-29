@@ -22,6 +22,7 @@ file records what was decided along the way that neither of them says, and why.
 | T-inc-1 | Live 500 on /templates: migration 0007 never applied to remote | DONE 2026-08-29. Diagnosis confirmed before any change, snapshot taken, 0007 applied, remote at 7 of 7. Root cause and the ordering rule are D50 |
 | T-v1-reports | Reports with PDF export via a print route | DONE 2026-08-29. Four of the five in section D, live queries, no migration. Screen and print verified to show identical figures. Partner time saved deferred, D52 |
 | T-v1-asana | One-way Asana push per D4 | BUILT 2026-08-29, unverified against a real token. All failure paths tested, including a live 401 from Asana. Awaiting `wrangler secret put ASANA_TOKEN` and one real push |
+| T-digest-1 | Digest incident: no scheduled digest had ever sent | ROOT CAUSE CLOSED 2026-08-29, D56. The cron never had an eligible firing. Observability enabled, handler now awaits, cron path exercised for the first time. Incident closes on the 13:00Z firing |
 | T-v2-baseline | Partner time baseline audit, running 15-minute-increment note | OPEN, DRI Paul, starting week of 2026-08-31. Prerequisite for the v2 partner-hours-saved dashboard, D52. Nothing blocks on it in v1 |
 
 ## Decisions
@@ -983,6 +984,98 @@ updated with the answer rather than left as a guess.
 
 Stored links are always built from the gid, since D4 stores the gid and not a
 URL.
+
+### D56: the digest incident, and why a cron with no logs is not a cron you can trust
+
+The first digest incident, 2026-08-29. No scheduled digest had ever arrived.
+
+**Root cause: the cron never had an eligible firing.** Established before
+anything was changed, from four sources:
+
+| Fact | Source |
+| --- | --- |
+| Cron trigger created on the Worker | 2026-08-29T00:13:09Z, Cloudflare API `/schedules` |
+| Commit that added `[triggers]` | 2026-08-29T00:12:24Z, 45 seconds earlier |
+| The firing Paul was waiting on | 2026-08-28T23:00:00Z |
+| Next firing after creation | 2026-08-29T13:00:00Z, not yet reached |
+
+The trigger did not exist for another 73 minutes after the firing it was
+supposed to serve. The 00:00Z firing was still 12 minutes before the commit.
+Nothing failed. The feature shipped after the only firing time that had passed.
+
+The trigger is registered and correct, `0 0,13,14,23 * * *`, and its
+`modified_on` tracks each deploy, which confirms Workers Builds re-applies
+`[triggers]` every time and that the dashboard secret change did not disturb it.
+
+**The finding that mattered more than the root cause.** Paul asked what the
+Worker logs showed for the 23:00Z invocation. There were none. `observability`
+was unset and `logpush` false, so nothing had ever been recorded. The question
+was unanswerable, and would have been equally unanswerable for the next firing.
+
+A scheduled job here has no HTTP response, runs twice a day, cannot be retried
+by the platform, and writes its only durable trace after it has already
+succeeded. Without logs it is invisible in exactly the failure mode that
+matters: running and doing nothing. Workers Logs is enabled now, at
+`head_sampling_rate = 1`, since sampling a twice-daily job would mean losing
+whole firings. Included on the Free plan at 200,000 events a day with 3-day
+retention, checked against the Cloudflare docs rather than assumed.
+
+**The handler now awaits its own work.** It previously handed the send to
+`ctx.waitUntil` and returned. That is legal and the work does run, but the
+invocation is recorded as finished before the send happens, and a throw inside
+`runDigest` becomes an unhandled rejection against an invocation already marked
+successful. For this job the outcome of the firing has to be the outcome of the
+send. It is awaited, failures are logged with context and rethrown so the
+invocation is recorded as failed, and every firing logs, including the three in
+four that do nothing. An absent digest and a broken one looked identical from
+outside, which is precisely what made this incident hard to close.
+
+**The cron path had never once executed.** That is the uncomfortable part. It
+was written, reviewed, deployed and reasoned about across two sessions without
+ever being run. Now exercised against the built bundle:
+
+| Firing | Result |
+| --- | --- |
+| 13:00Z Aug 29, MDT | morning digest due, sending, reaches `runDigest` |
+| 23:00Z Aug 29, MDT | evening digest due, sending |
+| 14:00Z Aug 29, MDT | no digest due at this Mountain hour |
+| 14:00Z Jan 15, MST | morning digest due, sending |
+| database fault | logged with context, rethrown, invocation fails |
+
+`wrangler dev --test-scheduled` proved the entry point is reachable but ignores
+every attempt to override `scheduledTime`, so the hour-dependent branches were
+driven directly against `_scheduled.js` with a stubbed environment. Worth
+recording as the technique: a scheduled handler is ordinary code and can be
+called like ordinary code, and waiting for a real firing to find out whether it
+works is not a test strategy.
+
+### D57: the digest sends text and HTML, from one source
+
+Paul reported the digest rendering as "2026-08-28Nothing needs attention",
+missing the separator after the date.
+
+The body was not missing it. Replaying the empty branch shows the text contains
+a real blank line, and stripping newlines with no substitution reproduces the
+reported string exactly, including the run-on into "Open the cockpit". The
+collapse is in the surface it was read on, not in the string.
+
+Fixed anyway. A body whose meaning lives entirely in whitespace is fragile in
+exactly the surfaces a digest is read in first, and the fix is cheap: send an
+HTML part alongside the text. Paragraphs and lists survive whitespace
+collapsing because the structure is in the markup rather than in the spacing.
+
+The HTML is derived from the same `parts` array the text is joined from, so the
+two cannot disagree about content. Same reasoning as one `ReportBody` serving
+both the screen and the print route, and the same reasoning as D54: the way to
+stop two renderings drifting is to give them one source, not to keep them in
+step by hand.
+
+Every dynamic value is escaped. Titles and client names reach the digest from
+the database and some were written by a model. A digest is not where anyone
+should discover that a task title contained a tag.
+
+`/api/digests/preview` returns the HTML as well, so the rendering can be checked
+without sending anything.
 
 ## Interpretation notes
 

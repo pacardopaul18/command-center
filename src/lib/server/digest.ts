@@ -49,6 +49,8 @@ export function digestDueAt(now: Date = new Date()): DigestKind | null {
 export interface DigestContent {
 	subject: string;
 	text: string;
+	/** The same content as `text`, marked up. Derived from the same array. */
+	html: string;
 	empty: boolean;
 }
 
@@ -59,6 +61,61 @@ interface Row {
 function line(prefix: string, rows: Row[], render: (r: Row) => string): string[] {
 	if (rows.length === 0) return [];
 	return [prefix, ...rows.map((r) => `  - ${render(r)}`), ''];
+}
+
+/** Every dynamic value in the digest passes through this before reaching HTML. */
+function escapeHtml(value: string): string {
+	return value
+		.replace(/&/g, '&amp;')
+		.replace(/</g, '&lt;')
+		.replace(/>/g, '&gt;')
+		.replace(/"/g, '&quot;');
+}
+
+/**
+ * Renders the digest lines as HTML.
+ *
+ * The digest is sent as text and HTML together. The text part was always
+ * correct: it carries real blank lines between sections. What it does not
+ * survive is a reader that strips newlines without putting anything in their
+ * place, which is how "start of day, 2026-08-28" and "Nothing needs attention"
+ * ended up welded together in the one message that has been sent so far. A text
+ * body whose meaning depends entirely on whitespace is fragile in exactly the
+ * surfaces the digest is read in first.
+ *
+ * This takes the same `parts` array the text is joined from, so the two cannot
+ * disagree about content. Same reasoning as ReportBody being shared between the
+ * screen and the print route: one source, two renderings, no drift.
+ *
+ * Titles and client names reach here from the database, some of them written by
+ * a model, so every one is escaped. A digest is not a place to discover that a
+ * task title contained a tag.
+ */
+function toHtml(parts: string[]): string {
+	const out: string[] = [];
+	let list: string[] = [];
+
+	const flush = () => {
+		if (list.length === 0) return;
+		out.push(`<ul>${list.map((i) => `<li>${i}</li>`).join('')}</ul>`);
+		list = [];
+	};
+
+	for (const part of parts) {
+		if (part === '') {
+			flush();
+			continue;
+		}
+		if (part.startsWith('  - ')) {
+			list.push(escapeHtml(part.slice(4)));
+			continue;
+		}
+		flush();
+		out.push(`<p>${escapeHtml(part)}</p>`);
+	}
+	flush();
+
+	return out.join('\n');
 }
 
 /** Builds the digest body. Plain text, no em dashes, no hype. */
@@ -195,6 +252,7 @@ export async function buildDigest(
 	return {
 		subject: `Command Center ${kind === 'morning' ? 'start of day' : 'end of day'}: ${headline}`,
 		text: parts.join('\n'),
+		html: toHtml(parts),
 		empty
 	};
 }
@@ -205,6 +263,8 @@ export interface DigestResult {
 	status: 'sent' | 'already_sent' | 'skipped_no_key' | 'failed';
 	detail?: string;
 	subject?: string;
+	/** Dry run only. The HTML part, so the rendering can be checked without sending. */
+	html?: string;
 }
 
 /** KV key that makes a send idempotent for a given Mountain day and kind. */
@@ -236,7 +296,14 @@ export async function runDigest(
 	const content = await buildDigest(env, kind, day);
 
 	if (options.dryRun) {
-		return { kind, day, status: 'sent', detail: content.text, subject: content.subject };
+		return {
+			kind,
+			day,
+			status: 'sent',
+			detail: content.text,
+			subject: content.subject,
+			html: content.html
+		};
 	}
 
 	if (!env.RESEND_API_KEY) {
@@ -252,7 +319,13 @@ export async function runDigest(
 			authorization: `Bearer ${env.RESEND_API_KEY}`,
 			'content-type': 'application/json'
 		},
-		body: JSON.stringify({ from, to, subject: content.subject, text: content.text })
+		body: JSON.stringify({
+			from,
+			to,
+			subject: content.subject,
+			text: content.text,
+			html: content.html
+		})
 	});
 
 	if (!res.ok) {

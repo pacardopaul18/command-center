@@ -48,6 +48,21 @@ preview_urls = false
 [triggers]
 crons = ["0 0,13,14,23 * * *"]
 
+# --- Observability ---
+# Workers Logs. Off by default, which is how the first digest incident became
+# unanswerable: the question "what happened in the 23:00Z invocation" had no
+# source of truth, because nothing was ever recorded. A scheduled job that runs
+# twice a day, cannot be retried by the platform, and produces no HTTP response
+# is invisible without this.
+#
+# Included on the Workers Free plan: 200,000 events per day, retained 3 days.
+# Checked against the Cloudflare docs rather than assumed. A single user sending
+# two digests a day is not close to that ceiling, and head_sampling_rate stays at
+# 1 because sampling a twice-daily job would mean losing whole firings.
+[observability]
+enabled = true
+head_sampling_rate = 1
+
 # --- Digest settings ---
 # Not secrets. RESEND_API_KEY is a Worker secret and never appears here.
 #
