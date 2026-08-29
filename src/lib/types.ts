@@ -288,3 +288,25 @@ export interface Client {
 	updated_at: string;
 	project_count?: number;
 }
+
+// --- Meetings ---
+
+export interface Meeting {
+	id: string;
+	client_id: string | null;
+	project_id: string | null;
+	title: string;
+	meeting_date: string;
+	attendees: string | null;
+	recording_url: string | null;
+	transcript_ref: string | null;
+	summary: string | null;
+	summary_reviewed_at: string | null;
+	created_at: string;
+	updated_at: string;
+	// Joined or derived by the list and detail queries.
+	client_name?: string | null;
+	project_name?: string | null;
+	transcript_chars?: number;
+	action_item_count?: number;
+}

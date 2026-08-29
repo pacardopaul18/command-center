@@ -12,13 +12,13 @@ file records what was decided along the way that neither of them says, and why.
 | --- | --- | --- |
 | T5 | Cloudflare wiring: login, D1, KV, remote migration | DONE, commit f94faab |
 | T6 | Dashboard step 2, spend limit | CLOSED BY INSPECTION. Workers Free exposes no spend control; the plan hard-stops at its daily limits instead of billing, so there is nothing to cap |
-| T-v1-0 | Enable R2 in the dashboard, restore the `[[r2_buckets]]` binding, flip `FILES` back to required | SEEDED at the v1 gate. Reduced: a payment method already exists on the account, so this is dashboard clicks plus one binding, no billing step |
+| T-v1-0 | Enable R2, restore the binding, flip `FILES` to required | DONE 2026-08-29. Bucket created, binding live, verified by a transcript round trip |
 | T7 | Dashboard step 1, git-connected build project | DONE. Created via Workers Builds, not Pages. First deploy failed on a Pages-shaped config; fixed in 8bfc68b. Version f6d05619 deployed 2026-08-28T21:18Z with DB, SESSIONS and ASSETS all resolving |
 | T8 | Dashboard steps 3 and 4, custom domain then Access | DONE. work.kabuhayan.app is attached and behind Access with a single Paul-only Allow policy, verified from incognito |
 | T9 | Close the workers.dev surface | DONE. `workers_dev = false` and `preview_urls = false` |
 | T-mvp | MVP stage gate | CLOSED 2026-08-29. Build criteria evidenced; the daily-use half of the threshold is Paul's to confirm over time |
 | T-clients-0 | Rebuild `projects` with a real `client_id` foreign key | DONE, migration 0003. Verified: rows survive byte-for-byte, action item links survive, a bogus client_id is rejected on INSERT and UPDATE |
-| T-meetings-0 | Rebuild `action_items` with a real `meeting_id` foreign key when Meetings lands | OWED. Same pattern as T-clients-0, and subject to D38 |
+| T-meetings-0 | Rebuild `action_items` with a real `meeting_id` foreign key | DONE 2026-08-29, migration 0005 under the full D38 standard. Verified local and remote: rows byte-for-byte identical, all links preserved, bogus meeting_id rejected |
 
 ## Decisions
 
@@ -537,11 +537,15 @@ Both were built as configuration with those values as defaults, and both are now
 the decision rather than a placeholder. Changing either is a change request, not
 a correction.
 
-The sender stays on Resend's shared address because it needs no domain
-verification and therefore cannot fail silently the way an unverified custom
-domain does. Moving to an address on kabuhayan.app requires that domain verified
-in Resend first, and is a one line change to `DIGEST_FROM` in wrangler.toml plus
-a deploy. See R7 for the reason that move may be worth making anyway.
+AMENDED 2026-08-29. `kabuhayan.app` turned out to have been verified in Resend
+five months ago, with DKIM and SPF both passing. `DIGEST_FROM` is now
+`digest@kabuhayan.app`, which is the R7 mitigation live rather than pending.
+
+The original entry assumed the domain was unverified and reasoned from there.
+It was never checked. The shared sender was the right default under that
+assumption and the wrong one in fact, which cost nothing here but is the same
+shape as the mistake the snapshot habit caught: reasoning forward from an
+assumption instead of reading the state.
 
 The times come from the architecture doc. Changing them is a one line change to
 the cron expression, but note it is not a free edit: the four UTC hours in the
@@ -605,6 +609,26 @@ filtering a string that is never produced.
 
 Not decisions. Judgment calls made inside an existing decision, recorded so the
 reasoning is not lost and so nobody relitigates them as if they were open.
+
+### pkill does not work here, and it cost a debugging cycle
+
+`pkill -f "vite dev"` silently does nothing on this machine. It exits cleanly,
+matches nothing, and kills nothing.
+
+The consequence was not theoretical. Three dev servers ended up running at once,
+on 5173, 5174 and 5175. The oldest predated the R2 binding, requests went to it,
+and `c.env.FILES` came back undefined. That read as a broken R2 integration for
+one debugging cycle when the integration was fine and the server was stale.
+
+Two things follow, both already implied by the one-dev-server note and now made
+concrete:
+
+- Stopping a dev server is a PowerShell job: find the listener with
+  `Get-NetTCPConnection -LocalPort <port> -State Listen` and `Stop-Process` its
+  owning PID. Verify the port is free afterwards rather than assuming.
+- Start dev with `--strictPort` so a port collision fails loudly instead of
+  quietly moving to the next port and leaving two servers disagreeing about
+  which bindings exist.
 
 ### Favicon: a gold square on navy, matching the sidebar mark
 

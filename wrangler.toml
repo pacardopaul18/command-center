@@ -51,11 +51,13 @@ crons = ["0 0,13,14,23 * * *"]
 # --- Digest settings ---
 # Not secrets. RESEND_API_KEY is a Worker secret and never appears here.
 #
-# DIGEST_FROM defaults to Resend's shared sender, which needs no domain
-# verification and therefore cannot fail silently. Change it to an address on
-# kabuhayan.app only once that domain is verified in Resend.
+# DIGEST_FROM sends from kabuhayan.app, which is verified in Resend with DKIM
+# and SPF. That is the R7 mitigation: a verified domain is the single biggest
+# lever on whether a daily digest reaches the inbox rather than spam, and a
+# digest that silently lands in spam is the failure this product exists to
+# prevent. See D43 as amended.
 [vars]
-DIGEST_FROM = "onboarding@resend.dev"
+DIGEST_FROM = "digest@kabuhayan.app"
 DIGEST_TO = "pacardopaul18@gmail.com"
 
 # --- Static assets ---
@@ -82,10 +84,9 @@ binding = "SESSIONS"
 id = "9671c77ef65242ebb96b4e7d771cb530"
 
 # --- R2: transcripts, generated PDFs, SOP exports ---
-# TO BE FILLED at the v1 gate (T-v1-0). Commented out on purpose: R2 is not
-# enabled on the account, so a deploy carrying this binding would fail. Nothing
-# before v1 writes files. Enable R2 in the dashboard, run
-# `npx wrangler r2 bucket create command-center-files`, then uncomment.
-# [[r2_buckets]]
-# binding = "FILES"
-# bucket_name = "command-center-files"
+# T-v1-0 done. R2 enabled on the account and the bucket created 2026-08-29.
+# The binding name stays FILES, matching App.Platform and every reference in the
+# code, rather than the name wrangler suggests on create.
+[[r2_buckets]]
+binding = "FILES"
+bucket_name = "command-center-files"

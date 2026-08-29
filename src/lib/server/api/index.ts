@@ -4,6 +4,7 @@ import { actionItems } from './action-items';
 import { clients } from './clients';
 import { digests } from './digests';
 import { invoicing } from './invoicing';
+import { meetings } from './meetings';
 import { projects } from './projects';
 import { sops } from './sops';
 import { today } from './today';
@@ -35,6 +36,7 @@ api.route('/action-items', actionItems);
 api.route('/clients', clients);
 api.route('/digests', digests);
 api.route('/invoicing', invoicing);
+api.route('/meetings', meetings);
 api.route('/projects', projects);
 api.route('/sops', sops);
 
