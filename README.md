@@ -17,7 +17,8 @@ start-of-day and end-of-day digests on Cron and Resend.
 The stage gates and their evidence are in [docs/DECISIONS.md](docs/DECISIONS.md).
 v1 in progress. Meetings ships with transcript import to R2, AI summary and
 action item extraction, and a human review step that is structural rather than
-advisory. Templates, Reports and the one-way Asana push are next.
+advisory. Templates ships with AI drafting in the partner's voice. Reports and
+the one-way Asana push are next.
 
 | Resource | State |
 | --- | --- |
@@ -84,6 +85,7 @@ src/routes/actions/             Action Items screen
 src/routes/projects/            Projects list and detail
 src/routes/meetings/            Meetings, transcripts, AI review
 src/routes/sops/                SOP library and version history
+src/routes/templates/           Templates and AI drafting
 src/routes/clients/             Clients registry
 src/routes/invoices/            Invoicing, billing periods and aging
 src/app.css                     design tokens and base styles

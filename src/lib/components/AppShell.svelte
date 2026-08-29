@@ -20,6 +20,7 @@
 		{ href: '/projects', label: 'Projects', exact: false },
 		{ href: '/meetings', label: 'Meetings', exact: false },
 		{ href: '/sops', label: 'SOPs', exact: false },
+		{ href: '/templates', label: 'Templates', exact: false },
 		{ href: '/clients', label: 'Clients', exact: false },
 		{ href: '/invoices', label: 'Invoicing', exact: false }
 	];

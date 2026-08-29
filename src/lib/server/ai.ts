@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { todayInWorkingZone, WORKING_TIME_ZONE } from './dates';
+import { enforceHouseStyle, HOUSE_STYLE } from './house-style';
 
 /**
  * The one place the app talks to Claude.
@@ -82,10 +83,9 @@ function assertUsable(message: Anthropic.Message): void {
 
 const SUMMARY_SYSTEM = `You summarise meeting transcripts for a single-user operations command center.
 
-Write in plain markdown. Use short declarative sentences. No hype, no emoji, no
-exclamation points, and never an em dash. Sentence case for headings.
+${HOUSE_STYLE}
 
-Structure the summary as:
+Write plain markdown, structured as:
 
 ## What was decided
 ## What is still open
@@ -93,9 +93,7 @@ Structure the summary as:
 
 Omit any section that has nothing in it rather than writing "none".
 
-Report only what the transcript supports. Where a name, a number or a date is
-unclear in the source, say it is unclear rather than picking the likely one.
-Never invent a figure, a commitment or an attribution.`;
+Report only what the transcript supports.`;
 
 export async function summariseTranscript(
 	apiKey: string,
@@ -116,7 +114,8 @@ export async function summariseTranscript(
 		});
 
 		assertUsable(message);
-		const summary = textOf(message);
+		// Enforced, not requested. See house-style.ts and F2.
+		const summary = enforceHouseStyle(textOf(message));
 		if (!summary) throw new AiError(502, 'Claude returned an empty summary.');
 		return { summary, model: message.model };
 	} catch (err) {
@@ -180,6 +179,8 @@ const EXTRACTION_SCHEMA = {
 
 const EXTRACTION_SYSTEM = `You extract action items from meeting transcripts for a single-user operations command center.
 
+${HOUSE_STYLE}
+
 An action item is a commitment somebody made to do something. Discussion,
 opinion, and background are not action items. If the transcript contains no
 commitments, return an empty list rather than manufacturing one.
@@ -191,13 +192,12 @@ For each item:
   empty and set ambiguous to true. Do not infer an owner from who was talking.
 - deadline: only when a date was stated or follows unambiguously from a relative
   reference such as "by Friday". Leave it empty otherwise. Never guess a date.
-- evidence: a short verbatim quote from the transcript.
+- evidence: a short verbatim quote from the transcript. It must appear in the
+  transcript word for word. Never paraphrase it and never compose one.
 
 Set ambiguous to true whenever the owner, the deadline, or the commitment itself
 is unclear, and say what is unclear in ambiguity_note. Flagging is cheap and a
-wrong owner or a wrong date is expensive. When in doubt, flag it.
-
-Never use an em dash.`;
+wrong owner or a wrong date is expensive. When in doubt, flag it.`;
 
 export interface ExtractedItem {
 	title: string;
@@ -281,17 +281,110 @@ export async function extractActionItems(
 			const ambiguous = row.ambiguous === true || missing.length > 0;
 
 			items.push({
-				title: title.slice(0, 300),
-				context: typeof row.context === 'string' ? row.context.trim().slice(0, 4000) : '',
+				// House style is enforced on every field the model wrote, not just
+				// the prose ones. A title is as visible as a summary.
+				title: enforceHouseStyle(title).slice(0, 300),
+				context: enforceHouseStyle(
+					typeof row.context === 'string' ? row.context.trim() : ''
+				).slice(0, 4000),
 				owner,
 				deadline,
 				ambiguous,
-				ambiguity_note: note || (missing.length > 0 ? missing.join(', ') : ''),
+				ambiguity_note: enforceHouseStyle(
+					note || (missing.length > 0 ? missing.join(', ') : '')
+				).slice(0, 500),
+				// Evidence is deliberately NOT style-enforced. It is a verbatim quote
+				// from the transcript, and rewriting a quote to satisfy house style
+				// would break the only check available on whether the model made it
+				// up. The confabulation test depends on this being untouched.
 				evidence: typeof row.evidence === 'string' ? row.evidence.trim().slice(0, 2000) : ''
 			});
 		}
 
 		return { items, model: message.model };
+	} catch (err) {
+		if (err instanceof AiError) throw err;
+		throw toAiError(err);
+	}
+}
+
+/**
+ * Drafts client-facing writing from a template.
+ *
+ * The template body is passed as an exemplar to imitate, not as instructions to
+ * follow. That is the whole mechanism: the architecture's goal for this module
+ * is replies that sound like the partner, and a model told to "be professional"
+ * writes like a model. Told to match a specific piece of real writing, it
+ * matches it.
+ *
+ * The situation is the only new information. Anything the situation does not
+ * establish must not appear in the draft, because a confidently invented
+ * commitment in a client-facing email is the most expensive thing this app
+ * could produce.
+ */
+const DRAFT_SYSTEM = `You draft client-facing writing for a small consulting firm, in the voice of the person who wrote the example you are given.
+
+${HOUSE_STYLE}
+
+You will be given an example of that person's writing, the situation to respond
+to, and what kind of document this is.
+
+Match the example's voice: its sentence length, its level of formality, how it
+opens and closes, how direct it is. Match the register, not the specific content.
+
+Use only what the situation tells you. Never invent a date, a figure, a name, a
+commitment, or a next step that the situation does not establish. Where
+something is needed but unknown, write a short bracketed placeholder such as
+[confirm date] rather than choosing something plausible.
+
+Return only the draft itself. No preamble, no explanation, no subject line
+unless the example has one.`;
+
+export async function draftFromTemplate(
+	apiKey: string,
+	input: {
+		templateName: string;
+		scenario: string | null;
+		exemplar: string;
+		type: 'email' | 'doc';
+		situation: string;
+		recipient?: string;
+	}
+): Promise<{ draft: string; model: string }> {
+	try {
+		const message = await client(apiKey).messages.create({
+			model: MODEL,
+			max_tokens: MAX_TOKENS,
+			system: DRAFT_SYSTEM,
+			messages: [
+				{
+					role: 'user',
+					content:
+						`Kind: ${input.type === 'email' ? 'email reply' : 'document'}
+` +
+						`Template: ${input.templateName}
+` +
+						(input.scenario ? `Used when: ${input.scenario}
+` : '') +
+						(input.recipient ? `Writing to: ${input.recipient}
+` : '') +
+						`
+Example of the voice to match:
+
+${input.exemplar}
+
+` +
+						`Situation to respond to:
+
+${input.situation}`
+				}
+			]
+		});
+
+		assertUsable(message);
+		const draft = enforceHouseStyle(textOf(message));
+		if (!draft) throw new AiError(502, 'Claude returned an empty draft.');
+		return { draft, model: message.model };
 	} catch (err) {
 		if (err instanceof AiError) throw err;
 		throw toAiError(err);

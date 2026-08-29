@@ -664,6 +664,55 @@ shape, but this is model output crossing a trust boundary.
 `stop_reason` is checked on every call. A refusal and a truncation are real
 outcomes, and returning half a summary silently would be worse than failing.
 
+### D48: house style is enforced in code, not requested in a prompt
+
+F2 from the first live extraction test. The summary prompt already said "never
+an em dash" and the model emitted one anyway.
+
+That is the lesson, not the bug. A prompt is a request. Anything that must always
+hold is enforced in code, and the prompt exists to make the enforcement rarely
+necessary rather than to be the enforcement. Same shape as D44: make the bad
+outcome structurally impossible rather than asking for it not to happen.
+
+`src/lib/server/house-style.ts` holds both halves. `HOUSE_STYLE` is prepended to
+every AI prompt in the app, currently three of them, and `enforceHouseStyle` runs
+over every string an AI produces before it is stored or shown. Dashes between
+digits become "to", every other forbidden dash becomes a comma, and the
+punctuation damage that replacement causes is repaired rather than left.
+
+One deliberate exception: the `evidence` field on an extracted proposal is never
+style-enforced. It is a verbatim quote from the transcript, and rewriting a quote
+to satisfy house style would destroy the only check available on whether the
+model invented it. The confabulation test that passed on the first live run
+depends on that field being untouched.
+
+The prompt also gained a rule against merging two names into one entity, from F1,
+where the summary read a Nashville agency and an Austin one as a single employer
+with "inconsistent references". Paul is correcting that instance by hand, which
+exercises the edit-counts-as-reviewed path. The prompt guard is mine, added
+because the failure will recur otherwise.
+
+### D49: drafts are not stored
+
+A template persists. A draft made from it does not.
+
+`POST /api/templates/:id/draft` returns a draft and writes nothing. The app has
+no send capability, so a draft is something Paul reads, edits, and copies into
+his own mail client. Storing every draft would accumulate stale near-duplicates
+of the template that produced them, and a stored draft implies a workflow, an
+outbox, a status, that does not exist.
+
+The template body is passed to the model as an exemplar to imitate, not as
+instructions to follow. That is the mechanism the architecture asks for: a model
+told to "be professional" writes like a model, and one told to match a specific
+piece of real writing matches it. The situation is the only new information, and
+anything it does not establish comes back as a bracketed placeholder rather than
+a plausible invention, because a confidently invented commitment in a
+client-facing email is the most expensive output this app could produce.
+
+Every draft carries the same unreviewed banner the meeting summaries do, and is
+rendered through the one markdown component.
+
 ## Interpretation notes
 
 Not decisions. Judgment calls made inside an existing decision, recorded so the

@@ -335,3 +335,27 @@ export interface Proposal {
 	reviewed_at: string | null;
 	action_item_status?: string | null;
 }
+
+// --- Templates ---
+
+export const TEMPLATE_TYPES = ['email', 'doc'] as const;
+export type TemplateType = (typeof TEMPLATE_TYPES)[number];
+
+export const TEMPLATE_TYPE_LABELS: Record<TemplateType, string> = {
+	email: 'Email reply',
+	doc: 'Document'
+};
+
+export const TEMPLATE_STATUSES = ['active', 'archived'] as const;
+export type TemplateStatus = (typeof TEMPLATE_STATUSES)[number];
+
+export interface Template {
+	id: string;
+	name: string;
+	scenario: string | null;
+	body: string;
+	type: TemplateType;
+	status: TemplateStatus;
+	created_at: string;
+	updated_at: string;
+}

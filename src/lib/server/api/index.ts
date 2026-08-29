@@ -7,6 +7,7 @@ import { invoicing } from './invoicing';
 import { meetings } from './meetings';
 import { projects } from './projects';
 import { sops } from './sops';
+import { templates } from './templates';
 import { today } from './today';
 import { ApiError } from './validate';
 import { todayInWorkingZone, WORKING_TIME_ZONE } from '../dates';
@@ -39,6 +40,7 @@ api.route('/invoicing', invoicing);
 api.route('/meetings', meetings);
 api.route('/projects', projects);
 api.route('/sops', sops);
+api.route('/templates', templates);
 
 api.notFound((c) => c.json({ error: 'Not found.' }, 404));
 
