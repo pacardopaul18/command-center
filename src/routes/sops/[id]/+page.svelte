@@ -6,6 +6,7 @@
 	import FormField from '$lib/components/FormField.svelte';
 	import Input from '$lib/components/Input.svelte';
 	import StatusChip from '$lib/components/StatusChip.svelte';
+	import Markdown from '$lib/components/Markdown.svelte';
 	import Textarea from '$lib/components/Textarea.svelte';
 	import type { PageData } from './$types';
 
@@ -219,11 +220,9 @@
 					</p>
 				{/if}
 
-				<!-- The body is stored as markdown but rendered as plain preformatted
-				     text. Rendering markdown means turning stored text into HTML, which
-				     needs a renderer and a sanitiser. That is a dependency decision, not
-				     something to slip in silently. -->
-				<pre class="body">{data.viewing.body}</pre>
+				<!-- Rendered through the one markdown component, which never produces
+				     an HTML string. See D36 and the Markdown component's own note. -->
+				<Markdown source={data.viewing.body} />
 			</Card>
 		{/if}
 	</div>
@@ -365,15 +364,6 @@
 		gap: var(--space-4);
 		margin-top: var(--space-4);
 		align-items: start;
-	}
-
-	.body {
-		margin: 0;
-		font-family: var(--font-sans);
-		font-size: var(--text-base);
-		line-height: 1.6;
-		white-space: pre-wrap;
-		overflow-wrap: anywhere;
 	}
 
 	.history {

@@ -380,7 +380,7 @@ is the feature working, not a gap.
 Nothing that matters may live only in `.wrangler/state`. Anything worth keeping
 belongs in a migration or in `seed/dev-seed.sql`, both of which are in the repo.
 
-### D36: markdown rendering deferred to v1, decided once for SOPs and Meetings
+### D36: markdown rendering deferred to v1, decided once for SOPs and Meetings. CLOSED
 
 SOP bodies render as preformatted plain text for the MVP. Deferred, not
 rejected.
@@ -392,6 +392,8 @@ meeting summaries and AI-drafted content.
 
 Until then plain text stands. Numbered steps, which is what the SOP template
 asks for, read correctly without it.
+
+CLOSED at the v1 kickoff by D44.
 
 ### D37: Clients ships as a thin module alongside Invoicing
 
@@ -545,6 +547,59 @@ The times come from the architecture doc. Changing them is a one line change to
 the cron expression, but note it is not a free edit: the four UTC hours in the
 expression exist to cover those two Mountain hours across DST, so new times mean
 recomputing the set. See D40.
+
+### D44: one markdown renderer, safe by construction rather than by filtering
+
+Closes D36. `src/lib/components/Markdown.svelte` is the single renderer for SOP
+bodies, meeting summaries and AI drafted content. Renderer is `marked`, chosen
+for being small, standard and having zero dependencies.
+
+All content is untrusted regardless of author, as ruled. An AI summary of a
+client transcript is untrusted by definition, and "Paul wrote it" is not a
+security property when the text arrives through an import.
+
+The ruling asked for a mandatory sanitiser. What shipped is stronger, and the
+difference is worth stating rather than glossing.
+
+A sanitiser takes an HTML string and removes the dangerous parts, which means
+the dangerous parts existed and the filter has to be right. This renderer never
+builds an HTML string at all. Markdown is lexed to tokens and the tokens are
+rendered as Svelte elements, so markup in the source has no path to becoming
+markup on the page. There is no `{@html}` anywhere in the application, verified
+by grep, and that absence is the security design. Nothing is sanitised because
+nothing unsafe is ever constructed.
+
+Two things still needed explicit handling, because they are data rather than
+markup:
+
+- **Link schemes.** Only `http:`, `https:`, `mailto:` and app-relative paths
+  become links. A `javascript:` or `data:` URL renders its label as plain text
+  with no anchor. External links carry `rel="noopener noreferrer nofollow"`.
+- **Raw HTML blocks.** Rendered as visible characters in a monospace paragraph,
+  never interpreted.
+
+Verified against a SOP whose body was a set of attacks, then re-verified
+precisely after the first check produced two false alarms:
+
+| Input | Rendered as | Result |
+| --- | --- | --- |
+| `<script>` payload | escaped text | no script element |
+| `<img onerror=...>` | escaped text | `onerror` appears as characters, not an attribute |
+| `<iframe>` | escaped text | no iframe element |
+| `[x](javascript:alert(1))` | label only | never becomes an href |
+| `[x](data:text/html,...)` | label only | never becomes an href |
+| `[x](https://example.com)` | real link | with rel and target |
+| bold, lists, inline code | correct elements | safe markdown unaffected |
+
+The first pass flagged `onerror=` and `javascript:alert` as present. Both were
+false: the first was the escaped text of the payload inside a paragraph, the
+second was in SvelteKit's hydration data rather than in the rendered region. A
+substring search over a whole page cannot tell live markup from serialised
+source, and the check had to be narrowed to the rendered region to mean
+anything. Worth recording as the shape of a bad security test.
+
+If a sanitiser is still wanted on top, say so and it goes in, but it would be
+filtering a string that is never produced.
 
 ## Interpretation notes
 
