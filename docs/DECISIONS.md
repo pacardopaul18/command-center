@@ -34,7 +34,7 @@ file records what was decided along the way that neither of them says, and why.
 | T-volume-seed | Local volume seed and rendered screenshots at load | DONE 2026-08-29, D62. 44 action items, 23 invoices across all bands, 14 projects. Remote verified clean of every seeded row |
 | T-density | Sticky sidebar and the spacing pass, judged against the volume renders | DONE 2026-08-29, D63. Sidebar fills and sticks, headings group with their tables, rows banded |
 | T-hold-branch | Park held cron wiring on `hold/cron-wiring`, local main tracks origin main | DONE 2026-08-29, D64. Branch created and verified to carry the six-hour cron; main verified unchanged and equal to origin. Branch stays local until the freeze lifts, because a branch build of unknown configuration could deploy it |
-| T-silent-writes | Route every client write through `apiWrite` | PARTIAL 2026-08-29, D66. Quick add and the action items screen converted and verified against an intercepted 200 HTML response. 24 remaining sites carry the same silent path |
+| T-silent-writes | Route every client write through `apiWrite` | PARTIAL 2026-08-29, D66. Quick add and the action items screen converted and verified against an intercepted 200 HTML response. Ratified as post-gate work: the remaining 24 sites get the same treatment, each verified by intercepting a response rather than by reading the code. Carries an open question, below |
 | T-dup-cleanup | Four duplicate action items on production from the retry loop | OPEN, DRI Paul to authorise. Ids 5ac8772f, aeae0a1a, f6db53eb, aadfc38b. Keep 944e4e5a, the first |
 | T-v2-baseline | Partner time baseline audit, running 15-minute-increment note | OPEN, DRI Paul, starting week of 2026-08-31. Prerequisite for the v2 partner-hours-saved dashboard, D52. Nothing blocks on it in v1 |
 
@@ -1506,6 +1506,50 @@ database already says.
 Two sites are converted, the two that were reported. The other 24 carry the same
 defect and are tracked separately rather than changed in a rush before a freeze.
 
+### D67: evidence over memory, catch five, and the first time it landed on PM
+
+Second time in one day, and this time the wrong belief was the PM's.
+
+The hypothesis was that the mandatory-assignee change had been applied to the
+app's own create path and was rejecting writes, with the 4xx swallowed client
+side. It was reasoned from timing: creation worked before a deploy and appeared
+to fail after it, and a change about a required field had gone out in that
+deploy. Every step of that is a reasonable inference and the conclusion was
+wrong.
+
+What killed it was not a better argument. It was hitting the server. `POST
+/api/action-items` returned 201 on both request shapes, on dev and on a
+production build; every other write returned 2xx; remote D1 accepted an insert
+and a delete; and remote held five successful copies of the item that was
+believed to have failed. The diff then confirmed the suspected code could not
+reach the create path at all.
+
+The instruction that produced this was the PM's own: verify server side first,
+do not reason from the code. Issued in the same message as the hypothesis it
+disproved, which is the useful part. The rule works precisely because it does
+not care whose belief is being tested.
+
+Five catches now, and the distribution is the point:
+
+| Catch | Wrong belief held by |
+| --- | --- |
+| Remote migration level | the session |
+| Stage 1 login method | the session |
+| Digest cron never firing | both |
+| The successful Asana push | the conversation, D60 |
+| Assignee rejecting writes | PM |
+
+The lesson stops being about who is careless once it has landed on everyone. It
+is about how cheap the check is. Four queries and a curl settled this one in
+under three minutes, against a hypothesis that would otherwise have driven a
+code change to a path that was never broken.
+
+Timing correlation is the specific trap in three of the five. A deploy happened,
+then a symptom appeared, therefore the deploy caused the symptom. Here the only
+client change in that deploy was confined to a notice string in the Asana push
+handler and could not have touched creation. The correlation was real and the
+causation was invented.
+
 ## Interpretation notes
 
 Not decisions. Judgment calls made inside an existing decision, recorded so the
@@ -1639,6 +1683,32 @@ Related to D60, which recorded the opposite direction of the same problem: there
 the written record was right and the conversation drifted from it, here the
 conversation was right and the record never travelled. Both are failures of
 transmission rather than of judgement, and both are cheap to fix once named.
+
+### Why the client saw a 2xx with a non-JSON body at all, OPEN
+
+Parked on T-silent-writes deliberately, not chased.
+
+D66 explains the silence completely: a 2xx whose body would not parse was
+treated as success at all 26 write sites. It does not explain the body. Something
+answered a `POST /api/action-items` with a 200 that was not JSON, and nothing in
+the Worker does that. Every route returns `c.json(...)`, and a thrown error
+returns a JSON error object.
+
+The likeliest source is Cloudflare Access serving a sign-in page in place of the
+API after a session expired. That would produce exactly this shape, would affect
+every write at once, and would be invisible in the console. It is a recurring
+condition rather than a one-off, so it will happen again.
+
+Not confirmed, and deliberately not assumed, because assuming a plausible cause
+from a matching symptom is what D67 was just written about. Production sits
+behind Access and cannot be probed from here. The reload test may settle it: if
+the page returns without a sign-in wall, the session had not expired and the
+cause is something else.
+
+What is already true regardless: the next occurrence shows an error rather than
+nothing, and that error names the likely cause and tells the reader to check
+whether the change saved before repeating it, which is the specific mistake that
+produced five duplicate rows.
 
 ### The ambiguity backstop is untuned, and deliberately so
 
