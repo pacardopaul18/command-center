@@ -33,6 +33,7 @@ file records what was decided along the way that neither of them says, and why.
 | T-asana-repush | Re-push one action item after the assignee fix | OPEN, DRI Paul, two minutes. Closes v1 gate row c and answers the `permalink_url` question, which the push notice now reports |
 | T-volume-seed | Local volume seed and rendered screenshots at load | DONE 2026-08-29, D62. 44 action items, 23 invoices across all bands, 14 projects. Remote verified clean of every seeded row |
 | T-density | Sticky sidebar and the spacing pass, judged against the volume renders | DONE 2026-08-29, D63. Sidebar fills and sticks, headings group with their tables, rows banded |
+| T-hold-branch | Park held cron wiring on `hold/cron-wiring`, local main tracks origin main | DONE 2026-08-29, D64. Branch created and verified to carry the six-hour cron; main verified unchanged and equal to origin. Branch stays local until the freeze lifts, because a branch build of unknown configuration could deploy it |
 | T-v2-baseline | Partner time baseline audit, running 15-minute-increment note | OPEN, DRI Paul, starting week of 2026-08-31. Prerequisite for the v2 partner-hours-saved dashboard, D52. Nothing blocks on it in v1 |
 
 ## Decisions
@@ -1377,6 +1378,75 @@ The lesson is not about spacing values. It is that a layout can only be judged
 at the volume it will actually carry, and every screen in this app had been
 reviewed at three rows.
 
+**Ratified as a standing standard.** No screen is signed off at a trivial row
+count again. Before any layout is accepted, it is rendered against a seed that
+carries the volume it will really see, and judged from that. Reviewing at three
+rows is not a lighter version of reviewing; it is reviewing a different artifact
+that happens to share a stylesheet.
+
+This is the app-side twin of the render-before-review rule, arrived at
+independently in a second domain, which is usually a sign the rule is real
+rather than local.
+
+### D64: held work parks on a side branch, and local main tracks origin main
+
+Ratified by PM after R11, replacing discipline with structure.
+
+The freeze was enforced at commit level and released at branch level: the cron
+wiring sat in its own commit, a later commit landed on top of it, and
+`git push` with no refspec sent the whole branch. Explicit `<sha>:main` is
+correct and was adopted immediately, but it is still a thing to remember, and
+the whole point of R11 is that remembering failed once already.
+
+So the rule is structural. **Held work lives on a side branch**, named for what
+it is holding, `hold/cron-wiring` here. **Local main tracks origin main and
+nothing else.** The held branch merges into main when the hold lifts. A push
+from main then cannot carry held work, because held work is not in main to
+carry, and the mistake stops depending on anyone noticing.
+
+Explicit refspecs stay on top of it. Two independent guards, one of which does
+not rely on attention.
+
+**Not pushed to origin while the freeze holds, and the reason is worth
+recording.** Whether Workers Builds builds non-production branches here is not
+established, and if it does and its build command is `wrangler deploy` rather
+than a versions upload, a branch build would apply the six-hour cron expression
+to production. That is exactly the failure R11 already caused once. The
+deployment history shows only `Unknown (deployment)` and `Secret Change` as
+sources, which does not settle it either way, so the branch stays local until
+after tonight's evidence and the question gets answered properly before the
+branch is pushed.
+
+Nothing is at risk from keeping it local. `ab5c786` is in origin main's history,
+reverted by `e5c373a`, so the branch is reconstructible from origin alone as a
+revert of the revert even if this machine is lost.
+
+### D65: do not offer an option whose selection produces a broken record
+
+PM generalisation of the Asana assignee fix, and it earns its own entry because
+it applies well beyond Asana.
+
+The assignee field was optional. Leaving it empty produced a task that existed,
+was reachable by permalink and by search, and appeared in no view a person
+opens. The setting was not wrong to exist. It was wrong to be blankable, because
+one of its values silently destroyed the usefulness of everything it touched.
+
+This is D27 turned around and pointed at writes. D27 says the interface must not
+reference an affordance that does not exist. D65 says the interface must not
+offer a choice that produces a record nobody can find. Both are the same
+instinct: the UI should not be able to describe a state the system cannot
+honour.
+
+The practical test, applied before adding any optional field: what does the
+record look like when this is empty, and is that state reachable by the person
+who will need it. If the answer is no, the field is not optional. It has a
+default, or it is required, or the feature does not ship.
+
+Applied here: assignee defaults to the token owner and cannot be blank. Project
+stays optional, because a task outside a project is still visible to its
+assignee, and the cost is discoverability rather than invisibility, so it earns
+a warning rather than a default.
+
 ## Interpretation notes
 
 Not decisions. Judgment calls made inside an existing decision, recorded so the
@@ -1486,6 +1556,30 @@ hidden when null, because at MVP there was no way to assign a client and every
 row would have read "no client" against a feature that did not exist. Assigning
 one is a real affordance now, so an unassigned project became a fact worth
 showing rather than an absence to hide.
+
+### A PM ruling does not exist for this session until it is relayed
+
+R11, the freeze violation, was acknowledged and closed as contained in the PM
+ledger at the time it was reported, with an additional structural rule attached.
+None of that reached this session, so the violation was re-flagged in a later
+report as unacknowledged, and the structural rule was absent from the work for
+two more turns.
+
+Nothing was wrong on either side. The ruling was made and recorded; it simply
+was not relayed. The failure mode is worth naming because it is invisible from
+both ends: PM sees a ruling on the record and assumes it is in force, and this
+session sees silence and assumes the question is open.
+
+So: a decision exists for this session when it arrives here, and not before. PM
+will mark blocks intended for relay explicitly. This session, in turn, should
+say plainly when it is treating something as unanswered rather than quietly
+proceeding on its own reading, which is what re-flagging R11 did correctly by
+accident.
+
+Related to D60, which recorded the opposite direction of the same problem: there
+the written record was right and the conversation drifted from it, here the
+conversation was right and the record never travelled. Both are failures of
+transmission rather than of judgement, and both are cheap to fix once named.
 
 ### The ambiguity backstop is untuned, and deliberately so
 
@@ -1746,6 +1840,10 @@ Live for 78 seconds, 09:53:32Z to 09:54:50Z. No firing ran against the wrong
 expression: 09:00Z had passed 53 minutes earlier and 10:00Z had not arrived. The
 deployed cron was confirmed back to `0 0,13,14,23 * * *` by API, with 183
 minutes of margin to the firing.
+
+Acknowledged and closed as contained in the PM ledger at the time of report,
+which did not reach this session until later. See the relay note in the
+interpretation notes.
 
 The lesson is mechanical, not attentional. A hold enforced at commit level and
 released at branch level is not a hold. Either the held work stays out of the
