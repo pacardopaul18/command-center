@@ -23,6 +23,7 @@ file records what was decided along the way that neither of them says, and why.
 | T-v1-reports | Reports with PDF export via a print route | DONE 2026-08-29. Four of the five in section D, live queries, no migration. Screen and print verified to show identical figures. Partner time saved deferred, D52 |
 | T-v1-asana | One-way Asana push per D4 | BUILT 2026-08-29, unverified against a real token. All failure paths tested, including a live 401 from Asana. Awaiting `wrangler secret put ASANA_TOKEN` and one real push |
 | T-digest-1 | Digest incident: no scheduled digest had ever sent | ROOT CAUSE CLOSED 2026-08-29, D56. The cron never had an eligible firing. Observability enabled, handler now awaits, cron path exercised for the first time. Incident closes on the 13:00Z firing |
+| T-debt-1 | Three unblocked design debts: meetings cockpit card, invoice alert card, client column on Projects | DONE 2026-08-29. All three read real data only. The design's mocked meeting times and "agenda drafted" state are not in the schema and were not rendered, D27. Cockpit invoice alerts cross-checked identical to the Invoicing screen's overdue set |
 | T-v2-baseline | Partner time baseline audit, running 15-minute-increment note | OPEN, DRI Paul, starting week of 2026-08-31. Prerequisite for the v2 partner-hours-saved dashboard, D52. Nothing blocks on it in v1 |
 
 ## Decisions
@@ -1160,6 +1161,32 @@ it meant nothing.
 Deployed production was not probed directly. It sits behind Access, and the
 locally built artifact is the same bundle Workers Builds produces from the same
 tree.
+
+### The cockpit cards show what is stored, not what the design mocked
+
+The two held-back cockpit cards shipped once Meetings and Invoicing existed. Both
+required deciding what to do about design content that has no schema behind it.
+
+The design's meetings card shows clock times, "09:30" and "14:00", and an
+"agenda drafted" state. `meetings` stores `meeting_date`, a date, and there are
+no agendas. Rendering a time would have meant inventing one or leaving a mocked
+value in place as if it were fact, which is what D27 exists to prevent. The rows
+carry the client, the project, the count of proposals waiting on a decision and
+the count of open follow-ups instead. All four are real and all four are
+actionable, which the mocked time was not.
+
+The invoice card is restricted to invoices actually past their due date. The
+design shows a not-yet-due invoice alongside an overdue one, but a card called
+"Invoice alerts" listing something inside its terms is not alerting to anything.
+The bucket expression is the same one Invoicing and Reports use, and the cockpit
+set was checked to be identical to the Invoicing screen's overdue set, values
+included, so three screens cannot disagree about which band an invoice is in.
+
+The client column on Projects is D27 read the other way round. It was previously
+hidden when null, because at MVP there was no way to assign a client and every
+row would have read "no client" against a feature that did not exist. Assigning
+one is a real affordance now, so an unassigned project became a fact worth
+showing rather than an absence to hide.
 
 ### The ambiguity backstop is untuned, and deliberately so
 

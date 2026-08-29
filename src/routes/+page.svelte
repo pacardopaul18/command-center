@@ -1,13 +1,13 @@
 <script lang="ts">
 	import { invalidateAll } from '$app/navigation';
-	import { STATUS_LABELS } from '$lib/types';
+	import { AGING_LABELS, formatMoney, STATUS_LABELS } from '$lib/types';
 	import type { ActionItem } from '$lib/types';
 	import { deadlineLabel, formatDay } from '$lib/format';
 	import Button from '$lib/components/Button.svelte';
 	import Card from '$lib/components/Card.svelte';
 	import StatusChip from '$lib/components/StatusChip.svelte';
 	import type { PageData } from './$types';
-	import type { SlipReason } from './+page';
+	import type { InvoiceAlert, SlipReason, TodayMeeting } from './+page';
 
 	let { data }: { data: PageData } = $props();
 
@@ -93,6 +93,43 @@
 		}
 		return `${parts.join('. ')}.`;
 	});
+	/**
+	 * The meeting row's second line.
+	 *
+	 * The design mocks a clock time here. `meetings` has no time column, so this
+	 * carries what is actually stored: who the meeting is with, and what came out
+	 * of it that is still outstanding. D27.
+	 */
+	function meetingMeta(m: TodayMeeting): string {
+		const bits: string[] = [];
+		bits.push(m.client_name ?? 'No client');
+		if (m.project_name) bits.push(m.project_name);
+		if (m.pending_proposals > 0) {
+			bits.push(`${m.pending_proposals} proposal${m.pending_proposals === 1 ? '' : 's'} to review`);
+		}
+		if (m.open_follow_ups > 0) {
+			bits.push(`${m.open_follow_ups} open follow-up${m.open_follow_ups === 1 ? '' : 's'}`);
+		}
+		return bits.join(', ');
+	}
+
+	/**
+	 * What the meeting chip says, worst first.
+	 *
+	 * A pending proposal is a decision waiting on Paul, which outranks an
+	 * unreviewed summary, which outranks having nothing to do.
+	 */
+	function meetingChip(m: TodayMeeting): { tone: 'overdue' | 'atrisk' | 'waiting' | 'done'; label: string } {
+		if (m.pending_proposals > 0) return { tone: 'atrisk', label: 'To review' };
+		if (m.has_summary && !m.summary_reviewed_at) return { tone: 'waiting', label: 'Unreviewed' };
+		if (m.has_summary) return { tone: 'done', label: 'Reviewed' };
+		return { tone: 'waiting', label: 'No summary' };
+	}
+
+	function invoiceMeta(inv: InvoiceAlert): string {
+		const days = inv.days_overdue;
+		return `${formatMoney(inv.outstanding_cents)} outstanding, ${days} day${days === 1 ? '' : 's'} past due`;
+	}
 </script>
 
 <svelte:head>
@@ -171,6 +208,55 @@
 						<StatusChip
 							tone={item.reason === 'due_soon' ? 'atrisk' : item.reason === 'stalled' ? 'waiting' : item.reason}
 							label={REASON_LABELS[item.reason]}
+							size="sm"
+						/>
+					</li>
+				{/each}
+			</ul>
+		{/if}
+	</Card>
+
+	<Card title="Today's meetings" padded={false}>
+		{#snippet actions()}
+			<Button href="/meetings" variant="ghost" size="sm">Meetings log</Button>
+		{/snippet}
+
+		{#if data.meetings.length === 0}
+			<p class="empty">No meetings are dated today.</p>
+		{:else}
+			<ul class="rows">
+				{#each data.meetings as m (m.id)}
+					{@const chip = meetingChip(m)}
+					<li class="row" class:flag={m.pending_proposals > 0}>
+						<a class="body indent" href="/meetings/{m.id}">
+							<span class="title">{m.title}</span>
+							<span class="meta mono">{meetingMeta(m)}</span>
+						</a>
+						<StatusChip tone={chip.tone} label={chip.label} size="sm" />
+					</li>
+				{/each}
+			</ul>
+		{/if}
+	</Card>
+
+	<Card title="Invoice alerts" padded={false}>
+		{#snippet actions()}
+			<Button href="/invoices" variant="ghost" size="sm">Invoicing</Button>
+		{/snippet}
+
+		{#if data.invoice_alerts.length === 0}
+			<p class="empty">No invoice is past its due date.</p>
+		{:else}
+			<ul class="rows">
+				{#each data.invoice_alerts as inv (inv.id)}
+					<li class="row" class:flag={inv.aging_bucket !== 'b0_30'}>
+						<a class="body indent" href="/invoices">
+							<span class="title">{inv.client_name} {inv.invoice_number}</span>
+							<span class="meta mono">{invoiceMeta(inv)}</span>
+						</a>
+						<StatusChip
+							tone={inv.aging_bucket === 'b0_30' ? 'atrisk' : 'overdue'}
+							label={AGING_LABELS[inv.aging_bucket]}
 							size="sm"
 						/>
 					</li>

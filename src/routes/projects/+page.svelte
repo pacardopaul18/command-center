@@ -155,9 +155,13 @@
 					{#each group.rows as project (project.id)}
 						<li>
 							<a class="row" href="/projects/{project.id}">
-								<span class="name">
-									{project.name}
-									{#if project.client_name}<span class="client">{project.client_name}</span>{/if}
+								<span class="name">{project.name}</span>
+								<span class="client">
+									{#if project.client_name}
+										{project.client_name}
+									{:else}
+										<span class="unassigned">No client</span>
+									{/if}
 								</span>
 								<span class="milestone mono">
 									{#if project.next_milestone}
@@ -299,12 +303,25 @@
 		overflow-wrap: anywhere;
 	}
 
+	/*
+	 * The client column, shipped once Clients existed.
+	 *
+	 * It was previously tucked under the project name and hidden entirely when
+	 * null, because at MVP there was no way to assign a client and every row
+	 * would have read "no client". Assigning one is a real affordance now, so an
+	 * unassigned project is a fact worth showing rather than an absence to hide.
+	 * D27 read the other way round: the column is honest now that the feature
+	 * behind it exists.
+	 */
 	.client {
-		display: block;
-		margin-top: 2px;
 		font-size: var(--text-xs);
 		font-weight: var(--weight-regular);
 		color: var(--text-secondary);
+		overflow-wrap: anywhere;
+	}
+
+	.unassigned {
+		font-style: italic;
 	}
 
 	.milestone,
@@ -332,7 +349,7 @@
 		}
 
 		.row {
-			grid-template-columns: 2fr 1.6fr auto auto;
+			grid-template-columns: 2fr 1fr 1.6fr auto auto;
 			gap: var(--space-4);
 			align-items: center;
 		}

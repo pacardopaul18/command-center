@@ -8,9 +8,16 @@ import { daysAgoUtc, todayInWorkingZone, workingDayStartUtc } from '../dates';
  * One endpoint, one round trip, because this is the screen Paul lands on and it
  * should not fan out into four requests.
  *
- * The design's cockpit has four cards. Two of them, today's meetings and invoice
- * alerts, read from modules that do not exist yet, so they are neither built nor
- * referenced anywhere in the UI. See D27.
+ * The design's cockpit has four cards. All four exist now: Meetings and
+ * Invoicing shipped in v1, which unblocked the two that were held back under
+ * D27 while the modules they read from did not exist.
+ *
+ * Both new cards show only what is actually stored. The design mocks meeting
+ * times, "09:30" and "14:00", and an "agenda drafted" state. Neither is in the
+ * schema: `meetings` carries a date, not a time, and there are no agendas. So
+ * the meeting rows carry the client and the follow-up counts instead, which are
+ * real. D27 forbids referencing an affordance that does not exist, and a mocked
+ * time rendered as fact is exactly that.
  */
 
 /** A waiting item nobody has touched in this many days counts as stalled. */
@@ -86,6 +93,52 @@ today.get('/', async (c) => {
 		.bind(day, stale, soon)
 		.all();
 
+	// Today's meetings. Counts travel on the row so the card never re-derives
+	// them, and a meeting with nothing outstanding is still shown: "you have a
+	// meeting today" is the point of the card, not "you have work from it".
+	const meetings = await db
+		.prepare(
+			`SELECT m.id, m.title, m.meeting_date, m.summary_reviewed_at,
+              cl.name AS client_name,
+              p.name AS project_name,
+              (m.summary IS NOT NULL AND m.summary != '') AS has_summary,
+              (SELECT COUNT(*) FROM action_items a
+                WHERE a.meeting_id = m.id AND a.status != 'done') AS open_follow_ups,
+              (SELECT COUNT(*) FROM meeting_action_proposals mp
+                WHERE mp.meeting_id = m.id AND mp.status = 'pending') AS pending_proposals
+       FROM meetings m
+       LEFT JOIN clients cl ON cl.id = m.client_id
+       LEFT JOIN projects p ON p.id = m.project_id
+       WHERE m.meeting_date = ?1
+       ORDER BY m.created_at ASC`
+		)
+		.bind(day)
+		.all();
+
+	// Invoice alerts. Past due only, because an alert about something inside its
+	// terms is not an alert. The bucket boundaries are the same expression
+	// Invoicing and Reports use, so the three screens cannot disagree about which
+	// band an invoice sits in.
+	const invoiceAlerts = await db
+		.prepare(
+			`SELECT i.id, i.invoice_number, cl.name AS client_name,
+              (i.amount_cents - i.amount_paid_cents) AS outstanding_cents,
+              CAST(julianday(?1) - julianday(i.due_date) AS INTEGER) AS days_overdue,
+              CASE
+                WHEN julianday(?1) - julianday(i.due_date) <= 30 THEN 'b0_30'
+                WHEN julianday(?1) - julianday(i.due_date) <= 60 THEN 'b31_60'
+                WHEN julianday(?1) - julianday(i.due_date) <= 90 THEN 'b61_90'
+                ELSE 'b90_plus'
+              END AS aging_bucket
+       FROM invoices i
+       JOIN clients cl ON cl.id = i.client_id
+       WHERE i.amount_paid_cents < i.amount_cents
+         AND julianday(?1) > julianday(i.due_date)
+       ORDER BY days_overdue DESC`
+		)
+		.bind(day)
+		.all();
+
 	// done_today compares against Mountain midnight expressed in UTC, not
 	// against midnight UTC, or work finished yesterday evening would count.
 	const totals = await db
@@ -105,6 +158,8 @@ today.get('/', async (c) => {
 		overdue: attentionRows.filter((r) => String(r.deadline) < day),
 		due_today: attentionRows.filter((r) => String(r.deadline) === day),
 		slipping: slipping.results ?? [],
+		meetings: meetings.results ?? [],
+		invoice_alerts: invoiceAlerts.results ?? [],
 		totals: {
 			open: totals?.open_count ?? 0,
 			done_today: totals?.done_today ?? 0
