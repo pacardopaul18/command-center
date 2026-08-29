@@ -39,3 +39,5 @@ Private, single-user personal operations command center for Paul Pacardo. Comple
 
 ## What only Paul can provide (ask up front, all at once, when first needed)
 Cloudflare account and wrangler login, a domain, GitHub repo access, the OTP whitelist email, Asana Personal Access Token, Resend API key, AI provider API key.
+
+Added 2026-08-29, D61: a scoped Cloudflare API token with **Workers Observability Read** and nothing broader. Wrangler's own OAuth token cannot read Workers Logs, which is how a cron incident nearly closed on outcome evidence alone. Deliver it with `wrangler secret put`, never in chat.

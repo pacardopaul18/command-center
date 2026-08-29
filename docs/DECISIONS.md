@@ -25,6 +25,10 @@ file records what was decided along the way that neither of them says, and why.
 | T-digest-1 | Digest incident: no scheduled digest had ever sent | ROOT CAUSE CLOSED 2026-08-29, D56. The cron never had an eligible firing. Observability enabled, handler now awaits, cron path exercised for the first time. Incident closes on the 13:00Z firing |
 | T-debt-1 | Three unblocked design debts: meetings cockpit card, invoice alert card, client column on Projects | DONE 2026-08-29. All three read real data only. The design's mocked meeting times and "agenda drafted" state are not in the schema and were not rendered, D27. Cockpit invoice alerts cross-checked identical to the Invoicing screen's overdue set |
 | T-backup-1 | Nightly D1 to R2 backups, pulled forward from v2 | BUILT 2026-08-29, D58 and D59. Dump proven to restore into an empty database with identical rows, links, indexes and triggers. Module and routes pushed; cron wiring committed and HELD pending the 13:00Z evidence |
+| T-asana-first | First production Asana push: create a real action item, push it, click the returned link | OPEN, DRI Paul, now. Closes v1 gate row c and settles the `permalink_url` question left open in D55. The push has zero production executions, so this is a first run rather than a re-verification |
+| T-reports-preview | One report print preview, judged as a document rather than as a screen | OPEN, DRI Paul, now. Closes the second half of v1 gate row e |
+| T-log-read | Read the 13:00Z invocation record from the Cloudflare dashboard | OPEN, DRI Paul, tonight. Workers and Pages, command-center, Logs. 3 day retention, so it expires 2026-09-01. D61 |
+| T-obs-token | Scoped Cloudflare API token, Workers Observability Read only, delivered by `wrangler secret put` | OPEN, DRI Paul, after tonight. D61. Never in chat |
 | T-v2-baseline | Partner time baseline audit, running 15-minute-increment note | OPEN, DRI Paul, starting week of 2026-08-31. Prerequisite for the v2 partner-hours-saved dashboard, D52. Nothing blocks on it in v1 |
 
 ## Decisions
@@ -987,6 +991,43 @@ updated with the answer rather than left as a guess.
 Stored links are always built from the gid, since D4 stores the gid and not a
 URL.
 
+#### Amended 2026-08-29: no production push has ever succeeded
+
+Paul reported that the "Trying out Asana" task in his My Tasks was entered by
+hand, not created by the app, and asked which it was. Checked against remote
+production rather than local:
+
+| Check | Result |
+| --- | --- |
+| Action items carrying an `asana_task_gid` | **0** |
+| Action items in production, total | 2 |
+| An item titled "Trying out Asana" | does not exist |
+| Asana workspace in remote KV | present, `1217966932722649`, "My workspace" |
+
+There is no stored gid, so there was no task to look up and no app-created task
+to compare against. Two facts make this conclusive rather than merely
+consistent. The push writes `asana_task_gid` only after Asana returns one, so
+zero stored gids means no push has ever returned a task. And the push copies the
+action item's title verbatim as the task name, so the app could not have
+produced a task named "Trying out Asana" when no action item has ever carried
+that title.
+
+Corroborating: both surviving items were last updated at 04:30:57Z and
+2026-08-28T21:20:48Z, while `ASANA_TOKEN` was set at 05:53Z. Neither has been
+touched since the token existed, and a successful push bumps `updated_at`.
+
+The configuration was not the blocker. A workspace was saved, so the push was
+available and simply was not exercised, or failed before reaching Asana.
+
+So the permalink question this decision left open is still open. `permalink_url`
+remains unconfirmed, and the first real push settles it.
+
+A create-push-then-delete sequence would leave the same trace and cannot be
+excluded from the database alone. It does not need to be: PM ruling is that a
+fresh verified run supersedes the archaeology, and the run produces the gid, the
+permalink answer and the row closure together.
+
+
 ### D56: the digest incident, and why a cron with no logs is not a cron you can trust
 
 The first digest incident, 2026-08-29. No scheduled digest had ever arrived.
@@ -1165,6 +1206,81 @@ scheduled handler, `wrap-worker.js` or the wrangler config ships until the
 module and its HTTP routes shipped separately, since they touch no cron surface
 and a manual backup is useful on its own. The cron wiring is committed and
 waiting.
+
+### D60: evidence over memory, catch four, and the record that held
+
+Fourth time on this project that live state has contradicted something believed
+to be true, after the remote migration level, the Stage 1 login method, and the
+digest cron. Logged because the pattern is now a standard, not an anecdote.
+
+**The correction inside the correction.** The PM ruling that logged this catch
+described it as the first instance of the handoff itself being the stale record.
+It was not, and recording that would have put a false statement in the ledger
+while trying to record a lesson about false statements. Every written record was
+accurate at the time it was read:
+
+| Record | What it actually said |
+| --- | --- |
+| `HANDOFF_01` section 7 | lists "the D55 Asana link click" as an outstanding verification |
+| v1 gate row | "PENDING, Paul making one real push and clicking the resulting link" |
+| Task `T-v1-asana` | "BUILT, unverified against a real token. Awaiting `wrangler secret put ASANA_TOKEN` and one real push" |
+| D55 | "Confirmed live against the real API: an **invalid token** produced..." |
+
+A search for any phrasing implying a push had happened returned nothing across
+`docs/`.
+
+**So what drifted was the conversation, not the documents.** The gate row said
+PENDING and named the prerequisite. In discussion that compressed to "the D55
+link click", which reads as a step in a sequence whose earlier steps are done,
+and from there to "the successful push" as an unexamined premise in a question.
+Nobody wrote anything untrue. The claim was manufactured by paraphrase.
+
+That makes this catch the opposite of the previous three in a useful way. The
+ledger was the thing that held. The lesson is not that written records go stale,
+it is that **summarising a PENDING row into the name of its final step deletes
+the word PENDING**, and the deletion is invisible because the summary sounds
+like progress.
+
+Practical rule, and the reason this is a decision rather than a note: when a
+gate row is quoted or summarised, the state travels with it. "Row c, PENDING" is
+the shortest honest form. "The link click" is not a shorter way of saying it, it
+is a different claim.
+
+The general rule stands unchanged and is now four for four: **where live state
+and any recollection disagree, live state wins, and the check is cheap.** Four
+queries against remote D1 and KV settled this one in under two minutes.
+
+### D61: the evidence path for a cron incident is the dashboard today and a scoped token permanently
+
+Discovered while preparing the 13:00Z evidence pull, three hours before the
+firing rather than five minutes after it.
+
+Workers Logs cannot be read with the credentials available to this session. The
+wrangler OAuth token carries `workers_tail (read)` but no observability scope,
+and the telemetry query endpoint returns 403. Isolated rather than assumed: a
+control call to the schedules endpoint on the same token in the same minute
+succeeded, so it is scope and not expiry. `wrangler tail` also produced no
+output here, exiting silently, and it is live-only in any case.
+
+Outcome-only evidence was offered and rejected by PM ruling. For a first-ever
+firing the invocation record is the point of the incident close, not a nicety:
+the KV marker, the Resend log and an inbox together prove a message was sent,
+and prove nothing about whether the cron was what sent it. That distinction is
+the entire incident.
+
+So, two paths:
+
+- **Today.** Paul reads Cloudflare, Workers and Pages, `command-center`, Logs,
+  around 13:00Z, and pastes what is there. Retention is 3 days, so this has
+  until 2026-09-01.
+- **Permanently.** A scoped Cloudflare API token with Workers Observability
+  **Read** and nothing broader, delivered by `wrangler secret put` and never in
+  chat, per the standing rule on secrets. It exists so the next incident does
+  not meet a 403 with a 3-day clock running.
+
+This adds the first new provisioning item since the project began. CLAUDE.md's
+list of what only Paul can provide gains one entry, and it is deliberately the
+narrowest scope that answers the question.
 
 ## Interpretation notes
 
@@ -1478,6 +1594,35 @@ single biggest lever on placement.
 Closes when Paul confirms where the digests actually land after several days,
 not after one. Record the answer here.
 
+### R8: log evidence for a cron incident was unreachable, AMBER, MITIGATED
+
+Found while preparing the 13:00Z evidence pull, roughly three hours before the
+firing rather than minutes after it. Workers Logs cannot be read with this
+session's credentials: the wrangler OAuth token has no observability scope and
+the telemetry endpoint returns 403, isolated from expiry by a control call on
+the same token in the same minute.
+
+Severity is Amber rather than Red because the window is 3 days, not minutes, and
+because two paths exist. Mitigated by D61: Paul reads the dashboard tonight, and
+a scoped Workers Observability Read token goes on the books so the next incident
+does not meet the same wall.
+
+Worth recording as a near miss rather than a defect. Nothing was broken. The
+finding is that the tooling to close an incident was never checked until an
+incident needed it, which is the same shape as the cron path that had never run.
+
+Closes when the scoped token is in place and a log read has been done with it.
+
+### R9: Asana link ambiguity. CLOSED 2026-08-29, superseded
+
+The risk was that the task visible in Asana might or might not be the one the
+app created, leaving D55's permalink question unanswerable. Dissolved by the
+evidence: there is no app-created task, because there has been no push.
+
+Superseded by T-asana-first. A fresh run produces the gid, the permalink answer
+and the row closure together, and needs no reconstruction of what happened
+before.
+
 ## Open questions
 
 ### O1: custom domain, DRI Paul. RESOLVED
@@ -1660,11 +1805,11 @@ Paul is verifying are visible as gaps rather than as blanks nobody counted.
 | Templates with AI drafting | Module live, drafting endpoint returns and stores nothing, D49. House style enforced on every AI output path from the start rather than patched in | PENDING, Paul retesting the voice register with a real exemplar |
 | Clients | Shipped in the Invoicing pass, D37. Client created through the UI, project assigned, foreign key verified to reject a bogus id on both INSERT and UPDATE | EVIDENCED |
 | Reports with PDF export | Four of the five in section D. Aging cross-checked against the Invoicing screen: identical in all four buckets, totals reconciling four ways. Screen and print verified to render identical figures across all four reports. Partner time saved deliberately absent, D52 | PENDING, Paul checking the live screens |
-| One-way Asana push | Built per D4 and D55. Explicit per item, 409 on a second push, and verified to write nothing on failure: with an invalid token the item kept its title, status, deadline and null gid and could still be marked done and reopened. Live 401 from Asana mapped legibly | PENDING, Paul making one real push and clicking the resulting link |
+| One-way Asana push | Built per D4 and D55. Explicit per item, 409 on a second push, and verified to write nothing on failure: with an invalid token the item kept its title, status, deadline and null gid and could still be marked done and reopened. Live 401 from Asana mapped legibly | **NEVER RUN IN PRODUCTION.** Amended 2026-08-29: remote holds zero stored gids, so this is a first execution rather than a verification. T-asana-first |
 | Markdown rendering, D36 | One renderer across SOPs, meeting summaries and drafts. Safe by construction rather than by filtering, D44. No `{@html}` anywhere in the app | EVIDENCED |
 | Schema through migrations only | Remote at 7 of 7, `0007_templates.sql`. One incident where code shipped ahead of its migration, root-caused and fixed by an ordering rule plus a drift detector, D50 | EVIDENCED |
 | Digests actually arriving | Cron trigger registered and correct. Observability enabled. Handler awaits its send and logs every firing. Cron path exercised across all four hour cases and the failure case | PENDING, the 13:00Z firing is the first eligible one in the app's history |
-| Digest deliverability, R7 | `DIGEST_FROM` moved to `digest@kabuhayan.app`, a domain verified in Resend with DKIM and SPF | PENDING, Paul confirming placement over several days |
+| Digest deliverability, R7 | `DIGEST_FROM` moved to `digest@kabuhayan.app`, a domain verified in Resend with DKIM and SPF. The one message ever sent, from the shared `onboarding@resend.dev`, landed in the inbox rather than spam, confirmed 2026-08-29 | PENDING. That message closes the search task but not R7: it was a different sender and a single day. Placement from `digest@kabuhayan.app` over several days is still owed |
 
 #### The threshold, and the half that is not mine to declare
 
