@@ -22,13 +22,13 @@ file records what was decided along the way that neither of them says, and why.
 | T-inc-1 | Live 500 on /templates: migration 0007 never applied to remote | DONE 2026-08-29. Diagnosis confirmed before any change, snapshot taken, 0007 applied, remote at 7 of 7. Root cause and the ordering rule are D50 |
 | T-v1-reports | Reports with PDF export via a print route | DONE 2026-08-29. Four of the five in section D, live queries, no migration. Screen and print verified to show identical figures. Partner time saved deferred, D52 |
 | T-v1-asana | One-way Asana push per D4 | BUILT 2026-08-29, unverified against a real token. All failure paths tested, including a live 401 from Asana. Awaiting `wrangler secret put ASANA_TOKEN` and one real push |
-| T-digest-1 | Digest incident: no scheduled digest had ever sent | ROOT CAUSE CLOSED 2026-08-29, D56. The cron never had an eligible firing. Observability enabled, handler now awaits, cron path exercised for the first time. Incident closes on the 13:00Z firing |
+| T-digest-1 | Digest incident: no scheduled digest had ever sent | **CLOSED 2026-08-29.** The 13:00Z firing ran and sent. Dashboard log read by Paul: `morning digest due, sending` at 13:00:00.532Z and `morning digest sent` at 13:00:02.763Z, subject matching the delivered email verbatim. The 14:00Z no-op guard captured working in the same read. D56 |
 | T-debt-1 | Three unblocked design debts: meetings cockpit card, invoice alert card, client column on Projects | DONE 2026-08-29. All three read real data only. The design's mocked meeting times and "agenda drafted" state are not in the schema and were not rendered, D27. Cockpit invoice alerts cross-checked identical to the Invoicing screen's overdue set |
 | T-backup-1 | Nightly D1 to R2 backups, pulled forward from v2 | BUILT 2026-08-29, D58 and D59. Dump proven to restore into an empty database with identical rows, links, indexes and triggers. Module and routes pushed; cron wiring committed and HELD pending the 13:00Z evidence |
 | T-asana-first | First production Asana push: create a real action item, push it, click the returned link | OPEN, DRI Paul, now. Closes v1 gate row c and settles the `permalink_url` question left open in D55. The push has zero production executions, so this is a first run rather than a re-verification |
 | T-reports-preview | One report print preview, judged as a document rather than as a screen | OPEN, DRI Paul, now. Closes the second half of v1 gate row e |
 | T-log-read | Read the 13:00Z invocation record from the Cloudflare dashboard | OPEN, DRI Paul, tonight. Workers and Pages, command-center, Logs. 3 day retention, so it expires 2026-09-01. D61 |
-| T-obs-token | Scoped Cloudflare API token, Workers Observability Read only, delivered by `wrangler secret put` | OPEN, DRI Paul, after tonight. D61. Never in chat |
+| T-obs-token | Scoped Cloudflare API token: Workers Observability Read, plus Workers Builds read | OPEN, DRI Paul. D61, widened by D64. Builds read added because the branch-build question hit the same 403 and had to be deferred. Delivered by `wrangler secret put`, never in chat |
 | T-asana-fix | Push sets an assignee and warns when no project is chosen | DONE 2026-08-29. Defect D-asana-1: the first production push created a task with no assignee, invisible in My Tasks. Assignee now defaults to the token owner and cannot be blank |
 | T-asana-repush | Re-push one action item after the assignee fix | OPEN, DRI Paul, two minutes. Closes v1 gate row c and answers the `permalink_url` question, which the push notice now reports |
 | T-volume-seed | Local volume seed and rendered screenshots at load | DONE 2026-08-29, D62. 44 action items, 23 invoices across all bands, 14 projects. Remote verified clean of every seeded row |
@@ -1130,6 +1130,33 @@ recording as the technique: a scheduled handler is ordinary code and can be
 called like ordinary code, and waiting for a real firing to find out whether it
 works is not a test strategy.
 
+#### CLOSED 2026-08-29 on the 13:00Z firing
+
+The first scheduled digest in the app's history ran and sent. Evidence read by
+Paul from the Cloudflare dashboard, which is the path D61 established because
+the wrangler token cannot reach Workers Logs:
+
+| Time | Log line |
+| --- | --- |
+| 13:00:00.532Z | `morning digest due, sending` |
+| 13:00:02.763Z | `morning digest sent` |
+| 14:00Z | the no-op guard, firing and doing nothing |
+
+The subject in the log matched the delivered email verbatim, which is what ties
+the invocation to the message and makes this an incident close rather than a
+coincidence. Outcome evidence alone would have shown a marker, a Resend entry
+and an inbox, and proved only that something sent a mail. The 2.2 seconds
+between the two lines is the send.
+
+The 14:00Z capture matters as much as the 13:00Z one. It is the first direct
+observation of a firing that correctly does nothing, which was previously
+indistinguishable from a firing that was broken. That ambiguity is what made
+this incident hard to close, and the logging added in D56 is what removed it.
+
+Root cause stands as recorded: the cron never had an eligible firing, because
+the trigger was created 73 minutes after the only firing time that had passed.
+Nothing was ever broken. What was missing was the ability to tell.
+
 ### D57: the digest sends text and HTML, from one source
 
 Paul reported the digest rendering as "2026-08-28Nothing needs attention",
@@ -1409,7 +1436,17 @@ carry, and the mistake stops depending on anyone noticing.
 Explicit refspecs stay on top of it. Two independent guards, one of which does
 not rely on attention.
 
-**Not pushed to origin while the freeze holds, and the reason is worth
+**The branch question, answered as far as it can be.** The Workers Builds API
+returns 403 to the wrangler OAuth token, the same scope gap D61 found on
+observability, so whether non-production branches build here cannot be
+determined from this session. It did not need to be: the hold lifted by merging
+the branch into main and pushing main, so the branch never went to origin at
+all. The question is deferred to the next hold, and the safe default until it is
+answered is that a hold branch stays local. Add Workers Builds read to the
+scoped token in T-obs-token so the next answer is one call rather than a
+deferral.
+
+**Not pushed to origin while the freeze held, and the reason is worth
 recording.** Whether Workers Builds builds non-production branches here is not
 established, and if it does and its build command is `wrangler deploy` rather
 than a versions upload, a branch build would apply the six-hour cron expression
