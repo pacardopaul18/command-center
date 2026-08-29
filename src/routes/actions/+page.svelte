@@ -11,6 +11,7 @@
 	} from '$lib/types';
 	import type { ActionItem, ActionStatus } from '$lib/types';
 	import { deadlineLabel, formatDay } from '$lib/format';
+	import { apiWrite } from '$lib/http';
 	import { asanaTaskUrl } from '$lib/types';
 	import Button from '$lib/components/Button.svelte';
 	import Card from '$lib/components/Card.svelte';
@@ -46,25 +47,21 @@
 	let draft = $state(blankDraft());
 	let edit = $state<Record<string, string>>({});
 
-	async function send(path: string, method: string, body?: unknown) {
+	/**
+	 * Every write on this screen. Goes through apiWrite, which refuses to call a
+	 * response successful unless it actually parsed as JSON. See src/lib/http.ts.
+	 */
+	async function send(path: string, method: 'POST' | 'PATCH' | 'DELETE', body?: unknown) {
 		busy = true;
 		errorMessage = '';
 		try {
-			const res = await fetch(path, {
-				method,
-				headers: body ? { 'content-type': 'application/json' } : undefined,
-				body: body ? JSON.stringify(body) : undefined
-			});
-			const payload = (await res.json().catch(() => ({}))) as { error?: string };
-			if (!res.ok) {
-				errorMessage = payload.error ?? 'The request failed.';
+			const result = await apiWrite(path, method, body);
+			if (!result.ok) {
+				errorMessage = result.error ?? 'The request failed.';
 				return false;
 			}
 			await invalidateAll();
 			return true;
-		} catch {
-			errorMessage = 'Could not reach the server.';
-			return false;
 		} finally {
 			busy = false;
 		}

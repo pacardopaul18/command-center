@@ -34,6 +34,8 @@ file records what was decided along the way that neither of them says, and why.
 | T-volume-seed | Local volume seed and rendered screenshots at load | DONE 2026-08-29, D62. 44 action items, 23 invoices across all bands, 14 projects. Remote verified clean of every seeded row |
 | T-density | Sticky sidebar and the spacing pass, judged against the volume renders | DONE 2026-08-29, D63. Sidebar fills and sticks, headings group with their tables, rows banded |
 | T-hold-branch | Park held cron wiring on `hold/cron-wiring`, local main tracks origin main | DONE 2026-08-29, D64. Branch created and verified to carry the six-hour cron; main verified unchanged and equal to origin. Branch stays local until the freeze lifts, because a branch build of unknown configuration could deploy it |
+| T-silent-writes | Route every client write through `apiWrite` | PARTIAL 2026-08-29, D66. Quick add and the action items screen converted and verified against an intercepted 200 HTML response. 24 remaining sites carry the same silent path |
+| T-dup-cleanup | Four duplicate action items on production from the retry loop | OPEN, DRI Paul to authorise. Ids 5ac8772f, aeae0a1a, f6db53eb, aadfc38b. Keep 944e4e5a, the first |
 | T-v2-baseline | Partner time baseline audit, running 15-minute-increment note | OPEN, DRI Paul, starting week of 2026-08-31. Prerequisite for the v2 partner-hours-saved dashboard, D52. Nothing blocks on it in v1 |
 
 ## Decisions
@@ -1446,6 +1448,63 @@ Applied here: assignee defaults to the token owner and cannot be blank. Project
 stays optional, because a task outside a project is still visible to its
 assignee, and the cost is discoverability rather than invisibility, so it earns
 a warning rather than a default.
+
+### D66: a 2xx that is not JSON is a failure, not a success
+
+Reported as creation failing silently on both the quick add and the capture
+form, console clean, starting right after a deploy. Two of those three framings
+turned out to be wrong, and the third named a real defect that was not the one
+suspected.
+
+**The writes were landing.** Remote held five identical copies of
+`Confirm operating cadence with Dustin and John`, created at 10:38:31, 10:38:45,
+10:39:11, 10:39:34 and 10:40:33. Nothing was rejected. Paul clicked five times
+because the screen showed him nothing, and every click saved.
+
+**The server was never involved.** `POST /api/action-items` returns 201 for both
+the minimal quick-add shape and the full capture-form shape, on the dev server
+and on a production build. Every other write was checked for blast radius and
+all pass: action item PATCH both directions, clients, projects, templates, SOPs.
+Remote D1 accepted an insert and a delete. The suspected cause, the mandatory
+assignee, touches only the Asana push path and cannot reach creation, which the
+diff confirms.
+
+**The real defect is in the client, and it was in all 26 write sites.** Every one
+of them did this:
+
+    const payload = (await res.json().catch(() => ({})));
+    if (!res.ok) { errorMessage = ...; return; }
+    await invalidateAll();
+
+Correct for the two cases it considered and silent for a third. A response that
+is 2xx but not JSON falls straight through: `res.ok` is true, `res.json()`
+throws and is swallowed into an empty object, the error branch is skipped, and
+the caller reports success. In the quick add it also closed the dialog, taking
+the unsaved text with it.
+
+That third case is not exotic. It is what an expired session returns when a
+sign-in page is served in place of the API, what an edge error page returns, and
+what any HTML response looks like. All of them mean the write did not do what
+the caller believes.
+
+So `src/lib/http.ts` now owns every client write, and there is no path through
+it that returns success without a parsed JSON body. Proven rather than reasoned:
+the create POST was intercepted in a real browser and answered with a 200 HTML
+page, which is exactly the shape that used to be swallowed. The old code said
+nothing. The new code shows the error and leaves the typed title in the field so
+the work is not lost.
+
+**What is still not explained.** Whether the deployed site's failure had this
+shape is unconfirmed, because production sits behind Access and cannot be probed
+from here. The timing pointed at a deploy whose only client change was confined
+to the Asana push notice, so the correlation is probably coincidence, and
+assuming otherwise is the mistake this ledger has recorded four times already.
+The discriminating test is Paul reloading the page: if the five items appear,
+the writes were always landing and only the view was stale, which is what the
+database already says.
+
+Two sites are converted, the two that were reported. The other 24 carry the same
+defect and are tracked separately rather than changed in a rush before a freeze.
 
 ## Interpretation notes
 

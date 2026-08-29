@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { apiWrite } from '$lib/http';
 	import { invalidateAll } from '$app/navigation';
 	import Modal from './Modal.svelte';
 	import Button from './Button.svelte';
@@ -50,20 +51,22 @@
 		busy = true;
 		errorMessage = '';
 		try {
-			const res = await fetch('/api/action-items', {
-				method: 'POST',
-				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({ title, context, deadline, status: 'open', source: 'manual' })
+			const result = await apiWrite('/api/action-items', 'POST', {
+				title,
+				context,
+				deadline,
+				status: 'open',
+				source: 'manual'
 			});
-			const payload = (await res.json().catch(() => ({}))) as { error?: string };
-			if (!res.ok) {
-				errorMessage = payload.error ?? 'Could not save the item.';
+			if (!result.ok) {
+				// The dialog stays open on failure. Closing it would hide the error
+				// along with the unsaved item, which is how a failed save became
+				// indistinguishable from a successful one.
+				errorMessage = result.error ?? 'Could not save the item.';
 				return;
 			}
 			await invalidateAll();
 			open = false;
-		} catch {
-			errorMessage = 'Could not reach the server.';
 		} finally {
 			busy = false;
 		}
