@@ -21,6 +21,8 @@ file records what was decided along the way that neither of them says, and why.
 | T-meetings-0 | Rebuild `action_items` with a real `meeting_id` foreign key | DONE 2026-08-29, migration 0005 under the full D38 standard. Verified local and remote: rows byte-for-byte identical, all links preserved, bogus meeting_id rejected |
 | T-inc-1 | Live 500 on /templates: migration 0007 never applied to remote | DONE 2026-08-29. Diagnosis confirmed before any change, snapshot taken, 0007 applied, remote at 7 of 7. Root cause and the ordering rule are D50 |
 | T-v1-reports | Reports with PDF export via a print route | DONE 2026-08-29. Four of the five in section D, live queries, no migration. Screen and print verified to show identical figures. Partner time saved deferred, D52 |
+| T-v1-asana | One-way Asana push per D4 | BUILT 2026-08-29, unverified against a real token. All failure paths tested, including a live 401 from Asana. Awaiting `wrangler secret put ASANA_TOKEN` and one real push |
+| T-v2-baseline | Partner time baseline audit, running 15-minute-increment note | OPEN, DRI Paul, starting week of 2026-08-31. Prerequisite for the v2 partner-hours-saved dashboard, D52. Nothing blocks on it in v1 |
 
 ## Decisions
 
@@ -895,6 +897,93 @@ The root layout renders print routes without the app shell, matched on the route
 id rather than on the URL string, so a record named "print" cannot strip its own
 chrome.
 
+### D54: read how the existing modules solved it before writing date, money or auth logic
+
+Paul's ruling, issued after the Mountain Time bug in the completion report.
+
+The report wrote a fourth version of "which day is this timestamp on" and got it
+wrong, while three correct versions already sat in the repo: the Today cockpit,
+the start-of-day digest and the end-of-day digest all bind
+`workingDayStartUtc(day)` and compare instants, and the cockpit query carries a
+comment saying exactly why. Nothing about the new code was novel. It was a
+rewrite of solved work, done from scratch, and it regressed.
+
+So: before writing anything that touches dates, money or auth, read how the
+modules that already do it solved it, and follow that. The codebase is its own
+reference now. It is old enough and consistent enough to be the authority, and
+consulting it is faster than rederiving.
+
+The three current references, so there is no ambiguity about what to read:
+
+- **Dates and time zones.** `src/lib/server/dates.ts`, and how `today.ts` and
+  `digest.ts` use `workingDayStartUtc`. Never take the date of a stored UTC
+  timestamp with `date()` in SQL.
+- **Money.** Integer cents end to end, and aging derived at read time and never
+  stored. `invoicing.ts` is the reference, and `reports.ts` follows it closely
+  enough that the two produce identical aging bands, which is checked.
+- **Auth and secrets.** Access is edge-enforced and there is no auth UI (D25).
+  Secrets are Worker secrets, read from `c.env`, never logged, never returned.
+  The pattern for a missing one is a 503 naming the `wrangler secret put`
+  command, as in `meeting-ai.ts`, `templates.ts` and now `asana.ts`.
+
+This does not forbid changing how something is done. It forbids changing it by
+accident, which is what happened.
+
+### D55: the Asana push is one explicit action per item, and it writes nothing on failure
+
+D4 in shape, with the specifics settled here.
+
+**Explicit, per item.** `POST /api/action-items/:id/asana`. There is no hook on
+create, no hook on accepting an extracted proposal, and no batch endpoint. Asana
+is the firm's shared system of record, and a personal capture tool that silently
+posted into it would put half-formed notes in front of the partners. A push
+happens because Paul clicked push on that item.
+
+**Never blocks local tracking.** The push is its own endpoint and the only thing
+it ever writes is `asana_task_gid`, after Asana has accepted the task. Every
+failure path returns before touching D1. This was verified rather than assumed:
+with a deliberately invalid token, the push returned a mapped 502 and the item
+kept its title, status, deadline and null gid, and could still be marked done
+and reopened afterwards.
+
+Same rule the digests already follow with their sent marker, per D54: the record
+of having done a thing is written after the thing succeeded, never before.
+
+**Pushing twice is a 409.** Asana has no idea two tasks would be duplicates, so
+nothing but this check prevents them. The response names the existing gid rather
+than just refusing.
+
+**A workspace is required before any push.** Asana requires `workspace` on task
+creation unless `projects` or `parent` is supplied, so a token alone is not
+enough to create a task. Rather than have Paul dig a gid out of an Asana URL,
+the workspaces and projects his token can see are listed from the API and he
+picks from them on the Settings screen. The chosen workspace, optional project
+and optional default assignee live in KV, which is where the architecture puts
+settings. The names are stored beside the gids purely as labels; every request
+to Asana uses the gid.
+
+**Failure is legible.** Every status code with a distinct cause gets its own
+sentence naming what to do about it, and Asana's own message rides along when it
+had one, because on a 400 it names the offending field better than any wording
+here could. Confirmed live against the real API: an invalid token produced
+`Asana rejected the token. Set a current personal access token with wrangler
+secret put ASANA_TOKEN. Asana said: Not Authorized`.
+
+**What is checked and what is not.** The endpoint, the auth header, the `data`
+envelope on both request and response, `data.gid`, the `due_on` format, the
+required-workspace rule and the `{ errors: [{ message }] }` error shape were all
+read from developers.asana.com, and the error shape was then confirmed against
+the live API. One thing was not: the Task object reference truncated at the
+point where `permalink_url` would appear, twice, so whether Asana returns a
+ready-made task URL is unconfirmed. The push requests it via `opt_fields` and
+uses it when present, falls back to building
+`https://app.asana.com/0/0/<gid>` when absent, and reports which happened as
+`url_from_asana`. The first live push settles it, and this paragraph gets
+updated with the answer rather than left as a guess.
+
+Stored links are always built from the gid, since D4 stores the gid and not a
+URL.
+
 ## Interpretation notes
 
 Not decisions. Judgment calls made inside an existing decision, recorded so the
@@ -1187,6 +1276,24 @@ organisation exists yet. Access applications cannot be created until one does.
 This is a prerequisite inside dashboard step 4, tracked as step 4.0. Free plan,
 up to 50 users, no card required. It needs a team name, which becomes the
 permanent `<team-name>.cloudflareaccess.com` login domain.
+
+### O3: the partner time baseline has not been captured, DRI Paul
+
+The v2 partner-hours-saved dashboard cannot be built honestly until this exists.
+D52 explains why: the architecture's own method starts by time-auditing the
+partners' pre-handoff minutes per task type in 15-minute increments, and a
+headline "hours reclaimed" computed against an invented baseline looks like
+evidence while being a guess.
+
+Paul owns this and is starting it the week of 2026-08-31 as a running
+15-minute-increment note. It accrues in the background; nothing in v1 waits on
+it.
+
+What the dashboard will need when the time comes: per-task-type baseline
+minutes, the volume handled, the time spent briefing and reviewing, and a
+separate slips-caught register with a conservative rework-hours-avoided figure
+against each entry. Those are the `TimeSavedLog` and `SlipsCaught` tables in
+section E, and neither is created until there is real data to put in them.
 
 ## Stage gates
 

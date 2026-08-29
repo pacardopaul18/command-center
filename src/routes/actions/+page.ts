@@ -15,9 +15,10 @@ export const load: PageLoad = async ({ fetch, url }) => {
 	if (q) query.set('q', q);
 	if (projectId) query.set('project_id', projectId);
 
-	const [itemsRes, projectsRes] = await Promise.all([
+	const [itemsRes, projectsRes, asanaRes] = await Promise.all([
 		fetch(`/api/action-items?${query}`),
-		fetch('/api/projects')
+		fetch('/api/projects'),
+		fetch('/api/asana')
 	]);
 
 	if (!itemsRes.ok) {
@@ -36,5 +37,16 @@ export const load: PageLoad = async ({ fetch, url }) => {
 		? ((await projectsRes.json()) as { projects: Project[] }).projects
 		: [];
 
-	return { ...data, view, q, projectId, projects };
+	// Whether Asana is usable at all. Fetched here so the push control can say
+	// why it is unavailable instead of failing when clicked. A failure to read
+	// this must never stop action items loading, so it degrades to "not ready".
+	const asana = asanaRes.ok
+		? ((await asanaRes.json()) as {
+				token_present: boolean;
+				ready: boolean;
+				blocked_because: string | null;
+			})
+		: { token_present: false, ready: false, blocked_because: 'Could not read the Asana settings.' };
+
+	return { ...data, view, q, projectId, projects, asana };
 };

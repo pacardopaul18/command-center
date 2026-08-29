@@ -11,6 +11,7 @@
 	} from '$lib/types';
 	import type { ActionItem, ActionStatus } from '$lib/types';
 	import { deadlineLabel, formatDay } from '$lib/format';
+	import { asanaTaskUrl } from '$lib/types';
 	import Button from '$lib/components/Button.svelte';
 	import Card from '$lib/components/Card.svelte';
 	import FormField from '$lib/components/FormField.svelte';
@@ -110,6 +111,42 @@
 		const next: ActionStatus = item.status === 'done' ? 'open' : 'done';
 		const ok = await send(`/api/action-items/${item.id}`, 'PATCH', { status: next });
 		if (ok) notice = next === 'done' ? 'Marked done.' : 'Reopened.';
+	}
+
+	/**
+	 * Pushes one item to Asana. D4: explicit, per item, never automatic.
+	 *
+	 * A failure is reported and nothing local changes, which is the whole point
+	 * of the push being its own endpoint. The item keeps its deadline, its owner
+	 * and its status whatever Asana does, and Paul can carry on tracking it here.
+	 */
+	async function pushToAsana(item: ActionItem) {
+		busy = true;
+		notice = '';
+		errorMessage = '';
+		try {
+			const res = await fetch(`/api/action-items/${item.id}/asana`, { method: 'POST' });
+			const payload = (await res.json().catch(() => ({}))) as {
+				error?: string;
+				asana?: { gid: string; url: string };
+			};
+			if (!res.ok) {
+				errorMessage = payload.error ?? 'Could not push to Asana.';
+				return;
+			}
+			notice = `Pushed to Asana as task ${payload.asana?.gid ?? ''}.`;
+			await invalidateAll();
+		} catch {
+			errorMessage = 'Could not reach the server. Nothing was pushed and nothing changed here.';
+		} finally {
+			busy = false;
+		}
+	}
+
+	/** The tooltip and disabled reason for the push control on a given item. */
+	function pushBlockedReason(item: ActionItem): string | null {
+		if (item.asana_task_gid) return 'Already in Asana.';
+		return data.asana.blocked_because;
 	}
 
 	async function remove(item: ActionItem) {
@@ -293,6 +330,7 @@
 					<th scope="col" class="label-mono">Deadline</th>
 					<th scope="col" class="label-mono">Status</th>
 					<th scope="col" class="label-mono">Source</th>
+					<th scope="col" class="label-mono">Asana</th>
 					<th scope="col"><span class="visually-hidden">Actions</span></th>
 				</tr>
 			</thead>
@@ -349,6 +387,30 @@
 							/>
 						</td>
 						<td class="muted-cell">{SOURCE_LABELS[item.source]}</td>
+						<td class="nowrap">
+							{#if item.asana_task_gid}
+								<a
+									class="asana-link"
+									href={asanaTaskUrl(item.asana_task_gid)}
+									target="_blank"
+									rel="noopener noreferrer"
+								>
+									In Asana<span class="visually-hidden">
+										, opens task {item.asana_task_gid} in a new tab</span
+									>
+								</a>
+							{:else}
+								<Button
+									variant="ghost"
+									size="sm"
+									disabled={busy || !data.asana.ready}
+									title={pushBlockedReason(item) ?? 'Create this as a task in Asana'}
+									onclick={() => pushToAsana(item)}
+								>
+									Push<span class="visually-hidden"> {item.title} to Asana</span>
+								</Button>
+							{/if}
+						</td>
 						<td class="right">
 							<Button variant="ghost" size="sm" onclick={() => startEdit(item)}>
 								Edit<span class="visually-hidden"> {item.title}</span>
@@ -411,7 +473,35 @@
 								</li>
 							{/if}
 							<li class="meta-text">{SOURCE_LABELS[item.source]}</li>
+							{#if item.asana_task_gid}
+								<li>
+									<a
+										class="asana-link"
+										href={asanaTaskUrl(item.asana_task_gid)}
+										target="_blank"
+										rel="noopener noreferrer"
+									>
+										In Asana<span class="visually-hidden">
+											, opens task {item.asana_task_gid} in a new tab</span
+										>
+									</a>
+								</li>
+							{/if}
 						</ul>
+
+						{#if !item.asana_task_gid}
+							<div class="card-push">
+								<Button
+									variant="ghost"
+									size="sm"
+									disabled={busy || !data.asana.ready}
+									title={pushBlockedReason(item) ?? 'Create this as a task in Asana'}
+									onclick={() => pushToAsana(item)}
+								>
+									Push to Asana<span class="visually-hidden">: {item.title}</span>
+								</Button>
+							</div>
+						{/if}
 					</div>
 
 					<Button variant="ghost" size="sm" onclick={() => startEdit(item)}>
@@ -833,5 +923,15 @@
 		.check {
 			margin: -8px 0 0 -8px;
 		}
+	}
+
+	/* Asana push and link. D4: the link is built from the stored gid. */
+	.asana-link {
+		font-size: var(--text-sm);
+		color: var(--text-link);
+	}
+
+	.card-push {
+		margin-top: var(--space-2);
 	}
 </style>

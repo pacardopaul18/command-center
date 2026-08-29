@@ -19,6 +19,7 @@ declare global {
 				// Worker secrets, set with `wrangler secret put NAME`.
 				RESEND_API_KEY?: string;
 				ANTHROPIC_API_KEY?: string;
+				ASANA_TOKEN?: string;
 				// Plain vars from wrangler.toml, not secrets.
 				DIGEST_FROM?: string;
 				DIGEST_TO?: string;

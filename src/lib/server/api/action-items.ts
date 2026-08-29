@@ -3,6 +3,8 @@ import type { ApiEnv } from './env';
 import { ACTION_SOURCES, ACTION_STATUSES, ACTION_VIEWS } from '$lib/types';
 import type { ActionSource, ActionStatus, ActionView } from '$lib/types';
 import { nowUtc, todayInWorkingZone } from '../dates';
+import { createTask, readSettings } from '../asana';
+import { asApiError } from './asana';
 import {
 	ApiError,
 	oneOf,
@@ -268,4 +270,122 @@ actionItems.delete('/:id', async (c) => {
 		.run();
 	if (!result.meta.changes) throw new ApiError(404, 'Action item not found.');
 	return c.json({ ok: true });
+});
+
+/**
+ * Pushes one action item to Asana, per D4.
+ *
+ * Three properties this route exists to hold:
+ *
+ * **Explicit, per item.** There is no hook on create, no hook on extraction
+ * acceptance, and no batch endpoint. Asana is the firm's shared system of
+ * record, and a personal capture tool that silently posts into it would put
+ * Paul's half-formed notes in front of the partners. A push happens because he
+ * clicked push on that item.
+ *
+ * **Never blocks local tracking.** This route only ever writes
+ * `asana_task_gid`, and only after Asana has accepted the task. Every failure
+ * path returns before touching D1, so a broken token, a deleted workspace or an
+ * Asana outage leaves the item exactly as it was and the command center keeps
+ * working. That is the same rule the digests follow with their sent marker.
+ *
+ * **Legible failure.** Every distinct cause gets its own sentence naming what to
+ * do about it, and Asana's own message rides along when it had one, because on
+ * a 400 it names the offending field better than any wording here could.
+ *
+ * Pushing twice is a 409 rather than a second task. Asana has no idea the two
+ * would be duplicates, so nothing but this check prevents them.
+ */
+actionItems.post('/:id/asana', async (c) => {
+	const id = c.req.param('id');
+
+	const item = await c.env.DB.prepare(
+		`SELECT a.id, a.title, a.context, a.owner, a.deadline, a.status, a.asana_task_gid,
+            p.name AS project_name, m.title AS meeting_title
+     FROM action_items a
+     LEFT JOIN projects p ON p.id = a.project_id
+     LEFT JOIN meetings m ON m.id = a.meeting_id
+     WHERE a.id = ?`
+	)
+		.bind(id)
+		.first<{
+			id: string;
+			title: string;
+			context: string | null;
+			owner: string | null;
+			deadline: string | null;
+			status: ActionStatus;
+			asana_task_gid: string | null;
+			project_name: string | null;
+			meeting_title: string | null;
+		}>();
+
+	if (!item) throw new ApiError(404, 'Action item not found.');
+
+	if (item.asana_task_gid) {
+		throw new ApiError(
+			409,
+			`This item is already in Asana as task ${item.asana_task_gid}. Pushing again would create a duplicate.`
+		);
+	}
+
+	const token = c.env.ASANA_TOKEN;
+	if (!token) {
+		throw new ApiError(
+			503,
+			'No Asana token is configured. Set it with `wrangler secret put ASANA_TOKEN`.'
+		);
+	}
+
+	const settings = await readSettings(c.env.SESSIONS);
+	if (!settings.workspace_gid) {
+		throw new ApiError(
+			400,
+			'No Asana workspace has been chosen. Pick one on the Asana settings screen first.'
+		);
+	}
+
+	// The notes carry the provenance. An item that arrives in the partners'
+	// Asana with no context is a task somebody has to come back and ask about.
+	const notes = [
+		item.context?.trim() || null,
+		item.project_name ? `Project: ${item.project_name}` : null,
+		item.meeting_title ? `From meeting: ${item.meeting_title}` : null,
+		item.owner ? `Owner as captured: ${item.owner}` : null,
+		'Pushed from Command Center.'
+	]
+		.filter(Boolean)
+		.join('\n\n');
+
+	let created;
+	try {
+		created = await createTask(token, {
+			name: item.title,
+			notes,
+			dueOn: item.deadline,
+			workspaceGid: settings.workspace_gid,
+			projectGid: settings.project_gid,
+			assignee: settings.assignee
+		});
+	} catch (err) {
+		// Nothing has been written at this point and nothing will be.
+		throw asApiError(err);
+	}
+
+	await c.env.DB.prepare('UPDATE action_items SET asana_task_gid = ?, updated_at = ? WHERE id = ?')
+		.bind(created.gid, nowUtc(), id)
+		.run();
+
+	const updated = await c.env.DB.prepare(`${SELECT} WHERE a.id = ?`).bind(id).first();
+
+	return c.json({
+		item: updated,
+		asana: {
+			gid: created.gid,
+			url: created.url,
+			// Reported so the first live push settles whether Asana returns a
+			// permalink, which the docs were truncated on. See the note in asana.ts.
+			url_from_asana: created.url_from_asana
+		}
+	});
 });

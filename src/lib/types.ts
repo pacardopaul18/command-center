@@ -413,3 +413,39 @@ export function reportMeta(type: ReportType): ReportMeta {
 	if (!found) throw new Error(`Unknown report type: ${type}`);
 	return found;
 }
+
+// --- Asana ---
+
+/**
+ * A link to an Asana task from its gid.
+ *
+ * D4 stores the gid on the action item, not a URL, so every link is built from
+ * it. Asana resolves this form to the task whatever project it lives in, which
+ * is why the leading segments are zeros rather than a real project id.
+ *
+ * The push response also carries a URL, which is Asana's own permalink when it
+ * returned one. This function is what the stored gid renders as afterwards.
+ */
+export function asanaTaskUrl(gid: string): string {
+	return `https://app.asana.com/0/0/${gid}`;
+}
+
+export interface AsanaSettings {
+	workspace_gid: string | null;
+	workspace_name: string | null;
+	project_gid: string | null;
+	project_name: string | null;
+	assignee: string | null;
+}
+
+export interface AsanaRef {
+	gid: string;
+	name: string;
+}
+
+export interface AsanaStatus {
+	token_present: boolean;
+	settings: AsanaSettings;
+	ready: boolean;
+	blocked_because: string | null;
+}

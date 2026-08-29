@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import type { ApiEnv } from './env';
 import { actionItems } from './action-items';
+import { asana } from './asana';
 import { clients } from './clients';
 import { digests } from './digests';
 import { invoicing } from './invoicing';
@@ -49,6 +50,7 @@ api.get('/health', async (c) => {
 
 api.route('/today', today);
 api.route('/action-items', actionItems);
+api.route('/asana', asana);
 api.route('/clients', clients);
 api.route('/digests', digests);
 api.route('/invoicing', invoicing);
