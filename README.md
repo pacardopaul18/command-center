@@ -9,9 +9,13 @@ Context: [CLAUDE.md](CLAUDE.md), [docs/Command_Center_Build_Plan.md](docs/Comman
 Stage 1 is CLOSED. The app is live at **work.kabuhayan.app**, behind Cloudflare
 Access with One-Time PIN, whitelisting Paul only.
 
-MVP stage is feature complete: Today cockpit, Action Items, Projects, the SOP
-library, Clients, Invoicing with aging, and the start-of-day and end-of-day
-digests on Cron and Resend.
+Stage 1 and the MVP are both closed. Live at **work.kabuhayan.app** behind
+Cloudflare Access with One-Time PIN: Today cockpit, Action Items, Projects,
+SOP library with version history, Clients, Invoicing with aging, and the
+start-of-day and end-of-day digests on Cron and Resend.
+
+The stage gates and their evidence are in [docs/DECISIONS.md](docs/DECISIONS.md).
+v1 is next: Meetings, Templates, Reports and the one-way Asana push.
 
 | Resource | State |
 | --- | --- |

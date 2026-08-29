@@ -16,6 +16,7 @@ file records what was decided along the way that neither of them says, and why.
 | T7 | Dashboard step 1, git-connected build project | DONE. Created via Workers Builds, not Pages. First deploy failed on a Pages-shaped config; fixed in 8bfc68b. Version f6d05619 deployed 2026-08-28T21:18Z with DB, SESSIONS and ASSETS all resolving |
 | T8 | Dashboard steps 3 and 4, custom domain then Access | DONE. work.kabuhayan.app is attached and behind Access with a single Paul-only Allow policy, verified from incognito |
 | T9 | Close the workers.dev surface | DONE. `workers_dev = false` and `preview_urls = false` |
+| T-mvp | MVP stage gate | CLOSED 2026-08-29. Build criteria evidenced; the daily-use half of the threshold is Paul's to confirm over time |
 | T-clients-0 | Rebuild `projects` with a real `client_id` foreign key | DONE, migration 0003. Verified: rows survive byte-for-byte, action item links survive, a bogus client_id is rejected on INSERT and UPDATE |
 | T-meetings-0 | Rebuild `action_items` with a real `meeting_id` foreign key when Meetings lands | OWED. Same pattern as T-clients-0, and subject to D38 |
 
@@ -526,6 +527,25 @@ spending a guard on.
 Verified from the bundled output: the deployed Worker exports both `fetch` and
 `scheduled`.
 
+### D43: digest sender and times are locked at the defaults
+
+Sender is `onboarding@resend.dev`. Times are 07:00 and 17:00 Mountain.
+
+Both were built as configuration with those values as defaults, and both are now
+the decision rather than a placeholder. Changing either is a change request, not
+a correction.
+
+The sender stays on Resend's shared address because it needs no domain
+verification and therefore cannot fail silently the way an unverified custom
+domain does. Moving to an address on kabuhayan.app requires that domain verified
+in Resend first, and is a one line change to `DIGEST_FROM` in wrangler.toml plus
+a deploy. See R7 for the reason that move may be worth making anyway.
+
+The times come from the architecture doc. Changing them is a one line change to
+the cron expression, but note it is not a free edit: the four UTC hours in the
+expression exist to cover those two Mountain hours across DST, so new times mean
+recomputing the set. See D40.
+
 ## Interpretation notes
 
 Not decisions. Judgment calls made inside an existing decision, recorded so the
@@ -678,6 +698,24 @@ exactly why the standing rule is in CLAUDE.md rather than only here.
 Standing rule, now in CLAUDE.md: `workers_dev` and `preview_urls` stay false.
 Turning either on reopens this risk.
 
+### R7: digest deliverability is unverified, OPEN
+
+The live send worked and the email arrived. Where it arrived is not recorded:
+inbox, spam or promotions was left unfilled when the result was reported.
+
+This matters more than it looks. `onboarding@resend.dev` is a shared sender used
+by every Resend account without a verified domain, which is exactly the profile
+mail providers filter hardest. A digest that lands in spam does not fail loudly.
+It fails by being absent, on a screen nobody is looking at, which is the failure
+mode this whole product exists to prevent.
+
+Mitigation available, not yet taken: verify kabuhayan.app in Resend and move
+`DIGEST_FROM` to an address on it. A verified domain with SPF and DKIM is the
+single biggest lever on placement.
+
+Closes when Paul confirms where the digests actually land after several days,
+not after one. Record the answer here.
+
 ## Open questions
 
 ### O1: custom domain, DRI Paul. RESOLVED
@@ -759,3 +797,67 @@ T-v1-0). No auth UI exists and none will (D25).
 Next is the MVP stage: Today cockpit, Projects with the five PMI phases, SOP
 library with version history, Invoicing with aging, and the start-of-day and
 end-of-day digests via Cron and Resend.
+
+### MVP: CLOSED 2026-08-29
+
+The build plan defines the MVP as the Today cockpit, Projects on the five PMI
+phases, the SOP library with version history, Invoicing with aging, and the
+start-of-day and end-of-day digests via Cron and Resend.
+
+| Requirement | Evidence |
+| --- | --- |
+| Today cockpit | `/` renders overdue, due today, and what will slip, each band seeded and checked separately. Ordering verified: ambiguous, blocked, stalled, due soon |
+| Projects, five PMI phases | Grouped list with per-phase counts, phase rail, advance-to-next, status control. Verified create, advance planning to executing, set at risk to on track, edit milestone |
+| SOP library with version history | A SOP edited twice shows three versions with correct change notes, measured from the rendered page: v1 three steps, v2 four, v3 five. Restoring v1 produced v4 matching v1 exactly. Immutability and forward-only enforced by triggers and verified by attempting the forbidden write |
+| Invoicing with aging | Period with four entries, 14.25 billable of 16.25 hours, walked open to reconciled to invoiced. All four aging bands populated, every band total recomputed from the rows and matched. Boundary exact: 30 days lands in 0 to 30, 31 days lands in 31 to 60 |
+| Digests via Cron and Resend | Live deployment reports `Handlers: fetch, scheduled` and `Secrets: RESEND_API_KEY`. Live send returned sent, subject "Command Center start of day: nothing overdue", email delivered. DST simulated across four windows: every Mountain day gets exactly one morning and one evening |
+| Schema through migrations only | Migrations 0001 to 0004, applied local then remote as one batch behind a snapshot. No hand editing of any live database at any point |
+
+#### The half of the threshold that is not mine to declare
+
+The architecture doc's threshold is "you're using it daily and receiving
+digests." The second half is evidenced above. The first half is not, and cannot
+be after one day. It is Paul's to confirm over the coming weeks, and if daily use
+does not happen the honest response is to find out why rather than to treat this
+gate as settled.
+
+#### Scope record
+
+Pulled forward, not in the MVP list:
+
+- **Clients**, shipped thin but complete in the Invoicing pass. Invoicing needs a
+  real clients table, and a table with no screens is a phantom. D37.
+- **The design system port**, D19 to D28, done during Stage 1 because restyling
+  afterwards would have meant redoing the module.
+- **Global quick add and the N shortcut**, built with the cockpit because the
+  architecture lists quick add as part of it, and because it made a brand-voice
+  string true that had been blocked. D27.
+
+Deferred, each with its revisit point:
+
+- **Today's meetings and invoice alert cockpit cards.** The design's cockpit has
+  four cards; two read from Meetings and Invoicing as modules that did not exist
+  when it was built. The invoice card is now buildable and is v1 work; the
+  meetings card waits for Meetings. D27.
+- **The project phase checklist** and the Meetings, Time and Invoices panels on
+  the project detail screen. No checklist data model exists, and adding one is a
+  module of its own.
+- **Markdown rendering** for SOP bodies. Deferred to v1 so one renderer and one
+  sanitiser decision covers SOP bodies, meeting summaries and AI-drafted content
+  together. D36.
+- **R2**, to the v1 gate, T-v1-0. Nothing before v1 writes files, and a payment
+  method already exists so the task is dashboard clicks plus restoring a binding.
+- **The client column on the projects list**, omitted rather than shipped reading
+  "no client" on every row. Now unblocked, since Clients exists.
+
+Carried as owed work:
+
+- **T-meetings-0**, rebuilding `action_items` with a real `meeting_id` foreign
+  key when Meetings lands, following the D38 stash-rebuild-restore-verify
+  standard.
+- **R7**, digest deliverability, open until placement is confirmed over several
+  days.
+
+Next is v1: Meetings with transcript import, AI summary and action item
+extraction; Templates with AI drafting; Reports with PDF export; and the one-way
+Asana push.
