@@ -35,7 +35,7 @@ file records what was decided along the way that neither of them says, and why.
 | T-density | Sticky sidebar and the spacing pass, judged against the volume renders | DONE 2026-08-29, D63. Sidebar fills and sticks, headings group with their tables, rows banded |
 | T-hold-branch | Park held cron wiring on `hold/cron-wiring`, local main tracks origin main | DONE 2026-08-29, D64. Branch created and verified to carry the six-hour cron; main verified unchanged and equal to origin. Branch stays local until the freeze lifts, because a branch build of unknown configuration could deploy it |
 | T-silent-writes | Route every client write through `apiWrite` | PARTIAL 2026-08-29, D66. Quick add and the action items screen converted and verified against an intercepted 200 HTML response. Ratified as post-gate work: the remaining 24 sites get the same treatment, each verified by intercepting a response rather than by reading the code. Carries an open question, below |
-| T-dup-cleanup | Four duplicate action items on production from the retry loop | OPEN, DRI Paul to authorise. Ids 5ac8772f, aeae0a1a, f6db53eb, aadfc38b. Keep 944e4e5a, the first |
+| T-dup-cleanup | Four duplicate action items on production from the retry loop | DONE 2026-08-29 on PM go. Snapshot taken first and all five ids confirmed recoverable from it before any delete. Four rows written, count 8 to 4, keeper `944e4e5a` intact with the three originals |
 | T-v2-baseline | Partner time baseline audit, running 15-minute-increment note | OPEN, DRI Paul, starting week of 2026-08-31. Prerequisite for the v2 partner-hours-saved dashboard, D52. Nothing blocks on it in v1 |
 
 ## Decisions
@@ -1700,10 +1700,18 @@ every write at once, and would be invisible in the console. It is a recurring
 condition rather than a one-off, so it will happen again.
 
 Not confirmed, and deliberately not assumed, because assuming a plausible cause
-from a matching symptom is what D67 was just written about. Production sits
-behind Access and cannot be probed from here. The reload test may settle it: if
-the page returns without a sign-in wall, the session had not expired and the
-cause is something else.
+from a matching symptom is what D67 was just written about.
+
+**The reload test narrowed it.** Paul reloaded and got the app, not a sign-in
+wall, with all five duplicates present and the counts matching exactly: three
+originals plus five copies, nothing extra and nothing lost. So the writes always
+landed and only the view was stale, and whatever served the non-JSON body was
+not a persistently expired session. A transient re-auth during a single request
+window is still consistent with the evidence; a durably expired session is not.
+
+That is a narrowing, not an answer, so the question stays open and the error
+message keeps its hedge. Writing "session expired" as fact on this much would be
+the same mistake in a smaller font.
 
 What is already true regardless: the next occurrence shows an error rather than
 nothing, and that error names the likely cause and tells the reader to check
