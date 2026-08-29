@@ -1,6 +1,5 @@
 import { digestDueAt, runDigest } from './digest';
 import type { DigestEnv } from './digest';
-import { backupDueAt, runBackup } from './backup';
 
 /**
  * The Cron Trigger entry point.
@@ -10,16 +9,10 @@ import { backupDueAt, runBackup } from './backup';
  * that exports only `fetch`. A Cron Trigger against a worker with no `scheduled`
  * export fails, so the export has to be added after the adapter runs.
  *
- * The cron fires at six UTC hours, covering 03:00, 07:00 and 17:00 Mountain in
- * both halves of the year. Each job decides for itself whether this particular
- * firing is its real one by reading the Mountain hour. Three of the six do
- * nothing, which is the price of a UTC-only scheduler and a zone that observes
- * DST.
- *
- * 03:00 Mountain is the nightly D1 to R2 backup. It is deliberately its own
- * firing rather than a passenger on the morning digest: a slow or failing dump
- * must not be able to delay or break the digest, and an operator reading the
- * logs should be able to tell which job failed without untangling them.
+ * The cron fires at four UTC hours, covering 07:00 and 17:00 Mountain in both
+ * halves of the year. digestDueAt decides whether this particular firing is the
+ * real one. Three of every four firings do nothing, which is the price of a
+ * UTC-only scheduler and a zone that observes DST.
  *
  * The send is awaited rather than handed to ctx.waitUntil.
  *
@@ -36,31 +29,14 @@ export async function handleScheduled(
 	env: DigestEnv
 ): Promise<void> {
 	const now = new Date(event.scheduledTime);
-
-	// Every firing logs, including the ones that do nothing. An absent job and a
-	// broken one look identical from the outside otherwise, which is exactly the
-	// ambiguity that made the first digest incident hard to close.
-	if (backupDueAt(now)) {
-		console.log(`cron ${event.cron} at ${now.toISOString()}: nightly backup due, running`);
-		try {
-			const result = await runBackup(env.DB, env.FILES);
-			console.log(
-				`cron ${event.cron}: backup wrote ${result.key}, ${result.bytes} bytes, ` +
-					`${result.total_rows} rows across ${result.tables.length} tables` +
-					(result.deleted.length > 0 ? `, pruned ${result.deleted.length}` : '')
-			);
-		} catch (err) {
-			console.error(`cron ${event.cron}: backup threw`, String(err));
-			throw err;
-		}
-		return;
-	}
-
 	const kind = digestDueAt(now);
 
+	// Every firing logs, including the three in four that do nothing. An absent
+	// digest and a broken one look identical from the outside otherwise, which is
+	// exactly the ambiguity that made the first incident hard to close.
 	if (!kind) {
 		console.log(
-			`cron ${event.cron} at ${now.toISOString()}: nothing due at this Mountain hour`
+			`cron ${event.cron} at ${now.toISOString()}: no digest due at this Mountain hour`
 		);
 		return;
 	}

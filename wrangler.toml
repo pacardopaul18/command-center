@@ -37,21 +37,16 @@ workers_dev = false
 preview_urls = false
 
 # --- Scheduled digests ---
-# Cron Triggers are UTC only. Every job here names a Mountain hour, and the
-# trigger fires at both UTC hours that could be it in either half of the year.
-# The handler reads the Mountain hour and decides which firing is real.
-#
-#   03:00 MT, nightly D1 to R2 backup   09:00Z summer, 10:00Z winter
-#   07:00 MT, start of day digest       13:00Z summer, 14:00Z winter
-#   17:00 MT, end of day digest         23:00Z summer, 00:00Z winter
-#
-# Six firings, three of which do nothing.
+# Cron Triggers are UTC only. 07:00 and 17:00 Mountain are 13:00/23:00 UTC in
+# summer (MDT, UTC-6) and 14:00/00:00 UTC in winter (MST, UTC-7), so the trigger
+# fires at all four hours and the handler decides which firing is real by
+# reading the Mountain hour. Three of every four firings do nothing.
 #
 # Cron Triggers do not retry. The idempotency marker is written only after Resend
 # accepts the message, so a failed send leaves the day unmarked and stays
 # retryable rather than being silently swallowed. See D40.
 [triggers]
-crons = ["0 0,9,10,13,14,23 * * *"]
+crons = ["0 0,13,14,23 * * *"]
 
 # --- Observability ---
 # Workers Logs. Off by default, which is how the first digest incident became
