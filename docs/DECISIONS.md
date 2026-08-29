@@ -20,6 +20,7 @@ file records what was decided along the way that neither of them says, and why.
 | T-clients-0 | Rebuild `projects` with a real `client_id` foreign key | DONE, migration 0003. Verified: rows survive byte-for-byte, action item links survive, a bogus client_id is rejected on INSERT and UPDATE |
 | T-meetings-0 | Rebuild `action_items` with a real `meeting_id` foreign key | DONE 2026-08-29, migration 0005 under the full D38 standard. Verified local and remote: rows byte-for-byte identical, all links preserved, bogus meeting_id rejected |
 | T-inc-1 | Live 500 on /templates: migration 0007 never applied to remote | DONE 2026-08-29. Diagnosis confirmed before any change, snapshot taken, 0007 applied, remote at 7 of 7. Root cause and the ordering rule are D50 |
+| T-v1-reports | Reports with PDF export via a print route | DONE 2026-08-29. Four of the five in section D, live queries, no migration. Screen and print verified to show identical figures. Partner time saved deferred, D52 |
 
 ## Decisions
 
@@ -809,10 +810,143 @@ Both were restored afterwards and both endpoints confirmed green again.
 Detection does not replace the rule. The rule prevents the outage; the check
 catches the day the rule is forgotten.
 
+### D51: reports are computed live and never stored
+
+Architecture section E has a `reports` table: `id, type, params(json),
+generated_at, r2_key, share_token, share_expires_at`. No such table exists and
+none is created here.
+
+Look at what those columns are for. `r2_key` holds a generated PDF kept as a
+persistent artifact. `share_token` and `share_expires_at` implement the
+tokenised public link. Both are v2: shareable read-only reports are a locked v2
+decision, and PDF export in v1 is the browser's own print-to-PDF, which produces
+a file on Paul's disk rather than an object in R2.
+
+Strip those three and the row records that somebody once opened a page. It would
+also go stale immediately, because every figure in a report is derived from
+today, so a stored report is a snapshot whose numbers are wrong tomorrow and
+whose staleness is invisible.
+
+So each report is a parameterised query answered live, and the parameters live
+in the URL. That makes a report linkable and re-runnable, which is most of what
+storing one would have bought. Same reasoning as D49 for drafts.
+
+The table arrives with v2, when it has something to hold.
+
+### D52: partner time saved is not built, and the reason is the baseline
+
+Section D names five reports. Four are built. The fifth, partner time saved, is
+not, and this is a deliberate omission rather than an oversight.
+
+It needs `TimeSavedLog` and `SlipsCaught`, neither of which exists, and the
+build plan puts that dashboard in Stage 4. More to the point, the architecture's
+own method for it starts with a baseline: time-audit the partners' pre-handoff
+minutes per task type in 15-minute increments, then compute savings against
+that. No baseline has been captured. Building the dashboard now would mean
+picking baseline numbers, and the report's whole purpose is to be credible
+enough that the partners can stress-test it. A headline "hours reclaimed" built
+on an invented baseline is worse than no report, because it looks like evidence.
+
+The Reports index says so on the page rather than hiding the gap, and names what
+is missing.
+
+Revisit when the time audit has run. That audit is Paul's to start, and the
+sooner it starts the sooner this report has something true to say.
+
+### D53: PDF export is the browser's print-to-PDF over a shared component
+
+Section D offers two routes to a PDF: clean printable HTML through the browser's
+own print-to-PDF, or a client-side PDF library. It also names the thing both
+avoid, Cloudflare's paid Browser Rendering product.
+
+Print-to-PDF wins. A PDF library is a dependency that has to be taught
+pagination, page breaks, table headers repeating across pages, and fonts, all of
+which the browser already does. It contradicts the standing preference for
+boring dependencies, and it would ship a second rendering engine whose output
+nobody checks against the screen.
+
+The shape is a separate route, `/reports/:type/print`, not a print stylesheet
+bolted onto the main screen. The route re-runs the same query from the same URL
+parameters, so opening or refreshing a print URL gives a correct report rather
+than an empty one, and the URL is worth having on its own as a clean read-only
+view.
+
+The part that matters is what the two routes share. The report itself is one
+component, `ReportBody.svelte`, rendered by both. Only the page around it
+differs: the screen route wraps it in the app shell with a date-range form, the
+print route wraps it in a titled sheet with a generated-at stamp. A print
+stylesheet drifts from the screen it was written for. Two routes rendering the
+same component cannot show different numbers, and that was verified rather than
+asserted: every figure on each screen route was checked to appear on its print
+route, across all four reports.
+
+Three smaller calls inside this, each with a reason:
+
+- **Nothing auto-prints.** A page that opens a print dialog on load takes the
+  decision away from the reader.
+- **Print drops tinted backgrounds instead of forcing them.** Every alarm state
+  already carries its meaning in words, per D28's never-colour-alone rule, so
+  printing to paper does not need to spend toner on red rows.
+- **Every printed page is stamped** with generated-at in Mountain Time, the
+  as-of date, and the window it covers. A report with no as-of date is one
+  somebody misreads three weeks later.
+
+The root layout renders print routes without the app shell, matched on the route
+id rather than on the URL string, so a record named "print" cannot strip its own
+chrome.
+
 ## Interpretation notes
 
 Not decisions. Judgment calls made inside an existing decision, recorded so the
 reasoning is not lost and so nobody relitigates them as if they were open.
+
+### The reports on-time rate was wrong in Mountain Time, and the existing code was already right
+
+Found while verifying, not while reading. Two action items were marked done
+through the API and then did not appear in the completion report at all.
+
+`completed_at` is a UTC instant. The report window is a pair of Mountain Time
+calendar dates. The first version filtered on `date(completed_at)`, which is the
+UTC date, so anything finished after 6pm Mountain lands on the next UTC day and
+falls outside a window that ends today. Both test items were completed at
+05:09Z, which is 23:09 the previous evening in Denver. The report showed one
+completed item where there were three.
+
+The same bug sat in the on-time comparison, which measured a UTC date against a
+deadline set on Paul's own calendar.
+
+What makes this worth recording: the app already had the right answer. Both the
+Today cockpit and the end-of-day digest bind `workingDayStartUtc(day)` and
+compare instants, and the cockpit query carries a comment saying exactly why.
+The new code was the outlier. Checking how the existing modules solved it,
+before writing a fourth version of the same date logic, would have skipped the
+bug entirely. D40's note that `workingDayStartUtc` is the reference
+implementation was already there to be followed.
+
+Fixed by bounding the window with `workingDayStartUtc(from)` and
+`workingDayStartUtc(to plus one day)` as an exclusive upper bound, and deciding
+on-time in JavaScript against the Mountain Time date of the completion, since
+SQLite cannot apply a zone whose offset moves with daylight saving. Resolution
+time became a rounded elapsed-day difference, which has no zone in it at all.
+
+Verified after the fix: the completed count went from 1 to 3, and both items
+resolved to Mountain day 2026-08-28 from a 2026-08-29 UTC timestamp, one on time
+against a future deadline and one late against a past one.
+
+### Reports headings skipped a level, caught by checking rather than by looking
+
+The report body used `h3` for section headings under the page `h1`, on the
+reasoning that the page title was the `h1` and sections sat below it. That skips
+`h2`, which the accessibility baseline forbids outright.
+
+It was invisible on screen, since `h3` was styled to look right, and it would
+have stayed invisible. What found it was parsing the rendered markup of all nine
+report routes and listing the heading levels in order. Moved to `h2`, rechecked,
+and every route now reads h1 then h2 with no skips and exactly one h1.
+
+The component carries a note that it must be mounted directly under a page h1,
+because a shared component cannot see its own heading depth and the next person
+to reuse it has no way to know.
 
 ### The /templates 500 leaked nothing, checked against a production build
 

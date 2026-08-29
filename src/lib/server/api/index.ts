@@ -6,6 +6,7 @@ import { digests } from './digests';
 import { invoicing } from './invoicing';
 import { meetings } from './meetings';
 import { projects } from './projects';
+import { reports } from './reports';
 import { sops } from './sops';
 import { templates } from './templates';
 import { today } from './today';
@@ -53,6 +54,7 @@ api.route('/digests', digests);
 api.route('/invoicing', invoicing);
 api.route('/meetings', meetings);
 api.route('/projects', projects);
+api.route('/reports', reports);
 api.route('/sops', sops);
 api.route('/templates', templates);
 

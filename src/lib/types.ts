@@ -359,3 +359,57 @@ export interface Template {
 	created_at: string;
 	updated_at: string;
 }
+
+// --- Reports ---
+
+/**
+ * The four reports built in v1.
+ *
+ * Architecture section D names five. Partner time saved is absent because it
+ * needs the TimeSavedLog and SlipsCaught tables and a baseline time audit that
+ * has not been run. It is v2 work. See D52.
+ */
+export const REPORT_TYPES = ['slipping', 'billing', 'projects', 'actions'] as const;
+export type ReportType = (typeof REPORT_TYPES)[number];
+
+export interface ReportMeta {
+	type: ReportType;
+	title: string;
+	/** What question the report answers. Shown on the index and under the title. */
+	summary: string;
+	/** False for reports that are a snapshot of now rather than of a window. */
+	windowed: boolean;
+}
+
+export const REPORTS: ReportMeta[] = [
+	{
+		type: 'slipping',
+		title: 'What is slipping',
+		summary: 'Everything overdue, at risk, or waiting on a decision, in one list.',
+		windowed: false
+	},
+	{
+		type: 'billing',
+		title: 'Billing and aging',
+		summary: 'Outstanding by client and by aging bucket, with unbilled periods.',
+		windowed: true
+	},
+	{
+		type: 'projects',
+		title: 'Project roll-up',
+		summary: 'Every project by phase and status, with its next milestone.',
+		windowed: false
+	},
+	{
+		type: 'actions',
+		title: 'Action item completion',
+		summary: 'Completed against open, on-time rate, and average resolution time.',
+		windowed: true
+	}
+];
+
+export function reportMeta(type: ReportType): ReportMeta {
+	const found = REPORTS.find((r) => r.type === type);
+	if (!found) throw new Error(`Unknown report type: ${type}`);
+	return found;
+}

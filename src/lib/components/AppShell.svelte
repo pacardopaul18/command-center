@@ -22,7 +22,8 @@
 		{ href: '/sops', label: 'SOPs', exact: false },
 		{ href: '/templates', label: 'Templates', exact: false },
 		{ href: '/clients', label: 'Clients', exact: false },
-		{ href: '/invoices', label: 'Invoicing', exact: false }
+		{ href: '/invoices', label: 'Invoicing', exact: false },
+		{ href: '/reports', label: 'Reports', exact: false }
 	];
 
 	let quickAddOpen = $state(false);
