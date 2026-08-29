@@ -1161,6 +1161,23 @@ Deployed production was not probed directly. It sits behind Access, and the
 locally built artifact is the same bundle Workers Builds produces from the same
 tree.
 
+### The ambiguity backstop is untuned, and deliberately so
+
+Paul's ruling after the first live extraction, recorded late because it was
+made in conversation and never written here.
+
+The backstop marks an item ambiguous whenever the owner or the deadline is
+missing, whatever the model claimed. Whether that threshold is right is
+unknown. The one real transcript tested against it was an interview-shaped
+call that produced a single action item, and a call type that produces one
+item cannot show whether the rule floods a busy call with flags.
+
+So it stays as built. Tuning it against a call that cannot exercise it would
+be fitting the rule to the wrong data. It waits for a task-heavy client call
+transcript, and the tuning happens then or not at all.
+
+DRI Paul, to supply the transcript. No code changes until one exists.
+
 ### pkill does not work here, and it cost a debugging cycle
 
 `pkill -f "vite dev"` silently does nothing on this machine. It exits cleanly,
@@ -1509,3 +1526,47 @@ Carried as owed work:
 Next is v1: Meetings with transcript import, AI summary and action item
 extraction; Templates with AI drafting; Reports with PDF export; and the one-way
 Asana push.
+
+### v1: PENDING, five verifications outstanding with Paul
+
+The build plan defines v1 as Meetings with transcript import, AI summary and
+action-item extraction; Templates with AI drafting; Clients; Reports with PDF
+export; and the one-way Asana push. Clients shipped early in the Invoicing pass
+under D37, so it is carried below as already evidenced rather than rebuilt.
+
+This gate is written out in full before it can be closed, so the five items
+Paul is verifying are visible as gaps rather than as blanks nobody counted.
+
+| Requirement | Evidence | State |
+| --- | --- | --- |
+| Meetings, transcript import | Transcript stored in R2 and referenced from D1, verified by a round trip. `action_items` rebuilt with a real `meeting_id` foreign key under the full D38 standard, migration 0005, rows byte-for-byte identical and bogus ids rejected | EVIDENCED |
+| Meetings, AI summary | Live run on a real 12,236 character client call. Summary produced and reviewed. Two defects found and fixed: F1, two employers merged into one, guarded in the prompt; F2, an em dash in the output, fixed by enforcement in code rather than a louder prompt, D48 | EVIDENCED |
+| Meetings, action item extraction | Same live run. 1 proposal, correct for the call type. Zero hallucinated commitments. Evidence quote verified verbatim and to the right span, so the confabulation check passed. Accepted unresolved and routed to ambiguous as designed, D45 and D46 | EVIDENCED |
+| Templates with AI drafting | Module live, drafting endpoint returns and stores nothing, D49. House style enforced on every AI output path from the start rather than patched in | PENDING, Paul retesting the voice register with a real exemplar |
+| Clients | Shipped in the Invoicing pass, D37. Client created through the UI, project assigned, foreign key verified to reject a bogus id on both INSERT and UPDATE | EVIDENCED |
+| Reports with PDF export | Four of the five in section D. Aging cross-checked against the Invoicing screen: identical in all four buckets, totals reconciling four ways. Screen and print verified to render identical figures across all four reports. Partner time saved deliberately absent, D52 | PENDING, Paul checking the live screens |
+| One-way Asana push | Built per D4 and D55. Explicit per item, 409 on a second push, and verified to write nothing on failure: with an invalid token the item kept its title, status, deadline and null gid and could still be marked done and reopened. Live 401 from Asana mapped legibly | PENDING, Paul making one real push and clicking the resulting link |
+| Markdown rendering, D36 | One renderer across SOPs, meeting summaries and drafts. Safe by construction rather than by filtering, D44. No `{@html}` anywhere in the app | EVIDENCED |
+| Schema through migrations only | Remote at 7 of 7, `0007_templates.sql`. One incident where code shipped ahead of its migration, root-caused and fixed by an ordering rule plus a drift detector, D50 | EVIDENCED |
+| Digests actually arriving | Cron trigger registered and correct. Observability enabled. Handler awaits its send and logs every firing. Cron path exercised across all four hour cases and the failure case | PENDING, the 13:00Z firing is the first eligible one in the app's history |
+| Digest deliverability, R7 | `DIGEST_FROM` moved to `digest@kabuhayan.app`, a domain verified in Resend with DKIM and SPF | PENDING, Paul confirming placement over several days |
+
+#### The threshold, and the half that is not mine to declare
+
+The architecture doc's v1 threshold is that meeting-to-action-item time drops
+noticeably. Nothing above evidences that. The pipeline works and one real
+transcript went through it end to end, but a single run is not a trend, and the
+claim belongs to Paul after he has taken several meetings through it.
+
+Recorded here so that the gate cannot be closed on build evidence alone, which
+is the same reservation entered against the MVP gate and for the same reason.
+
+#### What this gate is explicitly not claiming
+
+- That extraction quality holds on a task-heavy call. The one live test was an
+  interview-shaped call that produced a single action item, which cannot
+  exercise flag flooding. The ambiguity backstop is untuned and stays untuned
+  until a task-heavy transcript exists to tune it against.
+- That the digest lands in an inbox. See R7.
+- That daily use has happened. See above.
+
