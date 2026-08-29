@@ -37,3 +37,6 @@ vite.config.ts.timestamp-*
 # Logs
 *.log
 npm-debug.log*
+
+# Rendered screenshots from volume testing. Regenerable, and large.
+shots/

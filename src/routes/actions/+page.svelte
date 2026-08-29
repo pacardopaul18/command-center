@@ -128,13 +128,26 @@
 			const res = await fetch(`/api/action-items/${item.id}/asana`, { method: 'POST' });
 			const payload = (await res.json().catch(() => ({}))) as {
 				error?: string;
-				asana?: { gid: string; url: string };
+				asana?: {
+					gid: string;
+					url: string;
+					url_from_asana: boolean;
+					assignee: string;
+					project_name: string | null;
+				};
 			};
 			if (!res.ok) {
 				errorMessage = payload.error ?? 'Could not push to Asana.';
 				return;
 			}
-			notice = `Pushed to Asana as task ${payload.asana?.gid ?? ''}.`;
+			const a = payload.asana;
+			// Says where the task landed, because the first production push created
+			// one nobody could find. D-asana-1.
+			notice = a
+				? `Pushed to Asana as task ${a.gid}, assigned to ${a.assignee}` +
+					`${a.project_name ? ` in ${a.project_name}` : ', no project'}. ` +
+					`Link came from ${a.url_from_asana ? "Asana's own permalink" : 'the gid'}.`
+				: 'Pushed to Asana.';
 			await invalidateAll();
 		} catch {
 			errorMessage = 'Could not reach the server. Nothing was pushed and nothing changed here.';

@@ -3,7 +3,7 @@ import type { ApiEnv } from './env';
 import { ACTION_SOURCES, ACTION_STATUSES, ACTION_VIEWS } from '$lib/types';
 import type { ActionSource, ActionStatus, ActionView } from '$lib/types';
 import { nowUtc, todayInWorkingZone } from '../dates';
-import { createTask, readSettings } from '../asana';
+import { createTask, effectiveAssignee, readSettings } from '../asana';
 import { asApiError } from './asana';
 import {
 	ApiError,
@@ -365,7 +365,9 @@ actionItems.post('/:id/asana', async (c) => {
 			dueOn: item.deadline,
 			workspaceGid: settings.workspace_gid,
 			projectGid: settings.project_gid,
-			assignee: settings.assignee
+			// Never null. See DEFAULT_ASSIGNEE and D-asana-1: an unassigned task
+			// does not appear in My Tasks and is invisible in normal use.
+			assignee: effectiveAssignee(settings)
 		});
 	} catch (err) {
 		// Nothing has been written at this point and nothing will be.
@@ -383,9 +385,14 @@ actionItems.post('/:id/asana', async (c) => {
 		asana: {
 			gid: created.gid,
 			url: created.url,
-			// Reported so the first live push settles whether Asana returns a
-			// permalink, which the docs were truncated on. See the note in asana.ts.
-			url_from_asana: created.url_from_asana
+			// Reported so a live push settles whether Asana returns a permalink,
+			// which the docs were truncated on. See the note in asana.ts.
+			url_from_asana: created.url_from_asana,
+			// Echoed back so the UI can say where the task landed. A task with no
+			// project is harder to find even when it is assigned.
+			assignee: effectiveAssignee(settings),
+			project_gid: settings.project_gid,
+			project_name: settings.project_name
 		}
 	});
 });

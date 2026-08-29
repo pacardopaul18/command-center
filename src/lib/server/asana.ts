@@ -50,6 +50,29 @@ export interface AsanaSettings {
 	assignee: string | null;
 }
 
+/**
+ * The assignee a push uses when Settings names none.
+ *
+ * Asana resolves the literal "me" to the owner of the token, which is Paul.
+ *
+ * This is a default rather than a blank because of D-asana-1: the first
+ * production push created a task with no assignee and no project, and Asana's
+ * My Tasks only lists tasks assigned to you. The task existed, was reachable by
+ * search and by its permalink, and was invisible in every view a person
+ * actually opens. An unassigned task is a task nobody will do, so the safe
+ * default is the one that puts it in front of somebody.
+ *
+ * There is deliberately no way to request an unassigned task. That is not an
+ * oversight; it is the defect this constant exists to prevent.
+ */
+export const DEFAULT_ASSIGNEE = 'me';
+
+/** What a push will actually send, after the default is applied. */
+export function effectiveAssignee(settings: AsanaSettings): string {
+	const chosen = settings.assignee?.trim();
+	return chosen ? chosen : DEFAULT_ASSIGNEE;
+}
+
 export const EMPTY_SETTINGS: AsanaSettings = {
 	workspace_gid: null,
 	workspace_name: null,

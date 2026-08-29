@@ -231,7 +231,35 @@
 			flex-direction: row;
 		}
 
+		/*
+		 * Sticky, because a nav you have to scroll back up to reach is a nav that
+		 * stops being used. Reported after the first screen carrying real volume:
+		 * the sidebar scrolled away with the content and getting to another module
+		 * meant scrolling to the top first.
+		 *
+		 * `align-self: flex-start` is what makes sticky work inside a flex row.
+		 * Without it the sidebar stretches to the full row height and has nothing
+		 * to stick within, which is the usual reason `position: sticky` silently
+		 * does nothing.
+		 *
+		 * It scrolls internally on short viewports so a long nav can never trap
+		 * its own last item off screen.
+		 */
 		.sidebar {
+			position: sticky;
+			top: 0;
+			align-self: flex-start;
+			/*
+			 * Both bounds are needed. min-height keeps the navy column filling the
+			 * viewport, which flex-start alone stops doing because the sidebar
+			 * shrinks to its content and leaves cream below the last nav item.
+			 * max-height keeps a long nav scrollable rather than letting it push
+			 * its own last item off screen.
+			 */
+			min-height: 100dvh;
+			max-height: 100dvh;
+			overflow-y: auto;
+			overscroll-behavior: contain;
 			width: var(--sidebar-width);
 			min-width: var(--sidebar-width);
 			flex-direction: column;

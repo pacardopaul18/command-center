@@ -163,8 +163,16 @@
 	{:else}
 		<p class="hint">
 			Asana needs a workspace before it can create a task. Load the workspaces this token can see,
-			pick one, and save. A project is optional.
+			pick one, and save.
 		</p>
+
+		{#if data.asana.ready && !data.asana.settings.project_gid}
+			<p class="warn">
+				No default project is set. Pushed tasks will be assigned to you and will appear in My
+				Tasks, but they will not sit in any project, which makes them harder to find later and
+				invisible to anyone looking at a project board. Choosing one is recommended.
+			</p>
+		{/if}
 
 		<div class="actions">
 			<Button variant="secondary" disabled={busy} onclick={loadWorkspaces}>
@@ -207,10 +215,10 @@
 
 				<div class="span-all">
 					<FormField
-						label="Default assignee, optional"
-						hint="An Asana user gid, an email address, or the word me. Leave empty to create tasks unassigned."
+						label="Default assignee"
+							hint="An Asana user gid, an email address, or the word me. Left empty it uses me, which is whoever owns the token. Tasks are never created unassigned: Asana's My Tasks only lists what is assigned to you, so an unassigned task is invisible in normal use."
 					>
-						<Input bind:value={assignee} maxlength={200} />
+						<Input bind:value={assignee} maxlength={200} placeholder="me" />
 					</FormField>
 				</div>
 			</div>
@@ -284,6 +292,16 @@
 
 	.state dd {
 		margin: 2px 0 0;
+		font-size: var(--text-sm);
+	}
+
+	.warn {
+		margin: 0 0 var(--space-4);
+		padding: var(--space-3) var(--space-4);
+		border: 1px solid var(--gold-100);
+		border-radius: var(--radius-sm);
+		background: var(--gold-50);
+		color: var(--text-body);
 		font-size: var(--text-sm);
 	}
 

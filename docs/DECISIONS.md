@@ -29,6 +29,10 @@ file records what was decided along the way that neither of them says, and why.
 | T-reports-preview | One report print preview, judged as a document rather than as a screen | OPEN, DRI Paul, now. Closes the second half of v1 gate row e |
 | T-log-read | Read the 13:00Z invocation record from the Cloudflare dashboard | OPEN, DRI Paul, tonight. Workers and Pages, command-center, Logs. 3 day retention, so it expires 2026-09-01. D61 |
 | T-obs-token | Scoped Cloudflare API token, Workers Observability Read only, delivered by `wrangler secret put` | OPEN, DRI Paul, after tonight. D61. Never in chat |
+| T-asana-fix | Push sets an assignee and warns when no project is chosen | DONE 2026-08-29. Defect D-asana-1: the first production push created a task with no assignee, invisible in My Tasks. Assignee now defaults to the token owner and cannot be blank |
+| T-asana-repush | Re-push one action item after the assignee fix | OPEN, DRI Paul, two minutes. Closes v1 gate row c and answers the `permalink_url` question, which the push notice now reports |
+| T-volume-seed | Local volume seed and rendered screenshots at load | DONE 2026-08-29, D62. 44 action items, 23 invoices across all bands, 14 projects. Remote verified clean of every seeded row |
+| T-density | Sticky sidebar and the spacing pass, judged against the volume renders | DONE 2026-08-29, D63. Sidebar fills and sticks, headings group with their tables, rows banded |
 | T-v2-baseline | Partner time baseline audit, running 15-minute-increment note | OPEN, DRI Paul, starting week of 2026-08-31. Prerequisite for the v2 partner-hours-saved dashboard, D52. Nothing blocks on it in v1 |
 
 ## Decisions
@@ -1022,6 +1026,37 @@ available and simply was not exercised, or failed before reaching Asana.
 So the permalink question this decision left open is still open. `permalink_url`
 remains unconfirmed, and the first real push settles it.
 
+#### First production push, 2026-08-29, and the defect it exposed
+
+The mechanism works. Paul created a real action item, pushed it, and the link
+opened the correct task. GID `1217967895665406` stored on
+`Send week-1 recap and 30-60-90 outline`, confirmed present in remote D1.
+
+Then the task vanished. It was not in My Tasks, not on any board, and once the
+detail pane was closed there was no obvious way back to it.
+
+**D-asana-1.** The push created the task with no assignee and no project. Asana's
+My Tasks lists only what is assigned to you, so a task with neither is real,
+reachable by search and by permalink, and invisible in every view a person
+actually opens. The settings supported both fields and both were optional, so
+leaving them empty produced a task nobody would ever see. Optional was the wrong
+default for a field whose absence hides the record.
+
+Fixed by making the assignee default to `me`, which Asana resolves to the token
+owner. There is deliberately no way to request an unassigned task, because that
+is the defect rather than a preference. The project stays optional, since a task
+can legitimately sit outside one, but Settings now warns when none is chosen and
+says why it matters.
+
+The push response now reports where the task landed and whether the link came
+from Asana's own permalink or was built from the gid, so the next push answers
+the `permalink_url` question in the notice rather than in a JSON body nobody
+reads. That question is still open: the first push predates this, and its
+`url_from_asana` value was not captured.
+
+Row c is not closed. The mechanism is proven; closure waits on one re-push after
+this fix.
+
 A create-push-then-delete sequence would leave the same trace and cannot be
 excluded from the database alone. It does not need to be: PM ruling is that a
 fresh verified run supersedes the archaeology, and the run produces the gid, the
@@ -1281,6 +1316,66 @@ So, two paths:
 This adds the first new provisioning item since the project began. CLAUDE.md's
 list of what only Paul can provide gains one entry, and it is deliberately the
 narrowest scope that answers the question.
+
+### D62: volume testing happens on a local seed, never on production
+
+Paul's judgement of the reports at low volume was that of course they look fine
+when they are nearly empty, and the question is what they look like under real
+load. Correct, and the obvious way to answer it would have been wrong.
+
+**Seeding production would have destroyed tonight's evidence.** The digest reads
+from the live database. Fake overdue items and fake past-due invoices inserted
+now would appear in the 13:00Z digest as real fires, in the one firing the whole
+day has been protected to observe. The evidence and the test would have
+destroyed each other, and the contamination would have looked like data rather
+than like a mistake.
+
+So: volume testing is a local seed plus rendered screenshots, judged from the
+images. `seed/volume-seed.sql` carries 44 action items across every status and
+deadline band, 23 invoices populating all four aging bands plus paid and
+not-yet-due, 14 projects across all five phases and all four statuses, meetings
+dated today, and a backlog of pending proposals. Every id carries a `v-` prefix
+so seeded rows can be found and removed.
+
+Production seeding is prohibited before the digest evidence is pulled. A
+production dress rehearsal, if it is ever wanted, is post-gate work and needs a
+cleanup plan written before the first insert rather than after.
+
+Verified rather than assumed: after seeding locally, remote was checked for
+`v-` prefixed rows across `action_items`, `clients`, `projects`, `invoices`,
+`meetings`, `templates` and `sops`. Zero in every table. The only change to
+remote that day was Paul's own pushed action item.
+
+### D63: the reports were spaced for three rows, and it showed at forty
+
+Two defects, both invisible until the volume seed existed, both reported by Paul
+before the screenshots were taken.
+
+**The sidebar scrolled away with the content.** On a long page, reaching another
+module meant scrolling back to the top first. Now sticky. Two bounds are needed
+and the reason is worth recording: `align-self: flex-start` is what lets a flex
+child stick at all, but it also collapses the sidebar to its content height,
+which left the navy column ending partway down with page background below it.
+`min-height: 100dvh` fills the column, `max-height: 100dvh` with internal scroll
+stops a long nav pushing its own last item off screen.
+
+**The tables were spaced for three rows.** Two specific failures at volume, not
+a general feeling:
+
+- Every child of the report body had the same gap, so a heading sat as far from
+  its own table as from the previous section. Nothing grouped, and the page read
+  as one undifferentiated column. The gap is now tight and the headings carry
+  the separation.
+- The row border is a very light hairline, which is fine for four rows and
+  useless for sixteen. The eye loses its place tracking across a wide table.
+  Rows are banded now, using the `--surface-row-alt` token that already existed
+  for exactly this and had never been used. Alarm rows are ordered to beat the
+  banding, and both are dropped in print so a paper copy does not spend toner on
+  fills that carry no meaning.
+
+The lesson is not about spacing values. It is that a layout can only be judged
+at the volume it will actually carry, and every screen in this app had been
+reviewed at three rows.
 
 ## Interpretation notes
 
@@ -1623,6 +1718,41 @@ Superseded by T-asana-first. A fresh run produces the gid, the permalink answer
 and the row closure together, and needs no reconstruction of what happened
 before.
 
+### R10: seeding production for volume testing would have contaminated the digest evidence. AVERTED
+
+Logged so that nobody helpfully does it later.
+
+The natural way to test how the screens look under load is to put load into the
+database. Doing that on production, on 2026-08-29, would have put fabricated
+overdue items and past-due invoices into the 13:00Z digest, in the one firing
+the entire day had been arranged to observe, and the resulting email would have
+been indistinguishable from a real one reporting real fires.
+
+Averted by ruling before acting, not by catching it afterwards. Volume testing
+is local only until the digest evidence is pulled. See D62.
+
+The general shape is worth keeping: when a test needs realistic data and a
+scheduled job reads the same store, the test and the evidence are in direct
+conflict, and the job wins.
+
+### R11: freeze violated by a branch level push. CLOSED 2026-08-29
+
+The cron wiring was held off `main` as its own commit and pushed anyway, because
+the ledger commit landed on top of it and `git push` with no refspec sends the
+whole branch. The earlier push had used `git push origin <sha>:main` correctly;
+this one did not.
+
+Live for 78 seconds, 09:53:32Z to 09:54:50Z. No firing ran against the wrong
+expression: 09:00Z had passed 53 minutes earlier and 10:00Z had not arrived. The
+deployed cron was confirmed back to `0 0,13,14,23 * * *` by API, with 183
+minutes of margin to the firing.
+
+The lesson is mechanical, not attentional. A hold enforced at commit level and
+released at branch level is not a hold. Either the held work stays out of the
+branch entirely, or the push is always explicit about what it sends. Reverted by
+`e5c373a`, which keeps `ab5c786` in history so re-applying it is a revert of the
+revert rather than a rebuild.
+
 ## Open questions
 
 ### O1: custom domain, DRI Paul. RESOLVED
@@ -1805,7 +1935,7 @@ Paul is verifying are visible as gaps rather than as blanks nobody counted.
 | Templates with AI drafting | Module live, drafting endpoint returns and stores nothing, D49. House style enforced on every AI output path from the start rather than patched in | PENDING, Paul retesting the voice register with a real exemplar |
 | Clients | Shipped in the Invoicing pass, D37. Client created through the UI, project assigned, foreign key verified to reject a bogus id on both INSERT and UPDATE | EVIDENCED |
 | Reports with PDF export | Four of the five in section D. Aging cross-checked against the Invoicing screen: identical in all four buckets, totals reconciling four ways. Screen and print verified to render identical figures across all four reports. Partner time saved deliberately absent, D52 | PENDING, Paul checking the live screens |
-| One-way Asana push | Built per D4 and D55. Explicit per item, 409 on a second push, and verified to write nothing on failure: with an invalid token the item kept its title, status, deadline and null gid and could still be marked done and reopened. Live 401 from Asana mapped legibly | **NEVER RUN IN PRODUCTION.** Amended 2026-08-29: remote holds zero stored gids, so this is a first execution rather than a verification. T-asana-first |
+| One-way Asana push | Built per D4 and D55. Explicit per item, 409 on a second push, and verified to write nothing on failure: with an invalid token the item kept its title, status, deadline and null gid and could still be marked done and reopened. Live 401 from Asana mapped legibly | PENDING. First production push done 2026-08-29, GID `1217967895665406`, link opened the correct task, so the mechanism is proven. Defect D-asana-1 found and fixed: tasks arrived with no assignee and were invisible in My Tasks. Closure waits on one re-push. T-asana-repush |
 | Markdown rendering, D36 | One renderer across SOPs, meeting summaries and drafts. Safe by construction rather than by filtering, D44. No `{@html}` anywhere in the app | EVIDENCED |
 | Schema through migrations only | Remote at 7 of 7, `0007_templates.sql`. One incident where code shipped ahead of its migration, root-caused and fixed by an ordering rule plus a drift detector, D50 | EVIDENCED |
 | Digests actually arriving | Cron trigger registered and correct. Observability enabled. Handler awaits its send and logs every firing. Cron path exercised across all four hour cases and the failure case | PENDING, the 13:00Z firing is the first eligible one in the app's history |

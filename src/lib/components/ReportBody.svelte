@@ -402,17 +402,27 @@
 </div>
 
 <style>
+	/*
+	 * Spacing is deliberately uneven. A single gap between every child spaces a
+	 * heading from its own table exactly as far as from the previous section, so
+	 * at volume nothing groups and the page reads as one undifferentiated
+	 * column. The gap is tight, and headings carry the separation instead.
+	 */
 	.report {
 		display: flex;
 		flex-direction: column;
-		gap: var(--space-5);
+		gap: var(--space-3);
 	}
 
 	h2 {
-		margin: 0;
+		margin: var(--space-5) 0 0;
 		font-size: var(--text-md);
 		font-weight: var(--weight-medium);
 		color: var(--text-body);
+	}
+
+	h2:first-child {
+		margin-top: 0;
 	}
 
 	/* Headline tiles. Mobile first: one column, widening as room appears. */
@@ -471,10 +481,20 @@
 
 	th,
 	td {
-		padding: var(--space-3);
+		padding: 10px var(--space-4);
 		text-align: left;
 		vertical-align: top;
+		line-height: 1.45;
 		border-bottom: 1px solid var(--border-thin);
+	}
+
+	/*
+	 * Banding, because the row border alone is too light to track across a wide
+	 * table once there are more than a handful of rows. Sixteen overdue invoices
+	 * is the case that showed it.
+	 */
+	tbody tr:nth-child(even) td {
+		background: var(--surface-row-alt);
 	}
 
 	th {
@@ -509,7 +529,9 @@
 		color: var(--text-alarm);
 	}
 
-	.alarm-row td {
+	/* Beats the banding, which would otherwise cancel it on even rows. */
+	.alarm-row td,
+	tbody tr.alarm-row:nth-child(even) td {
 		background: var(--red-100);
 	}
 
@@ -588,8 +610,13 @@
 			border-bottom: 1px solid #ccc;
 		}
 
-		.alarm-row td {
+		.alarm-row td,
+		tbody tr:nth-child(even) td {
 			background: none;
+		}
+
+		h2 {
+			margin-top: 10pt;
 		}
 
 		h2 {
