@@ -11,6 +11,7 @@ import { templates } from './templates';
 import { today } from './today';
 import { ApiError } from './validate';
 import { todayInWorkingZone, WORKING_TIME_ZONE } from '../dates';
+import { schemaStatus } from '../schema-version';
 
 /**
  * The Command Center API.
@@ -24,13 +25,26 @@ import { todayInWorkingZone, WORKING_TIME_ZONE } from '../dates';
  */
 export const api = new Hono<ApiEnv>().basePath('/api');
 
-api.get('/health', (c) =>
-	c.json({
-		ok: true,
-		today: todayInWorkingZone(),
-		time_zone: WORKING_TIME_ZONE
-	})
-);
+/**
+ * Health, including schema drift.
+ *
+ * Returns 503 when the live database is behind the code, because that is not a
+ * healthy Worker: some route is going to 500 the moment somebody opens it. The
+ * /templates outage on 2026-08-29 was exactly this state, and nothing reported
+ * it. Now one request does.
+ */
+api.get('/health', async (c) => {
+	const schema = await schemaStatus(c.env.DB);
+	return c.json(
+		{
+			ok: !schema.drift,
+			today: todayInWorkingZone(),
+			time_zone: WORKING_TIME_ZONE,
+			schema
+		},
+		schema.drift ? 503 : 200
+	);
+});
 
 api.route('/today', today);
 api.route('/action-items', actionItems);

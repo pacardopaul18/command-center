@@ -19,6 +19,7 @@ file records what was decided along the way that neither of them says, and why.
 | T-mvp | MVP stage gate | CLOSED 2026-08-29. Build criteria evidenced; the daily-use half of the threshold is Paul's to confirm over time |
 | T-clients-0 | Rebuild `projects` with a real `client_id` foreign key | DONE, migration 0003. Verified: rows survive byte-for-byte, action item links survive, a bogus client_id is rejected on INSERT and UPDATE |
 | T-meetings-0 | Rebuild `action_items` with a real `meeting_id` foreign key | DONE 2026-08-29, migration 0005 under the full D38 standard. Verified local and remote: rows byte-for-byte identical, all links preserved, bogus meeting_id rejected |
+| T-inc-1 | Live 500 on /templates: migration 0007 never applied to remote | DONE 2026-08-29. Diagnosis confirmed before any change, snapshot taken, 0007 applied, remote at 7 of 7. Root cause and the ordering rule are D50 |
 
 ## Decisions
 
@@ -713,10 +714,136 @@ client-facing email is the most expensive output this app could produce.
 Every draft carries the same unreviewed banner the meeting summaries do, and is
 rendered through the one markdown component.
 
+### D50: migrations are applied to remote before the code that needs them is pushed
+
+On 2026-08-29, `/templates` returned a 500 on the live site. The cause was not
+in the Templates code. It was the deploy model.
+
+**What happened.** The commit that added Templates carried both the code and
+migration `0007_templates.sql`. Pushing to main auto-builds and auto-deploys the
+Worker, so the code went live within minutes. D1 migrations are applied by hand
+and nobody had run one. Production was running code that does
+`SELECT * FROM templates` against a database with no `templates` table.
+
+**Verified before anything was touched**, per the instruction and because a
+plausible diagnosis is not a confirmed one:
+
+| Check | Result |
+| --- | --- |
+| `wrangler d1 migrations list --remote` | `0007_templates.sql` listed as pending |
+| `SELECT name FROM d1_migrations` on remote | 0001 through 0006, nothing else |
+| `SELECT name FROM sqlite_master WHERE name='templates'` on remote | empty |
+| Pre-migration snapshot, D39 | 12 `CREATE TABLE` statements, no `templates` |
+
+Four independent reads agreeing. Note the first `migrations list` call returned a
+transient 7403 authorization error; the retry succeeded. A single failed API call
+is not evidence of anything, and treating that 7403 as the finding would have
+sent the whole investigation the wrong way.
+
+**The root cause, stated plainly.** This is a structural gap in the deploy model,
+not a mistake in one commit. Code deployment is automatic and migration
+application is manual, so the two halves of a schema change travel at different
+speeds. Every push that contains both a migration and the code that needs it
+opens a window where production runs against schema that does not exist. The
+window closes only when a human remembers. Nothing in the system was watching,
+and the first signal was Paul hitting a 500 in his own browser.
+
+**Options considered.**
+
+*Apply migrations in the build step.* Workers Builds would run
+`wrangler d1 migrations apply --remote` before deploying, closing the window
+completely. Rejected. It puts an unreviewed, irreversible schema change on the
+production database on every push, with no snapshot and no human in the loop.
+That directly contradicts D39, which makes the pre-migration snapshot
+unconditional and explicitly never waived by "nothing is at risk", and it
+contradicts CLAUDE.md's rule that Paul is asked before anything touches the
+Cloudflare account. It also removes the human from an operation that, under D38,
+is already known to be capable of destroying data silently. Trading a
+five-minute outage for the possibility of an unattended bad migration is a bad
+trade.
+
+*A version check alone.* Make the app detect the mismatch. This does not close
+the window; it only makes the failure legible. Necessary, not sufficient.
+
+*An ordering rule.* Apply the migration to remote first, then push the code that
+depends on it. **This is the decision.** It closes the window with no new
+machinery, and it preserves the snapshot and the human decision that D39 and
+D38 exist to protect. It works because migrations here are additive: a database
+carrying `templates` before the Templates code ships is simply a database with an
+unused table, and the previously deployed code neither knows nor cares.
+
+That last sentence is the condition the rule depends on, so it is stated as a
+constraint rather than left implicit. **The rule holds for additive migrations.
+It does not hold for a migration that drops or renames something the deployed
+code still reads.** For those, applying first breaks production immediately
+instead of five minutes later. A destructive schema change is done in two
+deploys: first ship code that tolerates both shapes, then migrate, then remove
+the old path. No such migration has been needed yet. When one is, this is the
+constraint it has to satisfy.
+
+**Built alongside the rule**, because a rule that depends on memory is the thing
+that just failed:
+
+- `vite.config.ts` reads `migrations/` at config time and bakes the highest
+  filename into the bundle as `__EXPECTED_MIGRATION__`. It is derived from the
+  same tree that produced the code, so it means exactly "the schema this build
+  was written against". The build fails rather than emitting a schema-blind
+  bundle if the directory is empty.
+- `src/lib/server/schema-version.ts` compares that constant against
+  `d1_migrations` at runtime. `GET /api/health` returns **503** on drift, with
+  the direction of the drift and the exact command to fix it. A Worker whose
+  database is behind it is not healthy: some route is going to 500 as soon as
+  somebody opens it. Reading wrangler's own bookkeeping table rather than probing
+  for named tables means every future migration is covered the moment its file
+  exists, with nothing to remember to add.
+- `npm run schema:check` compares the tree against remote before a push and exits
+  non-zero if the database is behind, printing the snapshot and apply commands in
+  order. `schema:check:local` does the same for the dev database.
+
+Verified by simulation rather than by reading: adding an unapplied migration file
+made `schema:check` exit 1 naming it, and deleting the 0007 row from the local
+`d1_migrations` made `/api/health` return 503 with
+`applied: 0006_meeting_proposals.sql` against `expected: 0007_templates.sql`.
+Both were restored afterwards and both endpoints confirmed green again.
+
+Detection does not replace the rule. The rule prevents the outage; the check
+catches the day the rule is forgotten.
+
 ## Interpretation notes
 
 Not decisions. Judgment calls made inside an existing decision, recorded so the
 reasoning is not lost and so nobody relitigates them as if they were open.
+
+### The /templates 500 leaked nothing, checked against a production build
+
+Asked whether the outage exposed anything it should not have. It did not, and the
+check is worth recording because the obvious way to run it gives the wrong
+answer.
+
+The failure was reproduced locally by renaming `templates` out of the way, since
+fixing remote first would have destroyed the evidence. Results:
+
+| Surface | Response |
+| --- | --- |
+| `GET /api/templates` | 500, body `{"error":"Something went wrong on the server."}` |
+| `GET /templates` | 500, page renders `500` and `Internal Error` |
+| Hydration payload | `error: {message:"Internal Error"}`, the same generic string |
+
+No SQL text, no `no such table`, no table name, no D1 error code, no stack trace,
+no filesystem path. The generic handler held at both the API layer and the
+SvelteKit layer.
+
+The reason this needed care: run the same probe under `vite dev` and the page
+contains `/@fs/C:/Users/admin/Documents/command-center/...` paths. That is Vite's
+dev-mode module loading, not the error handler, and reporting it as a leak would
+have been wrong. So the scan was rerun against an actual production build via
+`vite preview` on the built output, and the paths are absent there. Same shape as
+the two earlier false alarms from grepping whole pages: the string was real, and
+it meant nothing.
+
+Deployed production was not probed directly. It sits behind Access, and the
+locally built artifact is the same bundle Workers Builds produces from the same
+tree.
 
 ### pkill does not work here, and it cost a debugging cycle
 
