@@ -24,6 +24,7 @@ file records what was decided along the way that neither of them says, and why.
 | T-v1-asana | One-way Asana push per D4 | BUILT 2026-08-29, unverified against a real token. All failure paths tested, including a live 401 from Asana. Awaiting `wrangler secret put ASANA_TOKEN` and one real push |
 | T-digest-1 | Digest incident: no scheduled digest had ever sent | ROOT CAUSE CLOSED 2026-08-29, D56. The cron never had an eligible firing. Observability enabled, handler now awaits, cron path exercised for the first time. Incident closes on the 13:00Z firing |
 | T-debt-1 | Three unblocked design debts: meetings cockpit card, invoice alert card, client column on Projects | DONE 2026-08-29. All three read real data only. The design's mocked meeting times and "agenda drafted" state are not in the schema and were not rendered, D27. Cockpit invoice alerts cross-checked identical to the Invoicing screen's overdue set |
+| T-backup-1 | Nightly D1 to R2 backups, pulled forward from v2 | BUILT 2026-08-29, D58 and D59. Dump proven to restore into an empty database with identical rows, links, indexes and triggers. Module and routes pushed; cron wiring committed and HELD pending the 13:00Z evidence |
 | T-v2-baseline | Partner time baseline audit, running 15-minute-increment note | OPEN, DRI Paul, starting week of 2026-08-31. Prerequisite for the v2 partner-hours-saved dashboard, D52. Nothing blocks on it in v1 |
 
 ## Decisions
@@ -1077,6 +1078,93 @@ should discover that a task title contained a tag.
 
 `/api/digests/preview` returns the HTML as well, so the rendering can be checked
 without sending anything.
+
+### D58: the backup is a SQL dump written by the Worker, not an export
+
+Nightly D1 to R2 backups, pulled forward from v2 by PM ruling on 2026-08-29 and
+change-logged here.
+
+D1 on the Free plan already keeps 7 days of its own point-in-time restore. That
+is a real safety net, but it is not one Paul controls, it cannot be read without
+the Cloudflare API, and it disappears with the database. The backup produces a
+file he owns, in his own bucket, restorable with one wrangler command.
+
+**Why the dump is hand written.** `wrangler d1 export` is a CLI command and does
+not exist inside a Worker. The D1 REST export endpoint does, but calling it needs
+a Cloudflare API token stored as another secret. That is a new credential, a new
+rotation burden and a new failure mode, for something achievable with the
+binding already in scope. So the dump is assembled from `sqlite_master` and a
+read of each table.
+
+Four properties that took deliberate care, each verified rather than assumed:
+
+- **Dependency order.** Tables are inserted parents first, ordered by the
+  `REFERENCES` clauses read out of each table's own DDL, so the ordering cannot
+  drift from the schema. Restoring in `sqlite_master` order would fail on
+  foreign keys depending on what order the catalogue happened to return.
+- **Triggers come after the data.** The SOP immutability triggers reject updates
+  to existing versions, D32. Installed before the inserts they would fire on the
+  restore itself and a backup would refuse to load its own contents.
+- **Internals are excluded.** `_cf_METADATA` is D1's own bookkeeping and
+  `sqlite_%` is SQLite's. Neither belongs in a restore.
+- **Unsupported types throw.** The schema is TEXT, INTEGER and REAL, checked
+  across every migration, with no BLOB anywhere. Anything else reaching the
+  serialiser means the schema changed without this being revisited, and it fails
+  rather than guessing. A backup that silently mangles a column is worse than
+  one that fails.
+
+**Two limits stated rather than implied**, both written into the file header so
+whoever restores it reads them. The dump is not transactionally consistent: D1
+gives no snapshot across statements, so a write landing between two table reads
+would be caught half-in. And the whole dump is built in memory, which is right
+at this size and wrong at a large one, so it fails loudly above a ceiling
+instead of truncating.
+
+**The prune runs only after the write succeeds**, so a failed backup can never
+remove a good one. Same rule as the digest sent marker and the Asana gid: the
+record of an action is written after the action. Keys that do not carry a date
+are left alone, because deleting things the prune does not understand is how a
+prune becomes an incident.
+
+**Proof it restores**, which is the only thing that makes a backup a backup. The
+live local dump, 32,384 bytes over 13 tables and 53 rows, was pulled out of R2
+and loaded into an empty SQLite database: 13 tables, 53 rows, 29 indexes and 3
+triggers restored, `integrity_check` ok, and `foreign_key_check` clean with
+foreign keys switched back on. `action_items` was then compared row for row and
+field for field against the source and was identical, with all 7 meeting and
+project links intact.
+
+Retention is 30 days. The boundary was checked at exactly 30 days, which is
+kept, and at 31, which is deleted.
+
+### D59: the backup gets its own cron firing, not a ride on the digest
+
+03:00 Mountain, its own firing, rather than appended to the morning digest.
+
+A dump that is slow or throws must not be able to delay or break the digest, and
+an operator reading the logs should be able to tell which job failed without
+untangling one invocation that did two things. The extra firing is free.
+
+The schedule follows the digest pattern rather than inventing a second one, per
+D54: Cron Triggers are UTC only, so it fires at both UTC hours that could be
+03:00 Mountain in either half of the year, 09:00Z in summer and 10:00Z in
+winter, and the handler reads the Mountain hour to decide which is real. The
+expression becomes `0 0,9,10,13,14,23 * * *`: six firings, three of which do
+nothing.
+
+Verified across both halves of the year against the built bundle. Summer routes
+09:00Z to the backup, 13:00Z to the morning digest and 23:00Z to the evening;
+winter routes 10:00Z, 14:00Z and 00:00Z. Exactly one of each job per Mountain
+day in both. The empty-database guard and the rethrow were exercised too: a
+database reporting no tables fails the invocation rather than writing an empty
+file.
+
+**Held from main at the time of writing.** PM ruling: nothing touching the
+scheduled handler, `wrap-worker.js` or the wrangler config ships until the
+13:00Z invocation evidence from the digest incident is pulled clean. The backup
+module and its HTTP routes shipped separately, since they touch no cron surface
+and a manual backup is useful on its own. The cron wiring is committed and
+waiting.
 
 ## Interpretation notes
 
