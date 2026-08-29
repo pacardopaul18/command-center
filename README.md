@@ -9,8 +9,9 @@ Context: [CLAUDE.md](CLAUDE.md), [docs/Command_Center_Build_Plan.md](docs/Comman
 Stage 1 is CLOSED. The app is live at **work.kabuhayan.app**, behind Cloudflare
 Access with One-Time PIN, whitelisting Paul only.
 
-MVP stage in progress. Today cockpit, Action Items, Projects, the SOP library,
-Clients and Invoicing with aging are built. The Cron and Resend digests are next.
+MVP stage is feature complete: Today cockpit, Action Items, Projects, the SOP
+library, Clients, Invoicing with aging, and the start-of-day and end-of-day
+digests on Cron and Resend.
 
 | Resource | State |
 | --- | --- |
@@ -88,6 +89,9 @@ wrangler.toml                   bindings: D1 and KV live, R2 pending
 | --- | --- | --- |
 | GET | `/api/health` | returns today's Mountain Time date |
 | GET | `/api/today` | cockpit bands: overdue, due today, what will slip, plus totals |
+| GET | `/api/digests/status` | whether today's digests have gone out, and the schedule state |
+| GET | `/api/digests/preview` | what the digest would say, without sending |
+| POST | `/api/digests/run` | sends now. Idempotent per day and kind unless `force=1` |
 | GET | `/api/action-items` | `view=all\|open\|overdue\|today\|waiting\|done`, `q=`, `project_id=` |
 | POST | `/api/action-items` | |
 | GET | `/api/action-items/:id` | |

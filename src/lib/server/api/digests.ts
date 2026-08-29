@@ -1,0 +1,72 @@
+import { Hono } from 'hono';
+import type { ApiEnv } from './env';
+import { DIGEST_HOURS, digestDueAt, runDigest } from '../digest';
+import type { DigestKind } from '../digest';
+import { ApiError } from './validate';
+import { todayInWorkingZone, WORKING_TIME_ZONE } from '../dates';
+
+/**
+ * HTTP access to the digests.
+ *
+ * The cron path does not go through here, but this is how the digest gets
+ * exercised without waiting for a scheduled firing, and it gives Paul a manual
+ * send when a cron is missed. Cron Triggers do not retry, so a manual trigger is
+ * part of the mitigation rather than a convenience.
+ *
+ * These routes sit behind Cloudflare Access like everything else, so no
+ * additional auth is layered on. If the app ever gains a second user, that
+ * changes.
+ */
+export const digests = new Hono<ApiEnv>();
+
+function parseKind(raw: string | undefined): DigestKind {
+	if (raw === 'morning' || raw === 'evening') return raw;
+	throw new ApiError(400, 'kind must be morning or evening.');
+}
+
+/** What the digest would say right now, without sending anything. */
+digests.get('/preview', async (c) => {
+	const kind = parseKind(c.req.query('kind') ?? 'morning');
+	const result = await runDigest(c.env, kind, { dryRun: true });
+	return c.json(result);
+});
+
+/** Where the schedule currently stands, for checking the DST arithmetic. */
+digests.get('/status', async (c) => {
+	const day = todayInWorkingZone();
+	const now = new Date();
+
+	const marks = await Promise.all(
+		(['morning', 'evening'] as DigestKind[]).map(async (kind) => ({
+			kind,
+			target_hour_mt: DIGEST_HOURS[kind],
+			sent_at: await c.env.SESSIONS.get(`digest:${day}:${kind}`)
+		}))
+	);
+
+	return c.json({
+		today: day,
+		time_zone: WORKING_TIME_ZONE,
+		mountain_hour_now: new Intl.DateTimeFormat('en-GB', {
+			timeZone: WORKING_TIME_ZONE,
+			hour: '2-digit',
+			hour12: false
+		}).format(now),
+		due_now: digestDueAt(now),
+		digests: marks,
+		resend_key_present: Boolean(c.env.RESEND_API_KEY),
+		from: c.env.DIGEST_FROM ?? 'onboarding@resend.dev',
+		to: c.env.DIGEST_TO ?? 'pacardopaul18@gmail.com'
+	});
+});
+
+/**
+ * Sends for real. Idempotent per Mountain day and kind unless force is passed,
+ * which exists so a genuinely missed digest can be re-sent on purpose.
+ */
+digests.post('/run', async (c) => {
+	const kind = parseKind(c.req.query('kind') ?? undefined);
+	const force = c.req.query('force') === '1';
+	const result = await runDigest(c.env, kind, { force });
+	return c.json(result, result.status === 'failed' ? 502 : 200);
+});

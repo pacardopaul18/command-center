@@ -15,8 +15,13 @@ declare global {
 				DB: import('@cloudflare/workers-types').D1Database;
 				SESSIONS: import('@cloudflare/workers-types').KVNamespace;
 				// Optional until R2 is enabled on the account and the binding in
-				// wrangler.toml is uncommented. Nothing in Stage 1 uses it.
+				// wrangler.toml is uncommented. Nothing before v1 uses it.
 				FILES?: import('@cloudflare/workers-types').R2Bucket;
+				// Worker secret, set with `wrangler secret put RESEND_API_KEY`.
+				RESEND_API_KEY?: string;
+				// Plain vars from wrangler.toml, not secrets.
+				DIGEST_FROM?: string;
+				DIGEST_TO?: string;
 			};
 			cf?: import('@cloudflare/workers-types').CfProperties;
 			ctx: import('@cloudflare/workers-types').ExecutionContext;

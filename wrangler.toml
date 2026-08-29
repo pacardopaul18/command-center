@@ -36,6 +36,28 @@ compatibility_flags = ["nodejs_compat"]
 workers_dev = false
 preview_urls = false
 
+# --- Scheduled digests ---
+# Cron Triggers are UTC only. 07:00 and 17:00 Mountain are 13:00/23:00 UTC in
+# summer (MDT, UTC-6) and 14:00/00:00 UTC in winter (MST, UTC-7), so the trigger
+# fires at all four hours and the handler decides which firing is real by
+# reading the Mountain hour. Three of every four firings do nothing.
+#
+# Cron Triggers do not retry. The idempotency marker is written only after Resend
+# accepts the message, so a failed send leaves the day unmarked and stays
+# retryable rather than being silently swallowed. See D40.
+[triggers]
+crons = ["0 0,13,14,23 * * *"]
+
+# --- Digest settings ---
+# Not secrets. RESEND_API_KEY is a Worker secret and never appears here.
+#
+# DIGEST_FROM defaults to Resend's shared sender, which needs no domain
+# verification and therefore cannot fail silently. Change it to an address on
+# kabuhayan.app only once that domain is verified in Resend.
+[vars]
+DIGEST_FROM = "onboarding@resend.dev"
+DIGEST_TO = "pacardopaul18@gmail.com"
+
 # --- Static assets ---
 # The client bundle and any prerendered pages. A request that matches an asset
 # is served without invoking the Worker; anything else, including every /api

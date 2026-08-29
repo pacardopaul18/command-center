@@ -456,6 +456,76 @@ been checked; it had been assumed. The batch was three migrations, not two. That
 is the whole argument for the rule: the snapshot is a reading of what is
 actually there, taken at the moment it matters.
 
+### D40: the digest cron fires four times a day and mostly does nothing
+
+Cron Triggers are UTC only and the working zone observes DST, so a fixed UTC
+schedule drifts by an hour twice a year. Rather than accept that, the trigger
+fires at all four UTC hours that could be 07:00 or 17:00 Mountain in either half
+of the year, and the handler decides which firing is real:
+
+    crons = ["0 0,13,14,23 * * *"]
+
+`digestDueAt` reads the Mountain hour and returns morning, evening, or nothing.
+Three of every four firings do nothing. That is the price of a UTC-only
+scheduler, and it is cheap: a no-op invocation costs almost nothing against a
+100,000 request per day allowance.
+
+Verified by simulating every firing across four windows rather than by reasoning
+about offsets. Each full Mountain day gets exactly one morning and exactly one
+evening digest through the spring-forward week, the fall-back week, an ordinary
+summer week and an ordinary winter week.
+
+One trap this walked into and out of: the evening digest for the fall-back day
+fires at 00:00Z on the *following* UTC date. A first test that only examined the
+four cron hours on the changeover date itself reported that nothing fired, which
+was the test being wrong rather than the schedule.
+
+### D41: Cron Triggers do not retry, and the mitigation is ordering, not hope
+
+Cloudflare Cron Triggers do not retry a failed invocation. This is a real gap
+and is not closed, only narrowed.
+
+What is done about it:
+
+1. The idempotency marker is written to KV **only after Resend accepts the
+   message**. A failed send leaves the day unmarked, so it stays retryable
+   instead of being recorded as done.
+2. `POST /api/digests/run?kind=...` sends on demand, and `?force=1` overrides the
+   marker, so a genuinely missed digest can be sent deliberately.
+3. `GET /api/digests/status` shows whether each digest has gone out today, so a
+   missing email is distinguishable from a broken schedule.
+4. The no-op path logs the reason, so an absent digest in the logs is
+   distinguishable from a crashed one.
+
+What is not done: nothing polls for a missed digest and nothing alerts on one.
+If digests become critical, the architecture doc's suggestion stands, which is to
+drive the HTTP endpoint from an external scheduler that does retry. That is a v2
+decision, not an MVP one.
+
+### D42: the built Worker is wrapped to add a scheduled handler
+
+`@sveltejs/adapter-cloudflare` emits a Worker whose default export has only
+`fetch`. A Cron Trigger against it fails, because Cloudflare invokes `scheduled`.
+Confirmed by reading the adapter's worker template, not assumed.
+
+The options were a second Worker deployed by hand, or stitching a `scheduled`
+export onto the built one. The second Worker loses the git-connected deploy
+model, which is the thing that makes shipping one push, so the build wraps
+instead. `scripts/wrap-worker.js` runs after `vite build`:
+
+1. moves the adapter output aside to `_app-worker.js`
+2. bundles `src/lib/server/scheduled.ts` to `_scheduled.js`
+3. writes a new `_worker.js` re-exporting the app's `fetch` and adding `scheduled`
+4. appends both generated files to `.assetsignore` so neither is served publicly
+
+The script fails the build loudly if the adapter output is missing, is already
+wrapped, or has no recognisable default export. A silent failure here would ship
+a Worker with no cron handler and no error, which is exactly the outcome worth
+spending a guard on.
+
+Verified from the bundled output: the deployed Worker exports both `fetch` and
+`scheduled`.
+
 ## Interpretation notes
 
 Not decisions. Judgment calls made inside an existing decision, recorded so the
