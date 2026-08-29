@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import type { ApiEnv } from './env';
 import { nowUtc } from '../dates';
 import { ApiError, optionalDate, optionalText, readJsonObject, requiredText } from './validate';
+import { meetingAi } from './meeting-ai';
 
 /**
  * Meetings, with transcript import.
@@ -35,6 +36,10 @@ function transcriptKey(meetingId: string): string {
 }
 
 export const meetings = new Hono<ApiEnv>();
+
+// Summary, extraction and proposal review live in their own module because the
+// human-in-the-loop rules are the whole substance of them. See meeting-ai.ts.
+meetings.route('/', meetingAi);
 
 /**
  * The list never returns transcript_text. A meetings log with ten transcripts

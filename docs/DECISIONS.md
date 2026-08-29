@@ -605,6 +605,65 @@ anything. Worth recording as the shape of a bad security test.
 If a sanitiser is still wanted on top, say so and it goes in, but it would be
 filtering a string that is never produced.
 
+### D45: AI extraction produces proposals, never action items
+
+Nothing the model extracts becomes tracked work without an explicit accept.
+
+The architecture doc says plainly that extraction gets names, dates and
+ownership wrong and that a human review step must sit before anything is routed.
+That review is only real if it can be interrupted, so a proposal is a row in
+`meeting_action_proposals` with its own lifecycle, not a transient result and not
+JSON on the meeting. Pending, accepted, or rejected.
+
+Accepting writes one action item and records which one, so there is a trail from
+"the model suggested this" to "this is being tracked". Re-running extraction
+deletes only pending proposals: a rejected proposal is never offered again, and
+an accepted one is never duplicated.
+
+The accept call may correct any field first. That is the point of review. The
+model got a name wrong in testing and the reviewer fixed it at the moment of
+acceptance rather than accepting something wrong and repairing it later.
+
+### D46: ambiguity is resolved by supplying what is missing, not by clicking past it
+
+An item the model flagged as ambiguous becomes an action item with status
+`ambiguous` unless the reviewer supplied both an owner and a deadline. It then
+surfaces in the cockpit's "what will slip" band instead of looking like settled
+work.
+
+There is a backstop under the model's own judgement: whatever it claims, an item
+with no owner or no deadline is treated as ambiguous, because those are exactly
+the two fields the architecture doc warns extraction gets wrong. The model is
+asked to flag, and the code assumes it sometimes will not.
+
+Verified end to end: an ambiguous proposal accepted with no corrections became an
+`ambiguous` action item; the same shape accepted with a corrected owner and an
+added deadline became `open`.
+
+### D47: the Anthropic SDK, not raw fetch
+
+The Claude call goes through `@anthropic-ai/sdk`, not a hand-rolled `fetch`.
+
+Reaching for `fetch` was the instinct, because the architecture doc describes
+calling the AI provider via fetch from a Worker and because a raw call looks
+lighter. It is the wrong instinct in a TypeScript project: the SDK is the
+supported surface, it carries the typed error classes the UI branches on, and it
+handles retries and response shapes that a hand-rolled call gets subtly wrong.
+
+Model is `claude-sonnet-5`, per Paul's ruling. Two properties of it shape the
+code and were checked rather than recalled: adaptive thinking is on by default,
+so `max_tokens` must leave room for it or responses truncate mid-answer; and
+`temperature`, `top_p` and `top_k` are rejected outright, so behaviour is steered
+by the prompt alone.
+
+Extraction uses structured outputs with a JSON schema rather than tool use, since
+it is a single extraction call rather than an agentic loop. The output is still
+validated field by field before it reaches the database: a schema constrains the
+shape, but this is model output crossing a trust boundary.
+
+`stop_reason` is checked on every call. A refusal and a truncation are real
+outcomes, and returning half a summary silently would be worse than failing.
+
 ## Interpretation notes
 
 Not decisions. Judgment calls made inside an existing decision, recorded so the

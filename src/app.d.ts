@@ -16,8 +16,9 @@ declare global {
 				SESSIONS: import('@cloudflare/workers-types').KVNamespace;
 				// Transcripts, generated PDFs, SOP exports. Live since T-v1-0.
 				FILES: import('@cloudflare/workers-types').R2Bucket;
-				// Worker secret, set with `wrangler secret put RESEND_API_KEY`.
+				// Worker secrets, set with `wrangler secret put NAME`.
 				RESEND_API_KEY?: string;
+				ANTHROPIC_API_KEY?: string;
 				// Plain vars from wrangler.toml, not secrets.
 				DIGEST_FROM?: string;
 				DIGEST_TO?: string;
