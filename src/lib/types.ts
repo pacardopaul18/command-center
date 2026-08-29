@@ -310,3 +310,28 @@ export interface Meeting {
 	transcript_chars?: number;
 	action_item_count?: number;
 }
+
+export const PROPOSAL_STATUSES = ['pending', 'accepted', 'rejected'] as const;
+export type ProposalStatus = (typeof PROPOSAL_STATUSES)[number];
+
+/**
+ * An AI-extracted suggestion. Not an action item, and never becomes one without
+ * an explicit accept. See D45.
+ */
+export interface Proposal {
+	id: string;
+	meeting_id: string;
+	title: string;
+	context: string | null;
+	owner: string | null;
+	deadline: string | null;
+	ambiguous: number;
+	ambiguity_note: string | null;
+	evidence: string | null;
+	status: ProposalStatus;
+	action_item_id: string | null;
+	model: string | null;
+	created_at: string;
+	reviewed_at: string | null;
+	action_item_status?: string | null;
+}

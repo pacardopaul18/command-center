@@ -15,7 +15,9 @@ SOP library with version history, Clients, Invoicing with aging, and the
 start-of-day and end-of-day digests on Cron and Resend.
 
 The stage gates and their evidence are in [docs/DECISIONS.md](docs/DECISIONS.md).
-v1 is next: Meetings, Templates, Reports and the one-way Asana push.
+v1 in progress. Meetings ships with transcript import to R2, AI summary and
+action item extraction, and a human review step that is structural rather than
+advisory. Templates, Reports and the one-way Asana push are next.
 
 | Resource | State |
 | --- | --- |
@@ -80,6 +82,7 @@ src/routes/api/[...path]/       SvelteKit to Hono bridge
 src/routes/+page.svelte         Today cockpit
 src/routes/actions/             Action Items screen
 src/routes/projects/            Projects list and detail
+src/routes/meetings/            Meetings, transcripts, AI review
 src/routes/sops/                SOP library and version history
 src/routes/clients/             Clients registry
 src/routes/invoices/            Invoicing, billing periods and aging
@@ -93,6 +96,12 @@ wrangler.toml                   bindings: D1 and KV live, R2 pending
 | --- | --- | --- |
 | GET | `/api/health` | returns today's Mountain Time date |
 | GET | `/api/today` | cockpit bands: overdue, due today, what will slip, plus totals |
+| GET | `/api/meetings` | `q=` searches titles, attendees and transcript text |
+| PUT | `/api/meetings/:id/transcript` | raw text body. R2 first, then D1 |
+| POST | `/api/meetings/:id/summarize` | writes an unreviewed summary |
+| POST | `/api/meetings/:id/extract` | writes proposals, never action items |
+| POST | `/api/meetings/:id/proposals/:pid/accept` | may correct any field first |
+| POST | `/api/meetings/:id/proposals/:pid/reject` | recorded, not deleted |
 | GET | `/api/digests/status` | whether today's digests have gone out, and the schedule state |
 | GET | `/api/digests/preview` | what the digest would say, without sending |
 | POST | `/api/digests/run` | sends now. Idempotent per day and kind unless `force=1` |
