@@ -51,14 +51,25 @@ async function readBody(res: Response): Promise<{ json: unknown | null; text: st
 export async function apiWrite<T = Record<string, unknown>>(
 	path: string,
 	method: 'POST' | 'PATCH' | 'PUT' | 'DELETE',
-	body?: unknown
+	body?: unknown,
+	/**
+	 * For the one route that takes a raw body, the transcript upload.
+	 *
+	 * The guard this function provides is about the RESPONSE, not the request:
+	 * it exists so a 2xx that is not JSON cannot be mistaken for success. A text
+	 * request body loses none of that, and leaving one write outside the guard
+	 * because of its content type would have left exactly one place where a
+	 * silent failure could still happen.
+	 */
+	contentType: string = 'application/json'
 ): Promise<WriteResult<T>> {
+	const raw = contentType !== 'application/json';
 	let res: Response;
 	try {
 		res = await fetch(path, {
 			method,
-			headers: body === undefined ? undefined : { 'content-type': 'application/json' },
-			body: body === undefined ? undefined : JSON.stringify(body)
+			headers: body === undefined ? undefined : { 'content-type': contentType },
+			body: body === undefined ? undefined : raw ? String(body) : JSON.stringify(body)
 		});
 	} catch {
 		return {

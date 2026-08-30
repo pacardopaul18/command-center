@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { apiWrite } from '$lib/http';
 	import { invalidateAll } from '$app/navigation';
 	import {
 		PHASE_LABELS,
@@ -53,14 +54,9 @@
 		busy = true;
 		errorMessage = '';
 		try {
-			const res = await fetch('/api/projects', {
-				method: 'POST',
-				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify(draft)
-			});
-			const payload = (await res.json().catch(() => ({}))) as { error?: string };
-			if (!res.ok) {
-				errorMessage = payload.error ?? 'Could not create the project.';
+			const result = await apiWrite('/api/projects', 'POST', draft);
+			if (!result.ok) {
+				errorMessage = result.error ?? 'Could not create the project.';
 				return;
 			}
 			await invalidateAll();

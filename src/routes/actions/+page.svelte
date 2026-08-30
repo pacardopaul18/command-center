@@ -138,9 +138,7 @@
 		notice = '';
 		errorMessage = '';
 		try {
-			const res = await fetch(`/api/action-items/${item.id}/asana`, { method: 'POST' });
-			const payload = (await res.json().catch(() => ({}))) as {
-				error?: string;
+			const result = await apiWrite<{
 				asana?: {
 					gid: string;
 					url: string;
@@ -148,12 +146,12 @@
 					assignee: string;
 					project_name: string | null;
 				};
-			};
-			if (!res.ok) {
-				errorMessage = payload.error ?? 'Could not push to Asana.';
+			}>(`/api/action-items/${item.id}/asana`, 'POST');
+			if (!result.ok) {
+				errorMessage = result.error ?? 'Could not push to Asana.';
 				return;
 			}
-			const a = payload.asana;
+			const a = result.data?.asana;
 			// Says where the task landed, because the first production push created
 			// one nobody could find. D-asana-1.
 			notice = a

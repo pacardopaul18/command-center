@@ -5,6 +5,7 @@ import { nowUtc } from '../dates';
 import { ApiError } from './validate';
 import { GoogleError } from '../google';
 import { BATCH_SIZE, ingestStep, triageBatch } from '../mail-jobs';
+import { assertOwned, assertThreadOwned, resolveAccount } from '../accounts';
 import { draftReply } from '../ai';
 import { stripHtml } from '../google';
 
@@ -52,12 +53,9 @@ function asApiError(err: unknown): unknown {
 	return err;
 }
 
-async function connectionRow(db: D1Database) {
-	const row = await db
-		.prepare("SELECT id, account_email, status FROM connections WHERE provider = 'google'")
-		.first<{ id: string; account_email: string | null; status: string }>();
-	if (!row) throw new ApiError(400, 'No Google account is connected.');
-	return row;
+/** The account this request is about. Named, or the only one there is. */
+async function connectionRow(db: D1Database, named?: string) {
+	return resolveAccount(db, named);
 }
 
 async function readState(db: D1Database, connectionId: string) {
@@ -93,7 +91,7 @@ async function readState(db: D1Database, connectionId: string) {
  * at.
  */
 email.post('/ingest/start', async (c) => {
-	const conn = await connectionRow(c.env.DB);
+	const conn = await connectionRow(c.env.DB, c.req.query('account'));
 	const days = Math.min(Math.max(Number(c.req.query('days') ?? 30), 1), 365);
 	const now = nowUtc();
 
@@ -123,6 +121,7 @@ email.post('/ingest/start', async (c) => {
  */
 email.post('/ingest/step', async (c) => {
 	requireConfig(c.env);
+	const conn = await connectionRow(c.env.DB, c.req.query('account'));
 	try {
 		// The same function the cron calls. The budget is larger than the cron's
 		// because this invocation is not shared with a digest, but it is not
@@ -134,7 +133,7 @@ email.post('/ingest/step', async (c) => {
 		// being kept, because each message now decodes two MIME parts and writes
 		// markup instead of stripped text. More calls cost nothing: the job
 		// records its position after every one.
-		const outcome = await ingestStep(c.env, 36);
+		const outcome = await ingestStep(c.env, conn.id, 36);
 		return c.json({ ok: true, ...outcome });
 	} catch (err) {
 		throw asApiError(err);
@@ -143,7 +142,7 @@ email.post('/ingest/step', async (c) => {
 
 /** Stops a run without discarding it. Resumes from the same cursor. */
 email.post('/ingest/pause', async (c) => {
-	const conn = await connectionRow(c.env.DB);
+	const conn = await connectionRow(c.env.DB, c.req.query('account'));
 	await c.env.DB.prepare(
 		"UPDATE email_ingest_state SET status = 'paused', updated_at = ? WHERE connection_id = ?"
 	)
@@ -153,7 +152,7 @@ email.post('/ingest/pause', async (c) => {
 });
 
 email.post('/ingest/resume', async (c) => {
-	const conn = await connectionRow(c.env.DB);
+	const conn = await connectionRow(c.env.DB, c.req.query('account'));
 	await c.env.DB.prepare(
 		`UPDATE email_ingest_state SET status = 'running', last_error = NULL, updated_at = ?
      WHERE connection_id = ?`
@@ -170,7 +169,7 @@ email.post('/ingest/resume', async (c) => {
  * work by being looked at.
  */
 email.get('/ingest', async (c) => {
-	const conn = await connectionRow(c.env.DB);
+	const conn = await connectionRow(c.env.DB, c.req.query('account'));
 	const state = await readState(c.env.DB, conn.id);
 
 	const stored = await c.env.DB.prepare(
@@ -207,10 +206,9 @@ email.get('/ingest', async (c) => {
  * ---------------------------------------------------------------------- */
 
 email.get('/threads', async (c) => {
-	const where: string[] = [
-		"t.connection_id = (SELECT id FROM connections WHERE provider = 'google')"
-	];
-	const binds: unknown[] = [];
+	const account = await resolveAccount(c.env.DB, c.req.query('account'));
+	const where: string[] = ['t.connection_id = ?'];
+	const binds: unknown[] = [account.id];
 
 	const clientId = c.req.query('client_id');
 	if (clientId) {
@@ -295,10 +293,12 @@ email.get('/threads', async (c) => {
 	const counts = await c.env.DB.prepare(
 		`SELECT ${effective} AS severity, COUNT(*) AS n
      FROM email_threads t
-     WHERE t.connection_id = (SELECT id FROM connections WHERE provider = 'google')
+     WHERE t.connection_id = ?
        AND t.archived_at IS NULL
      GROUP BY ${effective}`
-	).all<{ severity: string | null; n: number }>();
+	)
+		.bind(account.id)
+		.all<{ severity: string | null; n: number }>();
 
 	return c.json({
 		threads: results ?? [],
@@ -309,6 +309,9 @@ email.get('/threads', async (c) => {
 });
 
 email.get('/threads/:id', async (c) => {
+	const account = await resolveAccount(c.env.DB, c.req.query('account'));
+	await assertThreadOwned(c.env.DB, c.req.param('id'), account.id);
+
 	const id = c.req.param('id');
 	const thread = await c.env.DB.prepare(
 		`SELECT t.*, cl.name AS client_name FROM email_threads t
@@ -369,6 +372,9 @@ email.get('/threads/:id', async (c) => {
 
 /** One message body, streamed out of R2. Never re-fetched from Google. */
 email.get('/messages/:id/body', async (c) => {
+	const account = await resolveAccount(c.env.DB, c.req.query('account'));
+	await assertOwned(c.env.DB, 'email_messages', c.req.param('id'), account.id);
+
 	const row = await c.env.DB.prepare(
 		'SELECT body_key, body_format FROM email_messages WHERE id = ?'
 	)
@@ -418,10 +424,11 @@ email.post('/summarise', async (c) => {
 			'No AI key is configured. Set it with `wrangler secret put ANTHROPIC_API_KEY`.'
 		);
 	}
+	const conn = await connectionRow(c.env.DB, c.req.query('account'));
 	try {
 		// Same reasoning as the ingest budget: bounded per invocation, resumed by
 		// the next call.
-		const outcome = await triageBatch(c.env, 160);
+		const outcome = await triageBatch(c.env, conn.id, 160);
 		return c.json({ ok: true, ...outcome });
 	} catch (err) {
 		throw asApiError(err);
@@ -430,7 +437,7 @@ email.post('/summarise', async (c) => {
 
 /** How much of the mail has been summarised, without summarising anything. */
 email.get('/summarise', async (c) => {
-	const conn = await connectionRow(c.env.DB);
+	const conn = await connectionRow(c.env.DB, c.req.query('account'));
 	const counts = await c.env.DB.prepare(
 		`SELECT COUNT(*) AS threads,
             SUM(CASE WHEN summary IS NOT NULL THEN 1 ELSE 0 END) AS summarised,
@@ -511,6 +518,9 @@ const CATEGORIES = ['correspondence', 'automated', 'newsletter', 'notification']
  * re-classified later.
  */
 email.post('/threads/:id/correct', async (c) => {
+	const account = await resolveAccount(c.env.DB, c.req.query('account'));
+	await assertThreadOwned(c.env.DB, c.req.param('id'), account.id);
+
 	const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
 	const severity = body.severity === null || body.severity === undefined
 		? null
@@ -547,6 +557,9 @@ email.post('/threads/:id/correct', async (c) => {
  * alter Paul's actual mail.
  */
 email.post('/threads/:id/archive', async (c) => {
+	const account = await resolveAccount(c.env.DB, c.req.query('account'));
+	await assertThreadOwned(c.env.DB, c.req.param('id'), account.id);
+
 	const undo = c.req.query('undo') === 'true';
 	const result = await c.env.DB.prepare(
 		'UPDATE email_threads SET archived_at = ?, updated_at = ? WHERE id = ?'
@@ -558,6 +571,9 @@ email.post('/threads/:id/archive', async (c) => {
 });
 
 email.post('/threads/:id/read', async (c) => {
+	const account = await resolveAccount(c.env.DB, c.req.query('account'));
+	await assertThreadOwned(c.env.DB, c.req.param('id'), account.id);
+
 	const undo = c.req.query('undo') === 'true';
 	const result = await c.env.DB.prepare(
 		'UPDATE email_threads SET read_at = ?, updated_at = ? WHERE id = ?'
@@ -666,6 +682,9 @@ async function clientContext(db: D1Database, clientId: string | null): Promise<s
  * make the app a thing to review rather than a thing that helps.
  */
 email.post('/threads/:id/draft', async (c) => {
+	const account = await resolveAccount(c.env.DB, c.req.query('account'));
+	await assertThreadOwned(c.env.DB, c.req.param('id'), account.id);
+
 	const apiKey = c.env.ANTHROPIC_API_KEY;
 	if (!apiKey) {
 		throw new ApiError(503, 'No AI key is configured.');
@@ -779,6 +798,9 @@ email.post('/threads/:id/draft', async (c) => {
 
 /** Paul's edit, kept beside the model's version rather than over it. */
 email.patch('/threads/:id/draft', async (c) => {
+	const account = await resolveAccount(c.env.DB, c.req.query('account'));
+	await assertThreadOwned(c.env.DB, c.req.param('id'), account.id);
+
 	const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
 	const edited = typeof body.body === 'string' ? body.body : null;
 	if (edited === null) throw new ApiError(400, 'A draft body is required.');
@@ -800,6 +822,9 @@ email.patch('/threads/:id/draft', async (c) => {
  * it did know.
  */
 email.post('/threads/:id/draft/copied', async (c) => {
+	const account = await resolveAccount(c.env.DB, c.req.query('account'));
+	await assertThreadOwned(c.env.DB, c.req.param('id'), account.id);
+
 	const result = await c.env.DB.prepare(
 		'UPDATE email_drafts SET copied_at = ?, updated_at = ? WHERE thread_id = ?'
 	)
@@ -810,6 +835,9 @@ email.post('/threads/:id/draft/copied', async (c) => {
 });
 
 email.delete('/threads/:id/draft', async (c) => {
+	const account = await resolveAccount(c.env.DB, c.req.query('account'));
+	await assertThreadOwned(c.env.DB, c.req.param('id'), account.id);
+
 	const result = await c.env.DB.prepare('DELETE FROM email_drafts WHERE thread_id = ?')
 		.bind(c.req.param('id'))
 		.run();

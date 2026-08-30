@@ -41,8 +41,27 @@ export const SCOPES = [
 	'email'
 ] as const;
 
-/** KV key for the tokens. Deliberately not a D1 column: see migration 0011. */
-export const TOKEN_KEY = 'google:tokens';
+/**
+ * KV key for one account's tokens. Deliberately not a D1 column, see 0011.
+ *
+ * Per connection as of E1. Tokens were previously held at a single key, which
+ * is the same single-account assumption `UNIQUE (provider)` encoded in the
+ * schema: a second account would have overwritten the first one's credentials
+ * and the first would have stopped working with no error anywhere.
+ */
+export function tokenKey(connectionId: string): string {
+	return `google:tokens:${connectionId}`;
+}
+
+/**
+ * Where the single account's tokens lived before E1.
+ *
+ * Read as a fallback so the connection Paul already has keeps working across
+ * the change, and rewritten to the per-connection key on the next refresh. A
+ * migration that silently logs somebody out is a migration that looks like a
+ * bug to the person it happens to.
+ */
+export const LEGACY_TOKEN_KEY = 'google:tokens';
 
 /** KV key for the one-time state value that ties a callback to its start. */
 const STATE_KEY = 'google:oauth-state';
@@ -72,8 +91,11 @@ export interface StoredTokens {
 	scope: string;
 }
 
-export async function readTokens(kv: KVNamespace): Promise<StoredTokens | null> {
-	const raw = await kv.get(TOKEN_KEY);
+export async function readTokens(
+	kv: KVNamespace,
+	connectionId: string
+): Promise<StoredTokens | null> {
+	const raw = (await kv.get(tokenKey(connectionId))) ?? (await kv.get(LEGACY_TOKEN_KEY));
 	if (!raw) return null;
 	try {
 		return JSON.parse(raw) as StoredTokens;
@@ -84,12 +106,22 @@ export async function readTokens(kv: KVNamespace): Promise<StoredTokens | null> 
 	}
 }
 
-export async function writeTokens(kv: KVNamespace, tokens: StoredTokens): Promise<void> {
-	await kv.put(TOKEN_KEY, JSON.stringify(tokens));
+export async function writeTokens(
+	kv: KVNamespace,
+	connectionId: string,
+	tokens: StoredTokens
+): Promise<void> {
+	await kv.put(tokenKey(connectionId), JSON.stringify(tokens));
 }
 
-export async function clearTokens(kv: KVNamespace): Promise<void> {
-	await kv.delete(TOKEN_KEY);
+export async function clearTokens(kv: KVNamespace, connectionId: string): Promise<void> {
+	await kv.delete(tokenKey(connectionId));
+	// The legacy key is also cleared when the account that inherited it
+	// disconnects, or a disconnect would leave a live credential behind under a
+	// name nothing points at any more.
+	const legacy = await kv.get(LEGACY_TOKEN_KEY);
+	const own = await kv.get(tokenKey(connectionId));
+	if (legacy && !own) await kv.delete(LEGACY_TOKEN_KEY);
 }
 
 /**
@@ -250,15 +282,18 @@ export async function refreshTokens(
  */
 export async function accessToken(
 	kv: KVNamespace,
+	connectionId: string,
 	clientId: string,
 	clientSecret: string
 ): Promise<StoredTokens> {
-	const tokens = await readTokens(kv);
-	if (!tokens) throw new GoogleError(400, 'No Google account is connected.');
+	const tokens = await readTokens(kv, connectionId);
+	if (!tokens) throw new GoogleError(400, 'That account is not connected.');
 	if (!needsRefresh(tokens)) return tokens;
 
+	// A refresh also moves an inherited legacy token onto its own key, so the
+	// migration completes itself the first time each account renews.
 	const renewed = await refreshTokens(tokens, clientId, clientSecret);
-	await writeTokens(kv, renewed);
+	await writeTokens(kv, connectionId, renewed);
 	return renewed;
 }
 

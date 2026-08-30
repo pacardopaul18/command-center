@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { apiWrite } from '$lib/http';
 	import { goto, invalidateAll } from '$app/navigation';
 	import { page } from '$app/state';
 	import { TEMPLATE_TYPE_LABELS, TEMPLATE_TYPES } from '$lib/types';
@@ -112,22 +113,17 @@
 		draft = '';
 		copied = false;
 		try {
-			const res = await fetch(`/api/templates/${template.id}/draft`, {
-				method: 'POST',
-				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({ situation, recipient })
-			});
-			const payload = (await res.json().catch(() => ({}))) as {
-				error?: string;
-				draft?: string;
-				model?: string;
-			};
-			if (!res.ok) {
-				errorMessage = payload.error ?? 'Could not draft a reply.';
+			const result = await apiWrite<{ draft?: string; model?: string }>(
+				`/api/templates/${template.id}/draft`,
+				'POST',
+				{ situation, recipient }
+			);
+			if (!result.ok) {
+				errorMessage = result.error ?? 'Could not draft a reply.';
 				return;
 			}
-			draft = payload.draft ?? '';
-			draftModel = payload.model ?? '';
+			draft = result.data?.draft ?? '';
+			draftModel = result.data?.model ?? '';
 			notice = 'Draft ready. Read it before you send it.';
 		} catch {
 			errorMessage = 'Could not reach the server.';

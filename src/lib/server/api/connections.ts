@@ -3,6 +3,7 @@ import { Hono } from 'hono';
 import type { ApiEnv } from './env';
 import { nowUtc } from '../dates';
 import { ApiError } from './validate';
+import { assertOwned, listAccounts, resolveAccount } from '../accounts';
 import {
 	GoogleError,
 	SCOPES,
@@ -63,8 +64,16 @@ function asApiError(err: unknown): unknown {
 	return err;
 }
 
-async function row(db: D1Database) {
-	return db.prepare('SELECT * FROM connections WHERE provider = ?').bind(GOOGLE_ID).first();
+/**
+ * The connection a request is about.
+ *
+ * Was: whichever row had `provider = 'google'`, which was safe only because the
+ * schema permitted exactly one. With that constraint gone, taking the first row
+ * would quietly answer about an arbitrary account.
+ */
+async function row(db: D1Database, named?: string) {
+	const account = await resolveAccount(db, named);
+	return db.prepare('SELECT * FROM connections WHERE id = ?').bind(account.id).first();
 }
 
 /**
@@ -74,22 +83,27 @@ async function row(db: D1Database) {
  * cleared. A dead refresh token is a reconnect, not a reason to forget which
  * account was linked.
  */
-async function markNeedsReauth(db: D1Database, why: string): Promise<void> {
+async function markNeedsReauth(db: D1Database, accountId: string, why: string): Promise<void> {
 	await db
 		.prepare(
 			`UPDATE connections SET status = 'needs_reauth', status_note = ?, updated_at = ?
-       WHERE provider = ?`
+       WHERE id = ?`
 		)
-		.bind(why, nowUtc(), GOOGLE_ID)
+		.bind(why, nowUtc(), accountId)
 		.run();
 }
 
 connections.get('/', async (c) => {
-	const record = await row(c.env.DB);
-	const tokens = await readTokens(c.env.SESSIONS);
+	const named = c.req.query('account');
+	const record = (await row(c.env.DB, named).catch(() => null)) as {
+		id: string;
+	} | null;
+	const tokens = record ? await readTokens(c.env.SESSIONS, record.id) : null;
 
 	return c.json({
 		connection: record,
+		// Every account, so a picker can be drawn without a second request.
+		accounts: await listAccounts(c.env.DB),
 		// Whether a credential exists, never any part of it. Same rule the Asana
 		// status follows.
 		token_present: Boolean(tokens),
@@ -154,15 +168,26 @@ connections.get('/google/callback', async (c) => {
 
 		// Tokens to KV, never to D1: the nightly backup dumps every D1 table to
 		// R2, and a refresh token is a long-lived credential. See migration 0011.
-		await writeTokens(c.env.SESSIONS, tokens);
-
 		const now = nowUtc();
+
+		// Keyed on the account, not on the provider. Under the old constraint a
+		// second account overwrote the first, taking its mail with it on the next
+		// cascade; now each is its own row.
+		const existing = await c.env.DB.prepare(
+			'SELECT id FROM connections WHERE provider = ? AND account_email IS ?'
+		)
+			.bind(GOOGLE_ID, me.email)
+			.first<{ id: string }>();
+
+		const connectionId = existing?.id ?? crypto.randomUUID();
+		await writeTokens(c.env.SESSIONS, connectionId, tokens);
+
 		await c.env.DB.prepare(
 			`INSERT INTO connections
          (id, provider, account_email, granted_scopes, status, status_note,
           connected_at, last_refresh_at, created_at, updated_at)
        VALUES (?, ?, ?, ?, 'connected', NULL, ?, ?, ?, ?)
-       ON CONFLICT(provider) DO UPDATE SET
+       ON CONFLICT(provider, account_email) DO UPDATE SET
          account_email = excluded.account_email,
          granted_scopes = excluded.granted_scopes,
          status = 'connected',
@@ -171,7 +196,7 @@ connections.get('/google/callback', async (c) => {
          last_refresh_at = excluded.last_refresh_at,
          updated_at = excluded.updated_at`
 		)
-			.bind(crypto.randomUUID(), GOOGLE_ID, me.email, tokens.scope, now, now, now, now)
+			.bind(connectionId, GOOGLE_ID, me.email, tokens.scope, now, now, now, now)
 			.run();
 
 		settings.searchParams.set('google', `Connected ${me.email ?? 'your Google account'}.`);
@@ -190,13 +215,14 @@ connections.get('/google/callback', async (c) => {
  * record that an account was once linked is worth keeping and costs nothing.
  */
 connections.post('/google/disconnect', async (c) => {
-	await clearTokens(c.env.SESSIONS);
+	const account = await resolveAccount(c.env.DB, c.req.query('account'));
+	await clearTokens(c.env.SESSIONS, account.id);
 	await c.env.DB.prepare(
 		`UPDATE connections
      SET status = 'disconnected', status_note = 'Disconnected here.', updated_at = ?
-     WHERE provider = ?`
+     WHERE id = ?`
 	)
-		.bind(nowUtc(), GOOGLE_ID)
+		.bind(nowUtc(), account.id)
 		.run();
 	return c.json({ ok: true });
 });
@@ -210,10 +236,8 @@ connections.post('/google/disconnect', async (c) => {
  */
 connections.post('/google/calendar/refresh', async (c) => {
 	const { clientId, clientSecret } = requireConfig(c.env);
-	const record = await row(c.env.DB);
-	if (!record) throw new ApiError(400, 'No Google account is connected.');
-
-	const connectionId = String((record as { id: string }).id);
+	const account = await resolveAccount(c.env.DB, c.req.query('account'));
+	const connectionId = account.id;
 	const days = Math.min(Math.max(Number(c.req.query('days') ?? 14), 1), 60);
 	const from = new Date();
 	const to = new Date(Date.now() + days * 86_400_000);
@@ -228,8 +252,10 @@ connections.post('/google/calendar/refresh', async (c) => {
 	 * else Google adds by default.
 	 */
 	const chosen = await c.env.DB.prepare(
-		'SELECT id, provider_calendar_id, summary FROM calendars WHERE sync_enabled = 1'
-	).all<{ id: string; provider_calendar_id: string; summary: string | null }>();
+		'SELECT id, provider_calendar_id, summary FROM calendars WHERE sync_enabled = 1 AND connection_id = ?'
+	)
+		.bind(connectionId)
+		.all<{ id: string; provider_calendar_id: string; summary: string | null }>();
 
 	const targets = (chosen.results ?? []).length
 		? (chosen.results ?? [])
@@ -238,7 +264,7 @@ connections.post('/google/calendar/refresh', async (c) => {
 	let fetched = 0;
 
 	try {
-		const tokens = await accessToken(c.env.SESSIONS, clientId, clientSecret);
+		const tokens = await accessToken(c.env.SESSIONS, connectionId, clientId, clientSecret);
 
 		for (const target of targets) {
 			const events = await listEvents(
@@ -295,16 +321,16 @@ connections.post('/google/calendar/refresh', async (c) => {
 		}
 	} catch (err) {
 		if (err instanceof GoogleError && err.needsReauth) {
-			await markNeedsReauth(c.env.DB, err.message);
+			await markNeedsReauth(c.env.DB, connectionId, err.message);
 		}
 		throw asApiError(err);
 	}
 
 	await c.env.DB.prepare(
 		`UPDATE connections SET last_read_at = ?, last_refresh_at = ?, status = 'connected',
-       status_note = NULL, updated_at = ? WHERE provider = ?`
+       status_note = NULL, updated_at = ? WHERE id = ?`
 	)
-		.bind(at, at, at, GOOGLE_ID)
+		.bind(at, at, at, connectionId)
 		.run();
 
 	return c.json({
@@ -318,6 +344,7 @@ connections.post('/google/calendar/refresh', async (c) => {
 
 /** The cached calendar, read from D1. Never calls Google. */
 connections.get('/google/calendar', async (c) => {
+	const account = await resolveAccount(c.env.DB, c.req.query('account'));
 	const days = Math.min(Math.max(Number(c.req.query('days') ?? 7), 1), 60);
 	const until = new Date(Date.now() + days * 86_400_000).toISOString();
 
@@ -325,13 +352,13 @@ connections.get('/google/calendar', async (c) => {
 		`SELECT e.*, m.title AS meeting_title
      FROM calendar_events e
      LEFT JOIN meetings m ON m.id = e.meeting_id
-     WHERE e.starts_at <= ?
+     WHERE e.connection_id = ? AND e.starts_at <= ?
      ORDER BY e.starts_at ASC`
 	)
-		.bind(until)
+		.bind(account.id, until)
 		.all();
 
-	const record = await row(c.env.DB);
+	const record = await row(c.env.DB, c.req.query('account'));
 	return c.json({
 		events: results ?? [],
 		last_read_at: (record as { last_read_at?: string } | null)?.last_read_at ?? null
@@ -352,14 +379,12 @@ connections.get('/google/calendar', async (c) => {
  */
 connections.post('/google/calendars/refresh', async (c) => {
 	const { clientId, clientSecret } = requireConfig(c.env);
-	const record = await row(c.env.DB);
-	if (!record) throw new ApiError(400, 'No Google account is connected.');
-
-	const connectionId = String((record as { id: string }).id);
+	const account = await resolveAccount(c.env.DB, c.req.query('account'));
+	const connectionId = account.id;
 	const at = nowUtc();
 
 	try {
-		const tokens = await accessToken(c.env.SESSIONS, clientId, clientSecret);
+		const tokens = await accessToken(c.env.SESSIONS, connectionId, clientId, clientSecret);
 		const calendars = await listCalendars(tokens.access_token);
 
 		for (const cal of calendars) {
@@ -396,22 +421,35 @@ connections.post('/google/calendars/refresh', async (c) => {
 		return c.json({ ok: true, found: calendars.length });
 	} catch (err) {
 		if (err instanceof GoogleError && err.needsReauth) {
-			await markNeedsReauth(c.env.DB, err.message);
+			await markNeedsReauth(c.env.DB, connectionId, err.message);
 		}
 		throw asApiError(err);
 	}
 });
 
 connections.get('/google/calendars', async (c) => {
+	// Was unfiltered, which returned every calendar across every account. With
+	// one account that read as harmless; with two it is a cross-account leak,
+	// and it would have shipped as one.
+	const account = await resolveAccount(c.env.DB, c.req.query('account'));
 	const { results } = await c.env.DB.prepare(
 		`SELECT c.*, (SELECT COUNT(*) FROM calendar_events e WHERE e.calendar_id = c.id) AS event_count
      FROM calendars c
+     WHERE c.connection_id = ?
      ORDER BY c.is_primary DESC, c.summary COLLATE NOCASE`
-	).all();
+	)
+		.bind(account.id)
+		.all();
 	return c.json({ calendars: results ?? [] });
 });
 
 connections.post('/google/calendars/:id/toggle', async (c) => {
+	// The account follows the calendar row, so ownership is asserted rather
+	// than inferred: toggling somebody else's calendar is a write across
+	// accounts, which is worse than reading across them.
+	const account = await resolveAccount(c.env.DB, c.req.query('account'));
+	await assertOwned(c.env.DB, 'calendars', c.req.param('id'), account.id);
+
 	const on = c.req.query('on') === 'true';
 	const result = await c.env.DB.prepare(
 		'UPDATE calendars SET sync_enabled = ?, updated_at = ? WHERE id = ?'

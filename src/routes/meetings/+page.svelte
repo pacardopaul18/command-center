@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { apiWrite } from '$lib/http';
 	import { goto, invalidateAll } from '$app/navigation';
 	import { formatDay } from '$lib/format';
 	import Button from '$lib/components/Button.svelte';
@@ -39,19 +40,16 @@
 		busy = true;
 		errorMessage = '';
 		try {
-			const res = await fetch('/api/meetings', {
-				method: 'POST',
-				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify(draft)
-			});
-			const payload = (await res.json().catch(() => ({}))) as {
-				error?: string;
-				meeting?: { id: string };
-			};
-			if (!res.ok) {
-				errorMessage = payload.error ?? 'Could not create the meeting.';
+			const result = await apiWrite<{ meeting?: { id: string } }>(
+				'/api/meetings',
+				'POST',
+				draft
+			);
+			if (!result.ok) {
+				errorMessage = result.error ?? 'Could not create the meeting.';
 				return;
 			}
+			const payload = result.data ?? {};
 			draft = blankDraft();
 			showForm = false;
 			notice = 'Meeting created.';

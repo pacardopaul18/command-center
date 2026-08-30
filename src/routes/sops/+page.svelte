@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { apiWrite } from '$lib/http';
 	import { goto, invalidateAll } from '$app/navigation';
 	import { page } from '$app/state';
 	import { formatDay } from '$lib/format';
@@ -48,16 +49,12 @@
 		busy = true;
 		errorMessage = '';
 		try {
-			const res = await fetch('/api/sops', {
-				method: 'POST',
-				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify(draft)
-			});
-			const payload = (await res.json().catch(() => ({}))) as { error?: string; sop?: { id: string } };
-			if (!res.ok) {
-				errorMessage = payload.error ?? 'Could not create the SOP.';
+			const result = await apiWrite<{ sop?: { id: string } }>('/api/sops', 'POST', draft);
+			if (!result.ok) {
+				errorMessage = result.error ?? 'Could not create the SOP.';
 				return;
 			}
+			const payload = result.data ?? {};
 			draft = blankDraft();
 			showForm = false;
 			notice = 'SOP created.';

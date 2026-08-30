@@ -2630,6 +2630,64 @@ answer to what happens when the preferred job stops making progress. Without
 one, the failure is invisible, because a firing that did nothing and a firing
 that was busy look identical in a log unless the log says which.
 
+### D108: a named account that does not exist is refused, never defaulted away
+
+The rule the whole of E1 hangs on, and the one place a scoping bug turns into a
+leak that looks like it works.
+
+`resolveAccount` takes the account a request names. If the name matches nothing
+it is a 404, not a fallback to whichever connection came first. Falling back
+would hand the caller a plausible answer about somebody else's mailbox with
+nothing anywhere saying so, which is worse than an error by exactly the amount
+that it is invisible.
+
+With no name and one connection, that connection is used: a single-account setup
+should not have to name itself. With no name and several, there is no sane
+default, so the caller is told to say which rather than given one at random.
+
+For rows reached directly, a thread or a message or a calendar, ownership is
+asserted rather than filtered. A query that returns nothing and a request that is
+denied look the same to a caller who guessed an id, but they are different
+promises, and the second is the one segregation needs. The refusal is a 404
+rather than a 403, because telling somebody a row exists but belongs to another
+account is itself a small leak.
+
+### D109: identity may be listed, content may not
+
+Found by the segregation test refusing to pass, and worth the entry because the
+easy fix would have removed the guarantee along with the failure.
+
+`GET /api/connections` returns the account roster, so a picker can offer a
+choice. That means it names every account, which the first version of the
+segregation test called a leak. It could have been made to pass by dropping the
+assertion.
+
+The real line is narrower and stronger. Account IDENTITY may appear on the
+roster endpoint and nowhere else. Account CONTENT, meaning mail, threads,
+snippets, calendars and events, may cross nowhere at all. The test now asserts
+both halves, and additionally asserts that the roster carries only identity
+fields, because a content field would be least noticed sitting among legitimate
+ones.
+
+Every account is Paul's. The protection is not from him, it is from a query that
+quietly widens and shows one client's correspondence while he is looking at
+another's.
+
+### D110: the calendar list was a leak that had already shipped
+
+`GET /google/calendars` had no account filter. It returned every calendar across
+every connection.
+
+With one account that is invisible and harmless. The moment a second connects it
+is a cross-account leak, and it would have arrived as one on the day
+multi-account shipped rather than as a regression anybody would look for.
+
+It was caught by the route classification hour, not by the code, and only
+because two routes filed as "genuinely global" were read again rather than
+trusted. The general shape: a query with no filter is correct exactly as long as
+the data has only one of the thing it is not filtering on, and that is a
+property of today's data, not of the code.
+
 ## Interpretation notes
 
 Not decisions. Judgment calls made inside an existing decision, recorded so the

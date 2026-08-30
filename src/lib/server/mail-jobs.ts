@@ -9,6 +9,7 @@ import {
 	stripHtml
 } from './google';
 import { AiError, summariseThread, triageThread } from './ai';
+import { listAccounts } from './accounts';
 import type { Usage } from './ai';
 
 /**
@@ -120,9 +121,17 @@ export interface IngestOutcome {
 	spent: number;
 }
 
-async function connectionRow(db: D1Database) {
+/**
+ * The account a job is running for.
+ *
+ * Takes an id rather than finding "the" connection. A job that resolves its own
+ * account is a job that cannot be told which one to work on, and with more than
+ * one connected it would silently pick whichever row came first.
+ */
+async function connectionRow(db: D1Database, accountId: string) {
 	return db
-		.prepare("SELECT id, account_email FROM connections WHERE provider = 'google'")
+		.prepare('SELECT id, account_email FROM connections WHERE id = ?')
+		.bind(accountId)
 		.first<{ id: string; account_email: string | null }>();
 }
 
@@ -307,10 +316,14 @@ async function storeMessage(
  * The cursor is written after the batch, never before, so a run cut short by
  * the budget or by a failure resumes from the last message actually stored.
  */
-export async function ingestStep(env: MailEnv, budgetUnits: number): Promise<IngestOutcome> {
+export async function ingestStep(
+	env: MailEnv,
+	accountId: string,
+	budgetUnits: number
+): Promise<IngestOutcome> {
 	const budget = new Budget(budgetUnits);
-	const conn = await connectionRow(env.DB);
-	if (!conn) throw new Error('No Google account is connected.');
+	const conn = await connectionRow(env.DB, accountId);
+	if (!conn) throw new Error('That account is not connected.');
 
 	const state = await env.DB.prepare(
 		'SELECT * FROM email_ingest_state WHERE connection_id = ?'
@@ -342,6 +355,7 @@ export async function ingestStep(env: MailEnv, budgetUnits: number): Promise<Ing
 	try {
 		const tokens = await accessToken(
 			env.SESSIONS,
+			conn.id,
 			env.GOOGLE_CLIENT_ID ?? '',
 			env.GOOGLE_CLIENT_SECRET ?? ''
 		);
@@ -500,13 +514,17 @@ export interface TriageOutcome {
  * One pass answers both questions against the same bodies, which are the
  * expensive part to load. Running them in parallel halves the wait per thread.
  */
-export async function triageBatch(env: MailEnv, budgetUnits: number): Promise<TriageOutcome> {
+export async function triageBatch(
+	env: MailEnv,
+	accountId: string,
+	budgetUnits: number
+): Promise<TriageOutcome> {
 	const budget = new Budget(budgetUnits);
 	const apiKey = env.ANTHROPIC_API_KEY;
 	if (!apiKey) throw new Error('No AI key is configured.');
 
-	const conn = await connectionRow(env.DB);
-	if (!conn) throw new Error('No Google account is connected.');
+	const conn = await connectionRow(env.DB, accountId);
+	if (!conn) throw new Error('That account is not connected.');
 
 	/**
 	 * Threads whose newest message has not been triaged.
@@ -726,54 +744,55 @@ export async function runMailMaintenance(
 	env: MailEnv,
 	budgetUnits = CRON_BUDGET
 ): Promise<MaintenanceOutcome> {
-	const conn = await connectionRow(env.DB);
-	if (!conn) return { ran: 'nothing', detail: 'no Google account connected' };
-
-	const state = await env.DB.prepare(
-		'SELECT status FROM email_ingest_state WHERE connection_id = ?'
-	)
-		.bind(conn.id)
-		.first<{ status: string }>();
-
-	const parts: string[] = [];
-	let ran: MaintenanceOutcome['ran'] = 'nothing';
-	let left = budgetUnits;
+	const accounts = await listAccounts(env.DB);
+	if (accounts.length === 0) return { ran: 'nothing', detail: 'no Google account connected' };
 
 	/**
-	 * Ingest gets a share, never the whole firing.
+	 * The budget is split across accounts rather than spent on the first one.
 	 *
-	 * The first version handed the entire budget to the ingest whenever one was
-	 * unfinished, and that starves triage completely. It nearly did: a run left
-	 * `running` after every body had already been re-read would have spent every
-	 * firing paging through two thousand listings that stored nothing, while a
-	 * backlog of triage sat untouched indefinitely. A job that is making no
-	 * progress must not be able to hold the whole budget.
+	 * With several connected, giving the whole firing to whichever came first
+	 * would starve the rest exactly as an unfinished ingest starved triage
+	 * before D107. The same lesson, one level up: priority is fine, exclusivity
+	 * is not.
 	 */
-	if (state && (state.status === 'running' || state.status === 'failed')) {
-		const share = Math.max(12, Math.floor(budgetUnits * 0.4));
-		try {
-			const outcome = await ingestStep(env, share);
-			ran = 'ingest';
-			left -= Math.max(outcome.spent, 1);
-			parts.push(
-				`ingest ${outcome.fetched} stored, ${outcome.seen} seen, status ${outcome.status}`
-			);
-		} catch (err) {
-			parts.push(`ingest failed: ${String(err)}`);
-			left -= share;
-		}
-	}
+	const share = Math.max(12, Math.floor(budgetUnits / accounts.length));
+	const parts: string[] = [];
+	let ran: MaintenanceOutcome['ran'] = 'nothing';
 
-	if (left >= COST_PER_THREAD) {
-		try {
-			const outcome = await triageBatch(env, left);
-			ran = ran === 'ingest' ? 'ingest' : 'triage';
-			parts.push(
-				`triage ${outcome.summarised} done, ${outcome.skipped} skipped, ` +
-					`${outcome.failed} failed, ${outcome.remaining} left`
-			);
-		} catch (err) {
-			parts.push(`triage failed: ${String(err)}`);
+	for (const account of accounts) {
+		const label = account.account_email ?? account.id;
+		let left = share;
+
+		const state = await env.DB.prepare(
+			'SELECT status FROM email_ingest_state WHERE connection_id = ?'
+		)
+			.bind(account.id)
+			.first<{ status: string }>();
+
+		if (state && (state.status === 'running' || state.status === 'failed')) {
+			const ingestShare = Math.max(12, Math.floor(share * 0.4));
+			try {
+				const outcome = await ingestStep(env, account.id, ingestShare);
+				ran = 'ingest';
+				left -= Math.max(outcome.spent, 1);
+				parts.push(`${label} ingest ${outcome.fetched} stored, status ${outcome.status}`);
+			} catch (err) {
+				parts.push(`${label} ingest failed: ${String(err)}`);
+				left -= ingestShare;
+			}
+		}
+
+		if (left >= COST_PER_THREAD) {
+			try {
+				const outcome = await triageBatch(env, account.id, left);
+				ran = ran === 'ingest' ? 'ingest' : 'triage';
+				parts.push(
+					`${label} triage ${outcome.summarised} done, ${outcome.skipped} skipped, ` +
+						`${outcome.failed} failed, ${outcome.remaining} left`
+				);
+			} catch (err) {
+				parts.push(`${label} triage failed: ${String(err)}`);
+			}
 		}
 	}
 

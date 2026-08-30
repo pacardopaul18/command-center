@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { apiWrite } from '$lib/http';
 	import { invalidateAll } from '$app/navigation';
 	import { STATUS_LABELS } from '$lib/types';
 	import type { Proposal } from '$lib/types';
@@ -61,14 +62,17 @@
 		busy = true;
 		errorMessage = '';
 		try {
-			const res = await fetch(`/api/meetings/${meeting.id}/transcript`, {
-				method: 'PUT',
-				headers: { 'content-type': 'text/plain' },
-				body: transcriptDraft
-			});
-			const payload = (await res.json().catch(() => ({}))) as { error?: string };
-			if (!res.ok) {
-				errorMessage = payload.error ?? 'Could not import the transcript.';
+			// The one raw-body write. It goes through the same guard as every
+			// other, because the guard is about the response and a transcript
+			// upload can fail silently exactly like anything else.
+			const result = await apiWrite(
+				`/api/meetings/${meeting.id}/transcript`,
+				'PUT',
+				transcriptDraft,
+				'text/plain'
+			);
+			if (!result.ok) {
+				errorMessage = result.error ?? 'Could not import the transcript.';
 				return;
 			}
 			await invalidateAll();

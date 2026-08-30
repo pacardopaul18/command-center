@@ -45,14 +45,9 @@
 		busy = true;
 		errorMessage = '';
 		try {
-			const res = await fetch(`/api/projects/${project.id}`, {
-				method: 'PATCH',
-				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify(body)
-			});
-			const payload = (await res.json().catch(() => ({}))) as { error?: string };
-			if (!res.ok) {
-				errorMessage = payload.error ?? 'The update failed.';
+			const result = await apiWrite(`/api/projects/${project.id}`, 'PATCH', body);
+			if (!result.ok) {
+				errorMessage = result.error ?? 'The update failed.';
 				return false;
 			}
 			await invalidateAll();

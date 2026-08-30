@@ -338,19 +338,15 @@
 		try {
 			// Names are sent alongside the gids so the screen can show a label
 			// without calling Asana on every load. The gid is what identifies.
-			const res = await fetch('/api/asana', {
-				method: 'PUT',
-				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({
-					workspace_gid: workspaceGid,
-					workspace_name: workspaces.find((w) => w.gid === workspaceGid)?.name ?? null,
-					project_gid: projectGid || null,
-					project_name: projects.find((p) => p.gid === projectGid)?.name ?? null,
-					assignee: assignee.trim() || null
-				})
+			const result = await apiWrite('/api/asana', 'PUT', {
+				workspace_gid: workspaceGid,
+				workspace_name: workspaces.find((w) => w.gid === workspaceGid)?.name ?? null,
+				project_gid: projectGid || null,
+				project_name: projects.find((p) => p.gid === projectGid)?.name ?? null,
+				assignee: assignee.trim() || null
 			});
-			if (!res.ok) {
-				errorMessage = await readError(res, 'Could not save the Asana settings.');
+			if (!result.ok) {
+				errorMessage = result.error ?? 'Could not save the Asana settings.';
 				return;
 			}
 			notice = 'Saved. Action items can be pushed to Asana now.';
