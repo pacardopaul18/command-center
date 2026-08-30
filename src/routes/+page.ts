@@ -46,6 +46,18 @@ export const load: PageLoad = async ({ fetch }) => {
 		slipping: SlippingItem[];
 		meetings: TodayMeeting[];
 		invoice_alerts: InvoiceAlert[];
+		week: ActionItem[];
+		finished: { title: string; completed_at: string; project_name: string | null }[];
+		card_limit: number;
+		counts: {
+			overdue: number;
+			due_today: number;
+			week: number;
+			meetings: number;
+			invoice_alerts: number;
+			awaiting_decision: number;
+			past_due_cents: number;
+		};
 		totals: { open: number; done_today: number };
 	};
 };

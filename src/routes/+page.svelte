@@ -1,13 +1,30 @@
 <script lang="ts">
 	import { invalidateAll } from '$app/navigation';
-	import { AGING_LABELS, formatMoney, STATUS_LABELS } from '$lib/types';
+	import { STATUS_LABELS, formatMoney } from '$lib/types';
 	import type { ActionItem } from '$lib/types';
 	import { deadlineLabel, formatDay } from '$lib/format';
+	import { apiWrite } from '$lib/http';
 	import Button from '$lib/components/Button.svelte';
 	import Card from '$lib/components/Card.svelte';
 	import StatusChip from '$lib/components/StatusChip.svelte';
 	import type { PageData } from './$types';
-	import type { InvoiceAlert, SlipReason, TodayMeeting } from './+page';
+	import type { InvoiceAlert, TodayMeeting } from './+page';
+
+	/**
+	 * The dashboard.
+	 *
+	 * Designed for the week Paul actually starts with, which has almost nothing
+	 * in it, rather than for the seed. A screen that only reads well once it is
+	 * full is a screen that is wrong on day one and right on day ninety, and day
+	 * one is the one that decides whether it gets opened again. So every card
+	 * states what it would say when empty, and the empty state is a sentence
+	 * rather than a blank.
+	 *
+	 * Cards show a few rows and name the true count beside them. A card is a
+	 * glance; the module behind it owns the full list, and every card links
+	 * there. The API caps its own rows for the same reason: the old cockpit
+	 * returned all 816 overdue items to draw a list of five.
+	 */
 
 	let { data }: { data: PageData } = $props();
 
@@ -16,142 +33,94 @@
 	let errorMessage = $state('');
 
 	const attention = $derived([...data.overdue, ...data.due_today]);
+	const attentionCount = $derived(data.counts.overdue + data.counts.due_today);
+
+	/** The one sentence at the top. It has to be true on an empty day too. */
+	const headline = $derived.by(() => {
+		if (data.counts.overdue > 0) {
+			return `${data.counts.overdue} overdue. Start there.`;
+		}
+		if (data.counts.due_today > 0) {
+			return `Nothing overdue. ${data.counts.due_today} due today.`;
+		}
+		if (data.counts.week > 0) {
+			return `Nothing overdue, nothing due today. ${data.counts.week} due this week.`;
+		}
+		return 'Nothing overdue and nothing due. A clear board.';
+	});
 
 	async function markDone(item: ActionItem) {
 		busy = true;
 		errorMessage = '';
-		try {
-			const res = await fetch(`/api/action-items/${item.id}`, {
-				method: 'PATCH',
-				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({ status: 'done' })
-			});
-			if (!res.ok) {
-				const body = (await res.json().catch(() => ({}))) as { error?: string };
-				errorMessage = body.error ?? 'Could not update the item.';
-				return;
-			}
+		const result = await apiWrite(`/api/action-items/${item.id}`, 'PATCH', { status: 'done' });
+		if (!result.ok) {
+			errorMessage = result.error ?? 'Could not update the item.';
+		} else {
 			await invalidateAll();
 			notice = 'Marked done.';
-		} catch {
-			errorMessage = 'Could not reach the server.';
-		} finally {
-			busy = false;
 		}
+		busy = false;
 	}
 
-	const REASON_LABELS: Record<SlipReason, string> = {
-		ambiguous: 'Needs clarification',
-		blocked: 'Blocked',
-		stalled: 'No movement',
-		due_soon: 'Due soon'
-	};
-
-	/** Days since an item was last touched, for the stalled rows. */
-	function daysSince(timestamp: string): number {
-		const then = Date.parse(timestamp);
-		if (Number.isNaN(then)) return 0;
-		return Math.max(0, Math.floor((Date.now() - then) / 86_400_000));
-	}
-
-	function slipMeta(item: PageData['slipping'][number]): string {
-		const bits: string[] = [];
-		if (item.reason === 'stalled') {
-			const n = daysSince(item.updated_at);
-			bits.push(`No movement for ${n} day${n === 1 ? '' : 's'}`);
-		} else if (item.deadline) {
-			bits.push(`Due ${formatDay(item.deadline)}`);
-		}
-		if (item.owner) bits.push(item.owner);
-		if (item.project_name) bits.push(item.project_name);
-		return bits.join(' · ');
-	}
-
-	function attentionMeta(item: ActionItem): string {
-		const due = deadlineLabel(item.deadline, data.today, item.status);
-		const bits: string[] = [due.text];
-		if (item.owner) bits.push(item.owner);
-		if (item.project_name) bits.push(item.project_name);
-		return bits.join(' · ');
-	}
-
-	/** One plain line describing the day. No hype, no exclamation points. */
-	const summary = $derived.by(() => {
-		const need = attention.length;
-		const slip = data.slipping.length;
-		if (need === 0 && slip === 0) {
-			return data.totals.open === 0
-				? 'Nothing is open.'
-				: 'Nothing is overdue and nothing is due today.';
-		}
-		const parts: string[] = [];
-		if (need > 0) {
-			parts.push(`${need} item${need === 1 ? '' : 's'} need${need === 1 ? 's' : ''} attention now`);
-		}
-		if (slip > 0) {
-			parts.push(`${slip} more could slip`);
-		}
-		return `${parts.join('. ')}.`;
-	});
-	/**
-	 * The meeting row's second line.
-	 *
-	 * The design mocks a clock time here. `meetings` has no time column, so this
-	 * carries what is actually stored: who the meeting is with, and what came out
-	 * of it that is still outstanding. D27.
-	 */
 	function meetingMeta(m: TodayMeeting): string {
-		const bits: string[] = [];
-		bits.push(m.client_name ?? 'No client');
-		if (m.project_name) bits.push(m.project_name);
+		const bits = [m.client_name ?? 'No client'];
 		if (m.pending_proposals > 0) {
-			bits.push(`${m.pending_proposals} proposal${m.pending_proposals === 1 ? '' : 's'} to review`);
+			bits.push(`${m.pending_proposals} to review`);
 		}
-		if (m.open_follow_ups > 0) {
-			bits.push(`${m.open_follow_ups} open follow-up${m.open_follow_ups === 1 ? '' : 's'}`);
-		}
+		if (m.open_follow_ups > 0) bits.push(`${m.open_follow_ups} open`);
 		return bits.join(', ');
 	}
 
-	/**
-	 * What the meeting chip says, worst first.
-	 *
-	 * A pending proposal is a decision waiting on Paul, which outranks an
-	 * unreviewed summary, which outranks having nothing to do.
-	 */
-	function meetingChip(m: TodayMeeting): { tone: 'overdue' | 'atrisk' | 'waiting' | 'done'; label: string } {
-		if (m.pending_proposals > 0) return { tone: 'atrisk', label: 'To review' };
-		if (m.has_summary && !m.summary_reviewed_at) return { tone: 'waiting', label: 'Unreviewed' };
-		if (m.has_summary) return { tone: 'done', label: 'Reviewed' };
-		return { tone: 'waiting', label: 'No summary' };
-	}
-
 	function invoiceMeta(inv: InvoiceAlert): string {
-		const days = inv.days_overdue;
-		return `${formatMoney(inv.outstanding_cents)} outstanding, ${days} day${days === 1 ? '' : 's'} past due`;
+		return `${formatMoney(inv.outstanding_cents)}, ${inv.days_overdue} day${inv.days_overdue === 1 ? '' : 's'} past due`;
 	}
 </script>
 
-<svelte:head>
-	<title>Today | Command Center</title>
-</svelte:head>
+<svelte:head><title>Dashboard | Command Center</title></svelte:head>
 
 <header class="head">
 	<div>
-		<h1>Today</h1>
-		<p class="sub">{summary}</p>
+		<h1>Dashboard</h1>
+		<p class="sub">{headline}</p>
 	</div>
 	<p class="date mono">{formatDay(data.today)}</p>
 </header>
 
-<p class="status-line" role="status" aria-live="polite">{notice}</p>
+{#if notice}<p class="status-line" role="status" aria-live="polite">{notice}</p>{/if}
+{#if errorMessage}<p class="error-banner" role="alert">{errorMessage}</p>{/if}
 
-{#if errorMessage}
-	<p class="error-banner" role="alert">{errorMessage}</p>
-{/if}
+<!--
+	Four numbers that answer "is anything on fire". Each is a link, because a
+	number you cannot act on is decoration.
+-->
+<div class="tiles">
+	<a class="tile" class:alarm={data.counts.overdue > 0} href="/actions?view=overdue">
+		<span class="tile-value">{data.counts.overdue}</span>
+		<span class="tile-label">Overdue</span>
+	</a>
+	<a class="tile" href="/actions?view=today">
+		<span class="tile-value">{data.counts.due_today}</span>
+		<span class="tile-label">Due today</span>
+	</a>
+	<a class="tile" href="/reports/slipping">
+		<span class="tile-value">{data.counts.awaiting_decision}</span>
+		<span class="tile-label">Awaiting a decision</span>
+	</a>
+	<a class="tile" class:alarm={data.counts.past_due_cents > 0} href="/invoices">
+		<!--
+			"None" rather than 0.00. A zero formatted as money reads as an amount
+			at a glance, and on the one screen meant to be read at a glance the
+			difference between "no money is late" and "0.00 is late" matters.
+		-->
+		<span class="tile-value" class:mono={data.counts.past_due_cents > 0}>
+			{data.counts.past_due_cents > 0 ? formatMoney(data.counts.past_due_cents) : 'None'}
+		</span>
+		<span class="tile-label">Past due</span>
+	</a>
+</div>
 
 <div class="bands">
-	<Card title="Overdue and due today" padded={false}>
+	<Card title="Needs you now" subtitle={attentionCount > attention.length ? `Showing ${attention.length} of ${attentionCount}` : undefined} padded={false}>
 		{#snippet actions()}
 			<Button href="/actions?view=overdue" variant="ghost" size="sm">Open tracker</Button>
 		{/snippet}
@@ -175,39 +144,15 @@
 						</button>
 						<a class="body" href="/actions?view=open&q={encodeURIComponent(item.title)}">
 							<span class="title">{item.title}</span>
-							<span class="meta mono">{attentionMeta(item)}</span>
+							<span class="meta mono">
+								{due.date}{item.owner ? `, ${item.owner}` : ''}{item.project_name
+									? `, ${item.project_name}`
+									: ''}
+							</span>
 						</a>
 						<StatusChip
 							tone={due.tone === 'overdue' ? 'overdue' : item.status}
 							label={due.tone === 'overdue' ? 'Overdue' : STATUS_LABELS[item.status]}
-							size="sm"
-						/>
-					</li>
-				{/each}
-			</ul>
-		{/if}
-	</Card>
-
-	<Card title="What will slip" padded={false}>
-		{#snippet actions()}
-			<Button href="/actions?view=open" variant="ghost" size="sm">Open tracker</Button>
-		{/snippet}
-
-		{#if data.slipping.length === 0}
-			<p class="empty">
-				Nothing is stalled, blocked or due in the next {data.soon_days} days.
-			</p>
-		{:else}
-			<ul class="rows">
-				{#each data.slipping as item (item.id)}
-					<li class="row" class:flag={item.reason !== 'due_soon'}>
-						<a class="body indent" href="/actions?view=open&q={encodeURIComponent(item.title)}">
-							<span class="title">{item.title}</span>
-							<span class="meta mono">{slipMeta(item)}</span>
-						</a>
-						<StatusChip
-							tone={item.reason === 'due_soon' ? 'atrisk' : item.reason === 'stalled' ? 'waiting' : item.reason}
-							label={REASON_LABELS[item.reason]}
 							size="sm"
 						/>
 					</li>
@@ -226,20 +171,60 @@
 		{:else}
 			<ul class="rows">
 				{#each data.meetings as m (m.id)}
-					{@const chip = meetingChip(m)}
 					<li class="row" class:flag={m.pending_proposals > 0}>
 						<a class="body indent" href="/meetings/{m.id}">
 							<span class="title">{m.title}</span>
 							<span class="meta mono">{meetingMeta(m)}</span>
 						</a>
-						<StatusChip tone={chip.tone} label={chip.label} size="sm" />
+						{#if m.pending_proposals > 0}
+							<StatusChip tone="atrisk" label="To review" size="sm" />
+						{:else if m.has_summary && !m.summary_reviewed_at}
+							<StatusChip tone="waiting" label="Unreviewed" size="sm" />
+						{:else if m.has_summary}
+							<StatusChip tone="done" label="Reviewed" size="sm" />
+						{/if}
 					</li>
 				{/each}
 			</ul>
 		{/if}
 	</Card>
 
-	<Card title="Invoice alerts" padded={false}>
+	<Card
+		title="The week ahead"
+		subtitle={data.counts.week > data.week.length
+			? `Showing ${data.week.length} of ${data.counts.week}`
+			: undefined}
+		padded={false}
+	>
+		{#snippet actions()}
+			<Button href="/actions?view=open" variant="ghost" size="sm">Open tracker</Button>
+		{/snippet}
+
+		{#if data.week.length === 0}
+			<p class="empty">Nothing falls due in the next {data.soon_days} days.</p>
+		{:else}
+			<ul class="rows">
+				{#each data.week as item (item.id)}
+					<li class="row">
+						<a class="body indent" href="/actions?view=open&q={encodeURIComponent(item.title)}">
+							<span class="title">{item.title}</span>
+							<span class="meta mono">
+								{formatDay(item.deadline!)}{item.owner ? `, ${item.owner}` : ''}
+							</span>
+						</a>
+					</li>
+				{/each}
+			</ul>
+		{/if}
+	</Card>
+
+	<Card
+		title="Money past due"
+		subtitle={data.counts.invoice_alerts > data.invoice_alerts.length
+			? `Showing ${data.invoice_alerts.length} of ${data.counts.invoice_alerts}`
+			: undefined}
+		padded={false}
+	>
 		{#snippet actions()}
 			<Button href="/invoices" variant="ghost" size="sm">Invoicing</Button>
 		{/snippet}
@@ -254,9 +239,59 @@
 							<span class="title">{inv.client_name} {inv.invoice_number}</span>
 							<span class="meta mono">{invoiceMeta(inv)}</span>
 						</a>
+					</li>
+				{/each}
+			</ul>
+		{/if}
+	</Card>
+
+	<Card title="Finished today" padded={false}>
+		{#if data.finished.length === 0}
+			<p class="empty">Nothing closed yet today.</p>
+		{:else}
+			<ul class="rows">
+				{#each data.finished as item (item.title)}
+					<li class="row done">
+						<span class="body indent">
+							<span class="title">{item.title}</span>
+							{#if item.project_name}<span class="meta mono">{item.project_name}</span>{/if}
+						</span>
+					</li>
+				{/each}
+			</ul>
+		{/if}
+	</Card>
+
+	<Card title="What will slip" padded={false}>
+		{#snippet actions()}
+			<Button href="/reports/slipping" variant="ghost" size="sm">Full report</Button>
+		{/snippet}
+
+		{#if data.slipping.length === 0}
+			<p class="empty">
+				Nothing is stalled, blocked or waiting on a decision.
+			</p>
+		{:else}
+			<ul class="rows">
+				{#each data.slipping as item (item.id)}
+					<li class="row" class:flag={item.reason !== 'due_soon'}>
+						<a class="body indent" href="/actions?view=open&q={encodeURIComponent(item.title)}">
+							<span class="title">{item.title}</span>
+							<span class="meta mono">{item.owner ?? 'Unassigned'}</span>
+						</a>
 						<StatusChip
-							tone={inv.aging_bucket === 'b0_30' ? 'atrisk' : 'overdue'}
-							label={AGING_LABELS[inv.aging_bucket]}
+							tone={item.reason === 'due_soon'
+								? 'atrisk'
+								: item.reason === 'stalled'
+									? 'waiting'
+									: item.reason}
+							label={item.reason === 'due_soon'
+								? 'Due soon'
+								: item.reason === 'stalled'
+									? 'Stalled'
+									: item.reason === 'blocked'
+										? 'Blocked'
+										: 'Ambiguous'}
 							size="sm"
 						/>
 					</li>
@@ -283,34 +318,95 @@
 		gap: var(--space-3);
 	}
 
+	.head h1 {
+		margin: 0;
+		font-size: var(--text-xl);
+		font-weight: var(--weight-medium);
+	}
+
 	.sub {
-		margin-top: var(--space-1);
+		margin: var(--space-1) 0 0;
 		color: var(--text-secondary);
+		font-size: var(--text-sm);
 	}
 
 	.date {
+		margin: 0;
+		font-size: var(--text-xs);
 		color: var(--text-secondary);
+	}
+
+	.status-line,
+	.error-banner {
+		margin: var(--space-3) 0 0;
+		padding: var(--space-2) var(--space-3);
+		border-radius: var(--radius-sm);
 		font-size: var(--text-sm);
 	}
 
 	.status-line {
-		min-height: 1.25rem;
-		margin-top: var(--space-2);
-		font-size: var(--text-sm);
+		background: var(--green-100);
 		color: var(--green-700);
 	}
 
 	.error-banner {
-		margin-top: var(--space-2);
-		padding: var(--space-3);
-		border: 1px solid var(--red-200);
-		border-radius: var(--radius-sm);
 		background: var(--red-100);
 		color: var(--red);
 	}
 
-	/* One column at 412px. Two from 960px, matching D22's shell breakpoint,
-	   because these cards sit beside the sidebar. */
+	.tiles {
+		display: grid;
+		grid-template-columns: repeat(2, 1fr);
+		gap: var(--space-3);
+		margin-top: var(--space-4);
+	}
+
+	@media (min-width: 720px) {
+		.tiles {
+			grid-template-columns: repeat(4, 1fr);
+		}
+	}
+
+	.tile {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-1);
+		min-width: 0;
+		padding: var(--space-4);
+		border: 1px solid var(--border-thin);
+		border-radius: var(--radius-md);
+		background: var(--surface-card);
+		color: inherit;
+		text-decoration: none;
+	}
+
+	.tile:hover {
+		border-color: var(--border-strong);
+		background: var(--surface-hover);
+	}
+
+	.tile:focus-visible {
+		outline: 2px solid var(--navy);
+		outline-offset: 2px;
+	}
+
+	.tile.alarm {
+		border-color: var(--red-200);
+		background: var(--red-100);
+	}
+
+	.tile-value {
+		font-size: var(--text-xl);
+		font-weight: var(--weight-semibold);
+		line-height: 1.15;
+		overflow-wrap: anywhere;
+	}
+
+	.tile-label {
+		font-size: var(--text-xs);
+		color: var(--text-secondary);
+	}
+
 	.bands {
 		display: grid;
 		grid-template-columns: 1fr;
@@ -318,20 +414,17 @@
 		margin-top: var(--space-4);
 	}
 
-	/*
-	 * Without this the cards refuse to shrink below their longest row.
-	 *
-	 * `grid-template-columns: 1fr` is `minmax(auto, 1fr)`, and that automatic
-	 * minimum is the content's own width, so a long action item title makes the
-	 * card wider than the viewport and takes the whole page sideways with it.
-	 * The ellipsis on the title never gets a chance to apply, because nothing
-	 * ever tells the card it is allowed to be narrower than its contents.
-	 *
-	 * Found at 412px against the volume seed, whose titles are longer than the
-	 * handful the cockpit was originally built with.
-	 */
+	/* Grid tracks default to their content's width, which lets a long title drag
+	   the page sideways. See the note in the cockpit's history. */
 	.bands > :global(*) {
 		min-width: 0;
+	}
+
+	@media (min-width: 960px) {
+		.bands {
+			grid-template-columns: 1fr 1fr;
+			align-items: start;
+		}
 	}
 
 	.rows {
@@ -349,12 +442,13 @@
 		border-radius: var(--radius-sm);
 	}
 
-	.row:hover {
-		background: var(--surface-hover);
-	}
-
 	.row.flag {
 		border-left-color: var(--gold);
+		background: var(--gold-50);
+	}
+
+	.row.done .title {
+		color: var(--text-secondary);
 	}
 
 	.check {
@@ -364,21 +458,26 @@
 		justify-content: center;
 		width: var(--tap);
 		height: var(--tap);
-		margin: 0 0 0 calc(var(--space-3) * -1);
+		border: 0;
 		background: none;
-		border: none;
 		cursor: pointer;
 	}
 
 	.box {
-		width: 20px;
-		height: 20px;
-		border: 2px solid var(--border-control);
-		border-radius: var(--radius-sm);
+		width: 18px;
+		height: 18px;
+		border: 1.5px solid var(--border-control);
+		border-radius: 4px;
 	}
 
 	.check:hover .box {
 		border-color: var(--navy);
+	}
+
+	.check:focus-visible {
+		outline: 2px solid var(--navy);
+		outline-offset: 2px;
+		border-radius: var(--radius-sm);
 	}
 
 	.body {
@@ -389,37 +488,13 @@
 		text-decoration: none;
 	}
 
-	.body:hover {
-		color: inherit;
-		text-decoration: none;
-	}
-
-	.body:hover .title {
-		text-decoration: underline;
-		text-underline-offset: 2px;
-	}
-
-	.indent {
+	.body.indent {
 		padding-left: var(--space-2);
 	}
 
-	/*
-	 * Truncation is a desktop affordance. It assumes a hover or a wider window to
-	 * recover the rest, and a phone has neither, so at narrow widths a truncated
-	 * title is information the reader simply cannot get to. Below 720px these
-	 * wrap instead.
-	 */
 	.title {
 		display: block;
 		overflow-wrap: anywhere;
-	}
-
-	@media (min-width: 720px) {
-		.title {
-			overflow: hidden;
-			text-overflow: ellipsis;
-			white-space: nowrap;
-		}
 	}
 
 	.meta {
@@ -431,6 +506,7 @@
 	}
 
 	@media (min-width: 720px) {
+		.title,
 		.meta {
 			overflow: hidden;
 			text-overflow: ellipsis;
@@ -439,21 +515,15 @@
 	}
 
 	.empty {
-		padding: var(--space-5) var(--space-4);
-		text-align: center;
+		margin: 0;
+		padding: var(--space-4);
+		font-size: var(--text-sm);
 		color: var(--text-secondary);
 	}
 
 	.footnote {
 		margin-top: var(--space-5);
-		font-size: var(--text-sm);
+		font-size: var(--text-xs);
 		color: var(--text-secondary);
-	}
-
-	@media (min-width: 960px) {
-		.bands {
-			grid-template-columns: 1fr 1fr;
-			align-items: start;
-		}
 	}
 </style>

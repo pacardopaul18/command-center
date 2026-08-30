@@ -15,7 +15,7 @@
 	let { children, today }: { children: Snippet; today: string } = $props();
 
 	const nav = [
-		{ href: '/', label: 'Today', exact: true },
+		{ href: '/', label: 'Dashboard', exact: true },
 		{ href: '/actions', label: 'Action items', exact: false },
 		{ href: '/projects', label: 'Projects', exact: false },
 		{ href: '/meetings', label: 'Meetings', exact: false },
