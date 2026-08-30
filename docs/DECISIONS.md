@@ -2847,6 +2847,68 @@ rule was known and still not applied, which says the rule needs to be a habit at
 the moment of writing rather than a thing recalled afterwards. Each test now
 builds what it needs.
 
+### D120: reconcile the status models now, because this is the cheapest it will ever be
+
+Four entities carry four independent state vocabularies. `blocked` and `done`
+appear in three, `waiting` only on action items, `in_review` only on tickets,
+and projects carry status and PMI phase as separate axes. A workflow engine has
+to compose steps across all of them, and today there is no shared idea of what
+a step is or what finished means.
+
+The pre-audit flagged this and hedged: three of the four are live in code, so
+reconciliation looked expensive. The ruling reads the volumes the other way, and
+it is right. Production holds 4 action items, 0 tickets, 0 projects. Live in
+code is not the same as live in data, and reconciliation is only expensive when
+there is history to migrate. Today it is a schema change over four rows. After
+one real week it is a cross-entity migration over hundreds with meaning attached
+to each.
+
+The alternative was to wrap and translate, which would have encoded all four
+vocabularies permanently and made every workflow step carry a translation table
+forever. A compatibility layer is a decision to keep the problem.
+
+One state machine: open, in_progress, waiting, blocked, in_review, done,
+cancelled, with per-entity subsets. `ambiguous` becomes a flag on action items
+rather than a state, because it describes confidence in the record, not where
+the work has got to, and mixing those is why the vocabulary diverged in the
+first place. Projects keep status and phase as orthogonal axes, which was
+already correct.
+
+### D121: Pillar 2 epic map, sequence fixed, estimates deliberately absent
+
+| Epic | What |
+| --- | --- |
+| P2-E1 | Unified work state. Blocks everything below |
+| P2-E2 | Workflows, F10. Definitions, instances, steps targeting tickets or action items |
+| P2-E3 | Phase checklists and nudges, F8 |
+| P2-E4 | Ticket to Asana path. Tickets have none; action items do |
+| P2-E5 | Schedule intelligence, F2. Last, and estimate deferred |
+
+Sequence: E1, then E2 and E4 in parallel, then E3, then E5.
+
+**No hour figures.** The Pillar 1 audit reasoned from 865 real messages; this one
+had 4 action items, 0 tickets, 0 projects and 0 time entries. The shapes are
+solid and the volumes say nothing, so an estimate built on them would be built
+on nothing. Deferred until one week of real work exists, which is the same
+calibration rule that found the earlier pillar-level ranges inflated tenfold.
+
+Generated workflow steps reuse the `meeting_action_proposals` shape rather than
+a new proposal type. It already carries evidence, an ambiguity flag and a human
+review gate, which is exactly what a generated step needs, and a second
+proposal entity would mean two review surfaces to keep honest.
+
+### D122: a nudge to anyone but Paul is a new send surface
+
+Phase checklists want to nudge. Nudging Paul rides the existing digest and is in
+scope. Nudging Dustin, John or any firm member is not a feature difference, it
+is a category change: the app would begin sending mail to third parties.
+
+That sits behind the partner gate with everything else firm-facing, and it is
+worth naming separately because it does not look like a permissions question. It
+looks like a reminder. The test is not what the message says, it is who receives
+it, and the first message this app sends to somebody who did not ask for it is
+the moment it stops being Paul's private tool.
+
 ## Interpretation notes
 
 Not decisions. Judgment calls made inside an existing decision, recorded so the
