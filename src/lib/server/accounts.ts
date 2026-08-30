@@ -100,3 +100,69 @@ export async function assertThreadOwned(
 ): Promise<void> {
 	await assertOwned(db, 'email_threads', threadId, accountId);
 }
+
+/**
+ * What a request is scoped to: one account, or all of them on purpose.
+ *
+ * The unified inbox is the one place data crosses accounts, and it is not a
+ * hole in the segregation guarantee because it is asked for by name and every
+ * row it returns is attributed. The distinction that matters is between data
+ * that crosses because somebody requested the union, and data that crosses
+ * because a query forgot to filter. The first is a feature and is labelled.
+ * The second is what D110 caught in the calendar list.
+ *
+ * `all` is therefore deliberately not the default. It has to be typed.
+ */
+export type Scope =
+	| { kind: 'one'; account: Account; ids: string[] }
+	| { kind: 'all'; accounts: Account[]; ids: string[] };
+
+export const ALL = 'all';
+
+export async function resolveScope(db: D1Database, named: string | undefined): Promise<Scope> {
+	if (named === ALL) {
+		const accounts = await listAccounts(db);
+		if (accounts.length === 0) throw new ApiError(400, 'No Google account is connected.');
+		return { kind: 'all', accounts, ids: accounts.map((a) => a.id) };
+	}
+	const account = await resolveAccount(db, named);
+	return { kind: 'one', account, ids: [account.id] };
+}
+
+/** `IN (?, ?)` of the right width, so one query serves both scopes. */
+export function scopePlaceholders(scope: Scope): string {
+	return scope.ids.map(() => '?').join(', ');
+}
+
+/**
+ * How long a Testing-mode refresh token has left.
+ *
+ * Google expires it seven days after consent while the app is unpublished, and
+ * that clock runs per account rather than for the app: two accounts connected
+ * on different days expire on different days. Surfacing it per account is the
+ * difference between a reconnect Paul plans and one he discovers when a read
+ * fails.
+ */
+export const TESTING_TOKEN_DAYS = 7;
+
+export interface ReauthClock {
+	connected_at: string | null;
+	expires_at: string | null;
+	days_left: number | null;
+	expired: boolean;
+}
+
+export function reauthClock(connectedAt: string | null): ReauthClock {
+	if (!connectedAt) {
+		return { connected_at: null, expires_at: null, days_left: null, expired: false };
+	}
+	const expiresAt = new Date(Date.parse(connectedAt) + TESTING_TOKEN_DAYS * 86_400_000);
+	const msLeft = expiresAt.getTime() - Date.now();
+	return {
+		connected_at: connectedAt,
+		expires_at: expiresAt.toISOString(),
+		// Rounded down, so "1 day left" never means "expires in ten minutes".
+		days_left: Math.floor(msLeft / 86_400_000),
+		expired: msLeft <= 0
+	};
+}

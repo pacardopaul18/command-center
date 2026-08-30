@@ -5,7 +5,13 @@ import { nowUtc } from '../dates';
 import { ApiError } from './validate';
 import { GoogleError } from '../google';
 import { BATCH_SIZE, ingestStep, triageBatch } from '../mail-jobs';
-import { assertOwned, assertThreadOwned, resolveAccount } from '../accounts';
+import {
+	assertOwned,
+	assertThreadOwned,
+	resolveAccount,
+	resolveScope,
+	scopePlaceholders
+} from '../accounts';
 import { draftReply } from '../ai';
 import { stripHtml } from '../google';
 
@@ -206,9 +212,12 @@ email.get('/ingest', async (c) => {
  * ---------------------------------------------------------------------- */
 
 email.get('/threads', async (c) => {
-	const account = await resolveAccount(c.env.DB, c.req.query('account'));
-	const where: string[] = ['t.connection_id = ?'];
-	const binds: unknown[] = [account.id];
+	// One account, or every account on purpose. `all` has to be asked for by
+	// name: the unified inbox is a feature, and a query that crossed accounts
+	// without being told to is the defect D110 was.
+	const scope = await resolveScope(c.env.DB, c.req.query('account'));
+	const where: string[] = [`t.connection_id IN (${scopePlaceholders(scope)})`];
+	const binds: unknown[] = [...scope.ids];
 
 	const clientId = c.req.query('client_id');
 	if (clientId) {
@@ -268,6 +277,8 @@ email.get('/threads', async (c) => {
         ${effective} AS effective_severity,
         ${effectiveCategory} AS effective_category,
         cl.name AS client_name,
+        conn.account_email AS account_email,
+        t.connection_id AS account_id,
         (SELECT COUNT(*) FROM email_messages m WHERE m.thread_id = t.id) AS actual_count,
         (SELECT m.from_email FROM email_messages m WHERE m.thread_id = t.id
           ORDER BY m.sent_at DESC LIMIT 1) AS latest_from,
@@ -277,6 +288,7 @@ email.get('/threads', async (c) => {
           ORDER BY m.sent_at DESC LIMIT 1) AS latest_snippet
      FROM email_threads t
      LEFT JOIN clients cl ON cl.id = t.client_id
+     LEFT JOIN connections conn ON conn.id = t.connection_id
      WHERE ${where.join(' AND ')}
      ORDER BY
        CASE ${effective}
@@ -293,14 +305,19 @@ email.get('/threads', async (c) => {
 	const counts = await c.env.DB.prepare(
 		`SELECT ${effective} AS severity, COUNT(*) AS n
      FROM email_threads t
-     WHERE t.connection_id = ?
+     WHERE t.connection_id IN (${scopePlaceholders(scope)})
        AND t.archived_at IS NULL
      GROUP BY ${effective}`
 	)
-		.bind(account.id)
+		.bind(...scope.ids)
 		.all<{ severity: string | null; n: number }>();
 
 	return c.json({
+		scope: scope.kind,
+		accounts:
+			scope.kind === 'all'
+				? scope.accounts.map((a) => ({ id: a.id, account_email: a.account_email }))
+				: [{ id: scope.account.id, account_email: scope.account.account_email }],
 		threads: results ?? [],
 		counts: Object.fromEntries(
 			(counts.results ?? []).map((r) => [r.severity ?? 'untriaged', Number(r.n)])

@@ -8,6 +8,7 @@
 	import Card from '$lib/components/Card.svelte';
 	import Input from '$lib/components/Input.svelte';
 	import Select from '$lib/components/Select.svelte';
+	import AccountSwitcher from '$lib/components/AccountSwitcher.svelte';
 	import type { PageData } from './$types';
 
 	/**
@@ -33,10 +34,22 @@
 		q = data.q;
 	});
 
+	/**
+	 * Changing mailbox is remembered, so the next visit opens where this one
+	 * left off rather than on whichever account sorts first.
+	 */
+	async function switchAccount(account: string) {
+		busy = true;
+		await apiWrite('/api/connections/active-account', 'PUT', { account });
+		busy = false;
+		goto(urlFor({ account }), { keepFocus: true });
+	}
+
 	function urlFor(next: Record<string, string | null>) {
 		const params = new URLSearchParams();
 		const merged: Record<string, string | null> = {
 			q,
+			account: data.account,
 			client_id: data.clientId,
 			severity: data.severity,
 			archived: data.archived ? 'true' : null,
@@ -107,6 +120,18 @@
 </header>
 
 {#if errorMessage}<p class="error" role="alert">{errorMessage}</p>{/if}
+
+{#if data.noAccount}
+	<Card title="No account connected">
+		<p class="empty">Connect a Google account in Settings to read mail here.</p>
+	</Card>
+{:else}
+<AccountSwitcher
+	accounts={data.roster}
+	active={data.scope === 'all' ? 'all' : data.account}
+	{busy}
+	onChange={switchAccount}
+/>
 
 <nav class="chips" aria-label="Filter by what it needs from you">
 	{#each chips as chip (chip.key)}
@@ -181,6 +206,9 @@
 				</div>
 
 				<p class="meta">
+					{#if data.scope === 'all' && thread.account_email}
+						<span class="acct">{thread.account_email}</span>
+					{/if}
 					{thread.latest_from_name ?? thread.latest_from ?? 'Unknown sender'}
 					{#if thread.actual_count > 1}&middot; {thread.actual_count} messages{/if}
 					{#if thread.client_name}&middot; {thread.client_name}{/if}
@@ -208,6 +236,7 @@
 			</li>
 		{/each}
 	</ul>
+{/if}
 {/if}
 
 <style>

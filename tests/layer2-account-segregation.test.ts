@@ -229,11 +229,15 @@ describe('layer 2: no route returns another account rows', () => {
 		const accounts = (json.accounts ?? []) as { id: string; account_email: string }[];
 		expect(accounts.length, 'the roster should list both accounts').toBeGreaterThanOrEqual(2);
 
+		// Deliberately an exact set rather than a subset check. A new field on the
+		// roster should fail here until somebody has decided it is identity and
+		// not content, which is the whole job of this assertion. `reauth` is an
+		// expiry clock about the account itself, not anything inside the mailbox.
 		const fields = new Set(accounts.flatMap((a) => Object.keys(a)));
 		expect(
 			[...fields].sort(),
-			'the roster carries a field beyond account identity'
-		).toEqual(['account_email', 'id', 'provider', 'status']);
+			'the roster carries a field that has not been classified as identity'
+		).toEqual(['account_email', 'id', 'provider', 'reauth', 'status']);
 
 		expect(B_CONTENT.filter((m) => text.includes(m))).toEqual([]);
 	});
@@ -275,6 +279,61 @@ describe('layer 2: no route returns another account rows', () => {
 			.prepare("SELECT archived_at FROM email_threads WHERE id = 'seg-b-thread'")
 			.get() as { archived_at: string | null };
 		expect(still.archived_at, 'account B thread was modified from account A').toBeNull();
+	});
+
+	it('the unified scope must be asked for by name, never arrived at', async () => {
+		// `all` is the one place data crosses accounts. It is a feature rather
+		// than a hole because it has to be typed and because every row it returns
+		// says which account it came from. A default that quietly meant `all`
+		// would turn the feature back into the defect.
+		const scoped = await api('/api/email/threads?account=seg-a&severity=all');
+		expect((scoped.json as { scope?: string }).scope).toBe('one');
+		expect(scoped.text.includes('SUBJECT ONLY ON SEG-B')).toBe(false);
+
+		const unified = await api('/api/email/threads?account=all&severity=all');
+		expect((unified.json as { scope?: string }).scope).toBe('all');
+		expect(unified.text).toContain('SUBJECT ONLY ON SEG-A');
+		expect(unified.text).toContain('SUBJECT ONLY ON SEG-B');
+	});
+
+	it('every row in the unified view names the account it came from', async () => {
+		// A unified inbox that does not attribute is worse than no unified
+		// inbox: it puts one client's correspondence next to another's with
+		// nothing on screen saying which is which.
+		const { json } = await api('/api/email/threads?account=all&severity=all');
+		const threads = (json.threads ?? []) as { id: string; account_id?: string; account_email?: string }[];
+		const fixture = threads.filter((t) => t.id === 'seg-a-thread' || t.id === 'seg-b-thread');
+		expect(fixture.length, 'both fixture threads should be in the union').toBe(2);
+		for (const t of fixture) {
+			expect(t.account_id, `${t.id} has no account attribution`).toBeTruthy();
+			expect(t.account_email, `${t.id} has no account email`).toBeTruthy();
+		}
+		// And the attribution must be correct, not merely present.
+		expect(fixture.find((t) => t.id === 'seg-a-thread')?.account_id).toBe('seg-a');
+		expect(fixture.find((t) => t.id === 'seg-b-thread')?.account_id).toBe('seg-b');
+	});
+
+	it('the calendar segregates and attributes the same way', async () => {
+		const scoped = await api('/api/connections/google/calendar?account=seg-a&days=60');
+		expect(scoped.text.includes('EVENT ONLY ON SEG-B')).toBe(false);
+
+		const unified = await api('/api/connections/google/calendar?account=all&days=60');
+		const events = ((unified.json.events ?? []) as { id: string; account_id?: string }[]).filter(
+			(e) => e.id === 'seg-a-evt' || e.id === 'seg-b-evt'
+		);
+		expect(events.length).toBe(2);
+		for (const e of events) expect(e.account_id, `${e.id} unattributed`).toBeTruthy();
+	});
+
+	it('each account carries its own re-auth clock', async () => {
+		// Google's Testing-mode expiry runs per account. One number for the app
+		// would be wrong for every account but the most recently connected.
+		const { json } = await api('/api/connections?account=seg-a');
+		const accounts = (json.accounts ?? []) as { id: string; reauth?: { days_left: number | null } }[];
+		expect(accounts.length).toBeGreaterThanOrEqual(2);
+		for (const a of accounts) {
+			expect(a.reauth, `${a.id} has no re-auth clock`).toBeTruthy();
+		}
 	});
 
 	it('an unknown account is refused rather than defaulted away', async () => {

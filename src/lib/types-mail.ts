@@ -57,6 +57,9 @@ export interface ThreadRow {
 	corrected_at: string | null;
 	archived_at: string | null;
 	read_at: string | null;
+	/** Which account this thread belongs to. Rendered only in the unified view. */
+	account_id?: string;
+	account_email?: string | null;
 	latest_from: string | null;
 	latest_from_name: string | null;
 	latest_snippet: string | null;

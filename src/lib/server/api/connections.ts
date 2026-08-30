@@ -3,7 +3,14 @@ import { Hono } from 'hono';
 import type { ApiEnv } from './env';
 import { nowUtc } from '../dates';
 import { ApiError } from './validate';
-import { assertOwned, listAccounts, resolveAccount } from '../accounts';
+import {
+	assertOwned,
+	listAccounts,
+	reauthClock,
+	resolveAccount,
+	resolveScope,
+	scopePlaceholders
+} from '../accounts';
 import {
 	GoogleError,
 	SCOPES,
@@ -102,8 +109,11 @@ connections.get('/', async (c) => {
 
 	return c.json({
 		connection: record,
-		// Every account, so a picker can be drawn without a second request.
-		accounts: await listAccounts(c.env.DB),
+		// Every account, so a picker can be drawn without a second request. Each
+		// carries its own expiry: Google's Testing-mode clock runs per account,
+		// so two connected on different days expire on different days, and one
+		// number for the app would be wrong for at least one of them.
+		accounts: await accountsWithClocks(c.env.DB),
 		// Whether a credential exists, never any part of it. Same rule the Asana
 		// status follows.
 		token_present: Boolean(tokens),
@@ -344,22 +354,32 @@ connections.post('/google/calendar/refresh', async (c) => {
 
 /** The cached calendar, read from D1. Never calls Google. */
 connections.get('/google/calendar', async (c) => {
-	const account = await resolveAccount(c.env.DB, c.req.query('account'));
+	// Same scoping as mail, for the same reason: a day view that silently mixed
+	// a work calendar into a personal one would be wrong in exactly the way
+	// D110 was wrong, and here it would be wrong on the screen Paul plans from.
+	const scope = await resolveScope(c.env.DB, c.req.query('account'));
 	const days = Math.min(Math.max(Number(c.req.query('days') ?? 7), 1), 60);
 	const until = new Date(Date.now() + days * 86_400_000).toISOString();
 
 	const { results } = await c.env.DB.prepare(
-		`SELECT e.*, m.title AS meeting_title
+		`SELECT e.*, m.title AS meeting_title,
+        cal.summary AS calendar_name,
+        conn.account_email AS account_email,
+        e.connection_id AS account_id
      FROM calendar_events e
      LEFT JOIN meetings m ON m.id = e.meeting_id
-     WHERE e.connection_id = ? AND e.starts_at <= ?
+     LEFT JOIN calendars cal ON cal.id = e.calendar_id
+     LEFT JOIN connections conn ON conn.id = e.connection_id
+     WHERE e.connection_id IN (${scopePlaceholders(scope)}) AND e.starts_at <= ?
      ORDER BY e.starts_at ASC`
 	)
-		.bind(account.id, until)
+		.bind(...scope.ids, until)
 		.all();
 
-	const record = await row(c.env.DB, c.req.query('account'));
+	const record =
+		scope.kind === 'one' ? await row(c.env.DB, scope.account.id).catch(() => null) : null;
 	return c.json({
+		scope: scope.kind,
 		events: results ?? [],
 		last_read_at: (record as { last_read_at?: string } | null)?.last_read_at ?? null
 	});
@@ -431,16 +451,18 @@ connections.get('/google/calendars', async (c) => {
 	// Was unfiltered, which returned every calendar across every account. With
 	// one account that read as harmless; with two it is a cross-account leak,
 	// and it would have shipped as one.
-	const account = await resolveAccount(c.env.DB, c.req.query('account'));
+	const scope = await resolveScope(c.env.DB, c.req.query('account'));
 	const { results } = await c.env.DB.prepare(
-		`SELECT c.*, (SELECT COUNT(*) FROM calendar_events e WHERE e.calendar_id = c.id) AS event_count
+		`SELECT c.*, conn.account_email AS account_email,
+        (SELECT COUNT(*) FROM calendar_events e WHERE e.calendar_id = c.id) AS event_count
      FROM calendars c
-     WHERE c.connection_id = ?
-     ORDER BY c.is_primary DESC, c.summary COLLATE NOCASE`
+     LEFT JOIN connections conn ON conn.id = c.connection_id
+     WHERE c.connection_id IN (${scopePlaceholders(scope)})
+     ORDER BY conn.account_email, c.is_primary DESC, c.summary COLLATE NOCASE`
 	)
-		.bind(account.id)
+		.bind(...scope.ids)
 		.all();
-	return c.json({ calendars: results ?? [] });
+	return c.json({ scope: scope.kind, calendars: results ?? [] });
 });
 
 connections.post('/google/calendars/:id/toggle', async (c) => {
@@ -468,4 +490,83 @@ connections.post('/google/calendars/:id/toggle', async (c) => {
 	}
 
 	return c.json({ ok: true, sync_enabled: on });
+});
+
+/* -------------------------------------------------------------------------
+ * Re-auth clocks and the remembered account
+ * ---------------------------------------------------------------------- */
+
+/** Accounts with their own expiry attached. */
+async function accountsWithClocks(db: D1Database) {
+	const { results } = await db
+		.prepare(
+			`SELECT id, provider, account_email, status, connected_at
+       FROM connections ORDER BY created_at`
+		)
+		.all<{
+			id: string;
+			provider: string;
+			account_email: string | null;
+			status: string;
+			connected_at: string | null;
+		}>();
+
+	return (results ?? []).map((row) => ({
+		id: row.id,
+		provider: row.provider,
+		account_email: row.account_email,
+		status: row.status,
+		reauth: reauthClock(row.connected_at)
+	}));
+}
+
+/** KV key for the account the mail screens open on. */
+const ACTIVE_ACCOUNT_KEY = 'mail:active-account';
+
+/**
+ * The account Paul was last looking at.
+ *
+ * Kept server side rather than in the browser, because this is a single-user
+ * app reached from more than one machine and "which mailbox am I in" should not
+ * depend on which laptop is open. Validated on read: an account that has since
+ * been disconnected is not returned, or the mail screen would open on a
+ * mailbox that no longer exists and report an error Paul did not cause.
+ */
+connections.get('/active-account', async (c) => {
+	const stored = await c.env.SESSIONS.get(ACTIVE_ACCOUNT_KEY);
+	const accounts = await listAccounts(c.env.DB);
+
+	// 'all' is a choice, not an account id. Validating it as one meant the
+	// unified view could be selected and never restored: written happily,
+	// reported stale on the way back, and silently dropped.
+	const valid =
+		stored === 'all' || (stored && accounts.some((a) => a.id === stored)) ? stored : null;
+
+	return c.json({
+		active: valid ?? (accounts.length === 1 ? accounts[0].id : null),
+		remembered: stored,
+		stale: Boolean(stored && !valid)
+	});
+});
+
+connections.put('/active-account', async (c) => {
+	const body = (await c.req.json().catch(() => ({}))) as { account?: unknown };
+	const wanted = typeof body.account === 'string' ? body.account : null;
+
+	if (wanted === null) {
+		await c.env.SESSIONS.delete(ACTIVE_ACCOUNT_KEY);
+		return c.json({ ok: true, active: null });
+	}
+
+	// 'all' is a real choice, not an account id, so it is allowed through
+	// without existing as a row.
+	if (wanted !== 'all') {
+		const accounts = await listAccounts(c.env.DB);
+		if (!accounts.some((a) => a.id === wanted)) {
+			throw new ApiError(404, 'No connected account with that id.');
+		}
+	}
+
+	await c.env.SESSIONS.put(ACTIVE_ACCOUNT_KEY, wanted);
+	return c.json({ ok: true, active: wanted });
 });

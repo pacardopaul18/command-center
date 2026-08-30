@@ -2688,6 +2688,48 @@ trusted. The general shape: a query with no filter is correct exactly as long as
 the data has only one of the thing it is not filtering on, and that is a
 property of today's data, not of the code.
 
+### D111: crossing accounts on request is a feature; crossing them by omission is the defect
+
+The unified inbox reads every account at once, which is exactly what D110 was a
+bug for doing. The difference is not the query, it is who asked.
+
+`all` has to be typed. It is never the default and never arrived at by leaving a
+parameter off, because the failure being guarded against is a query that widened
+without anybody deciding it should. And every row it returns carries the account
+it came from, so a unified list is never ambiguous about whose correspondence is
+on screen. A unified inbox that did not attribute would be worse than none: it
+would put one client's mail beside another's with nothing saying which.
+
+The segregation suite asserts both halves. Scoped views stay clean, `all`
+returns both accounts, and every row in the union names its account and names it
+correctly rather than merely carrying the field.
+
+### D112: the roster assertion stays exact
+
+The segregation test pins the roster's fields as an exact set rather than
+checking that content is absent. Adding the re-auth clock made it fail, which is
+the assertion working: a new field on the account roster has to be looked at and
+called identity before it ships, because the roster is the one endpoint allowed
+to name every account and therefore the one where a content field would be least
+noticed among legitimate ones.
+
+Loosening it to a subset check would have made the failure go away and taken the
+guard with it. This is the same instinct as D109, one level down.
+
+### D113: no connected account is a state, not a failure
+
+`/mail` returned a 500 when no Google account was connected.
+
+That is the state every user is in before they connect one, and the state Paul
+returns to the moment he disconnects the last account, which multi-account makes
+reachable on purpose rather than only at the beginning. The page already knew
+how to say that nothing had been read yet; it was simply never allowed to,
+because the load threw on the API's honest 400.
+
+Worth generalising: an empty precondition and a broken system produce the same
+blank screen unless the code distinguishes them, and the one that is normal
+should never be reported with the vocabulary of the one that is not.
+
 ## Interpretation notes
 
 Not decisions. Judgment calls made inside an existing decision, recorded so the
