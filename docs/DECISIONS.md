@@ -2744,6 +2744,59 @@ Worth generalising: an empty precondition and a broken system produce the same
 blank screen unless the code distinguishes them, and the one that is normal
 should never be reported with the vocabulary of the one that is not.
 
+### D114: most of a context engine is arithmetic, not inference
+
+The E4 pre-audit found 21 of 775 threads are real correspondence, carried by 18
+senders across 7 domains. That number decided the design before any budget
+question was asked.
+
+At that scale the contact graph falls out of the headers by counting. Who writes,
+who Paul writes back to, how often, how recently, and the highest severity ever
+attached to a thread they appear in. Asking a model to work that out would be
+paying for arithmetic, and the counted version is exact where an inferred one
+would be approximate.
+
+The counting also produces the signal the expensive passes are then pointed at.
+Paul had replied in 19 of the 21 correspondence threads, and on the seeded graph
+he has replied to 13 of 17 contacts. That agrees with what triage decided
+independently, and two signals agreeing is worth establishing before either is
+trusted alone.
+
+The rule is worth keeping past this feature: before adding a model to a problem,
+find out how much of it is countable. Here it was most of it, and what remains
+for the model is the part that genuinely needs judgement.
+
+### D115: exclusions are a cost control, and a cost control with no test is a wish
+
+Automated, newsletter and notification threads never enter the context engine,
+and untriaged threads wait for triage rather than being read speculatively. That
+single constraint is the difference between reading 2 MB and reading 36 MB, and
+between a bill in cents and one in dollars.
+
+It is also exactly the kind of constraint that decays without anyone deciding to
+relax it. One more query written by somebody who did not know, and the engine
+quietly starts reading job alerts. So it is expressed in one place, and the
+suite asserts it holds.
+
+The fixture is built to catch that specifically: the excluded threads carry
+senders who appear nowhere else, so a contact derived from one of them is
+unambiguous evidence rather than a coincidence of overlapping addresses.
+
+### D116: tests written after the code must be mutation checked
+
+These guarantee tests passed on their first run, because unlike the segregation
+suite they were written after the code rather than before it. A test that has
+never failed has not been shown to work.
+
+So both were mutation checked. Removing the category filter fails six of eight;
+removing the account filter fails the two segregation cases specifically. The
+guarantees are real, not merely stated.
+
+Writing the test first remains better, because it forces the failure to be
+observed rather than manufactured afterwards. Where that did not happen, the
+mutation check is the honest substitute, and skipping it would leave two
+green tests standing in for two guarantees that had never been examined.
+
 ## Interpretation notes
 
 Not decisions. Judgment calls made inside an existing decision, recorded so the

@@ -13,6 +13,7 @@ import {
 	scopePlaceholders
 } from '../accounts';
 import { draftReply } from '../ai';
+import { seedContacts } from '../context';
 import { stripHtml } from '../google';
 
 /**
@@ -860,4 +861,99 @@ email.delete('/threads/:id/draft', async (c) => {
 		.run();
 	if (!result.meta.changes) throw new ApiError(404, 'No draft on that thread.');
 	return c.json({ ok: true });
+});
+
+/* -------------------------------------------------------------------------
+ * Context engine
+ * ---------------------------------------------------------------------- */
+
+/**
+ * Rebuilds the contact graph from headers. No AI, so it runs now.
+ *
+ * Recomputed rather than incremented: the counts are cheap and a reply rate
+ * that has quietly drifted makes every relevance judgement built on it quietly
+ * wrong too.
+ */
+email.post('/context/contacts', async (c) => {
+	const account = await resolveAccount(c.env.DB, c.req.query('account'));
+	const outcome = await seedContacts(c.env.DB, account.id, account.account_email);
+	return c.json({ ok: true, ...outcome });
+});
+
+/** The derived contact graph, and how much of it the AI passes still owe. */
+email.get('/context', async (c) => {
+	const account = await resolveAccount(c.env.DB, c.req.query('account'));
+
+	const counts = await c.env.DB.prepare(
+		`SELECT
+       (SELECT COUNT(*) FROM mail_contacts WHERE connection_id = ?1) AS contacts,
+       (SELECT COUNT(*) FROM mail_contacts WHERE connection_id = ?1 AND client_id IS NOT NULL) AS linked,
+       (SELECT COUNT(*) FROM contact_profiles WHERE connection_id = ?1) AS profiles,
+       (SELECT COUNT(*) FROM thread_digests WHERE connection_id = ?1) AS digests,
+       (SELECT COUNT(*) FROM commitments WHERE connection_id = ?1 AND status = 'open') AS open_commitments,
+       (SELECT COUNT(*) FROM voice_profiles WHERE connection_id = ?1) AS voice,
+       (SELECT COUNT(*) FROM email_threads WHERE connection_id = ?1 AND category = 'correspondence') AS eligible_threads`
+	)
+		.bind(account.id)
+		.first<Record<string, number>>();
+
+	// Contacts ordered by the signal that matters, which is who Paul replies to
+	// rather than who writes to him most.
+	const { results } = await c.env.DB.prepare(
+		`SELECT id, email, display_name, domain, messages_received, threads_involved,
+            threads_replied, top_severity, client_id, last_seen
+     FROM mail_contacts WHERE connection_id = ?
+     ORDER BY threads_replied DESC, messages_received DESC LIMIT 100`
+	)
+		.bind(account.id)
+		.all();
+
+	return c.json({ account: account.id, counts, contacts: results ?? [] });
+});
+
+/**
+ * Spend against the ceiling, per account.
+ *
+ * The ceiling is reported next to the spend rather than left in a document,
+ * because a limit nobody can see is a limit nobody is keeping. Still no price
+ * is stored: tokens are what the API reports, and the rate is Paul's to apply.
+ */
+email.get('/context/spend', async (c) => {
+	const { results } = await c.env.DB.prepare(
+		`SELECT COALESCE(u.connection_id, 'unattributed') AS account,
+            c.account_email,
+            u.kind, u.model,
+            COUNT(*) AS calls,
+            SUM(u.input_tokens) AS input_tokens,
+            SUM(u.output_tokens) AS output_tokens,
+            MAX(u.at) AS last_at
+     FROM ai_usage u
+     LEFT JOIN connections c ON c.id = u.connection_id
+     GROUP BY COALESCE(u.connection_id, 'unattributed'), c.account_email, u.kind, u.model
+     ORDER BY calls DESC`
+	).all();
+
+	const month = await c.env.DB.prepare(
+		`SELECT COUNT(*) AS calls, SUM(input_tokens) AS input_tokens,
+            SUM(output_tokens) AS output_tokens
+     FROM ai_usage WHERE at >= ?`
+	)
+		.bind(new Date(Date.now() - 30 * 86_400_000).toISOString())
+		.first<Record<string, number | null>>();
+
+	return c.json({
+		by_account: results ?? [],
+		last_30_days: {
+			calls: Number(month?.calls ?? 0),
+			input_tokens: Number(month?.input_tokens ?? 0),
+			output_tokens: Number(month?.output_tokens ?? 0)
+		},
+		// The default ceiling, until Paul names his own. Stated so the number on
+		// screen is the number being kept to.
+		ceiling_usd_per_month: 30,
+		note:
+			'Token counts are what the API reported. No price is stored here, because a ' +
+			'hardcoded rate goes stale quietly and a meter that is confidently wrong about ' +
+			'money is worse than one that reports tokens.'
+	});
 });
