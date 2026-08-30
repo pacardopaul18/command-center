@@ -2704,6 +2704,20 @@ The segregation suite asserts both halves. Scoped views stay clean, `all`
 returns both accounts, and every row in the union names its account and names it
 correctly rather than merely carrying the field.
 
+**This governs every cross-account view, not only the inbox.** Search, digests,
+a calendar union, anything the context engine reads across accounts, and
+anything after it. Three conditions, all of them required:
+
+1. The union is requested explicitly, by a value somebody typed.
+2. It is never the default and never reached by omitting a parameter.
+3. Every row names the account it came from, and the attribution is asserted
+   correct rather than asserted present.
+
+A view that meets one or two of these is not a partial success, it is the
+D110 defect with better manners. The reason to write it as a rule now is that
+the next cross-account reader will be built by somebody who did not watch the
+calendar list leak.
+
 ### D112: the roster assertion stays exact
 
 The segregation test pins the roster's fields as an exact set rather than
