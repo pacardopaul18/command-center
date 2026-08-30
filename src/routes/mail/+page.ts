@@ -1,29 +1,29 @@
 import type { PageLoad } from './$types';
+import type { ThreadRow } from '$lib/types-mail';
 
-export interface ThreadRow {
-	id: string;
-	subject: string | null;
-	message_count: number;
-	actual_count: number;
-	first_at: string | null;
-	last_at: string | null;
-	client_id: string | null;
-	client_name: string | null;
-	latest_from: string | null;
-	latest_snippet: string | null;
-	summary: string | null;
-	summary_at: string | null;
-}
+/**
+ * The default view is what needs Paul, not everything.
+ *
+ * A mailbox opened on all of itself is the problem, not the feature. Urgent and
+ * Important first; the rest is one chip away and nothing is ever hidden for
+ * good.
+ */
+const DEFAULT_SEVERITY = 'urgent,important';
 
 export const load: PageLoad = async ({ fetch, url }) => {
 	const q = url.searchParams.get('q') ?? '';
 	const clientId = url.searchParams.get('client_id') ?? '';
-	const unlinked = url.searchParams.get('unlinked') === 'true';
+	const severityParam = url.searchParams.get('severity');
+	const archived = url.searchParams.get('archived') === 'true';
+
+	// 'all' is an explicit choice and means no filter. Absent means the default.
+	const severity = severityParam ?? DEFAULT_SEVERITY;
 
 	const params = new URLSearchParams({ limit: '100' });
 	if (q) params.set('q', q);
 	if (clientId) params.set('client_id', clientId);
-	if (unlinked) params.set('unlinked', 'true');
+	if (severity !== 'all') params.set('severity', severity);
+	if (archived) params.set('archived', 'true');
 
 	const [threadsRes, ingestRes, clientsRes] = await Promise.all([
 		fetch(`/api/email/threads?${params}`),
@@ -36,8 +36,13 @@ export const load: PageLoad = async ({ fetch, url }) => {
 		throw new Error(body.error ?? 'Could not load mail.');
 	}
 
-	// The ingest state is context, not content. A failure reading it must not
-	// stop the mail list rendering.
+	const payload = (await threadsRes.json()) as {
+		threads: ThreadRow[];
+		counts: Record<string, number>;
+	};
+
+	// Ingest state is context, not content. A failure reading it must not stop
+	// the list rendering.
 	const ingest = ingestRes.ok
 		? ((await ingestRes.json()) as {
 				account: string | null;
@@ -50,11 +55,14 @@ export const load: PageLoad = async ({ fetch, url }) => {
 		: [];
 
 	return {
-		threads: ((await threadsRes.json()) as { threads: ThreadRow[] }).threads,
+		threads: payload.threads,
+		counts: payload.counts,
+		untriaged: payload.counts.untriaged ?? 0,
 		ingest,
 		clients,
 		q,
 		clientId,
-		unlinked
+		severity,
+		archived
 	};
 };

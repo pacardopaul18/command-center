@@ -2245,6 +2245,102 @@ Either the record has to be refreshed by the work itself, which is what
 `updated_at` allows a reader to check, or the display has to compare the two and
 say what it finds.
 
+### D91: email HTML is rendered as elements, never as HTML
+
+Paul's verdict on the first mail reader was that it looked broken, and he was
+right. It showed the stripped-text extraction of HTML mail, which for anything
+with a template is a wall of tracking URLs. Accurate and unreadable is its own
+kind of wrong.
+
+Gmail renders the HTML, so this has to. The constraint is that `{@html}` is
+banned, and the answer is the one the markdown renderer already established:
+parse the source into a validated tree and draw it as Svelte elements. No HTML
+string is ever constructed, so there is nothing to sanitise. Unknown tags and
+every attribute outside href, src and alt are dropped during parsing, and the
+renderer is a long explicit branch per tag rather than a dynamic element, so
+even a tag that somehow survived parsing has no branch that would render it.
+
+This is the most hostile input the app handles, and it is now the most tested:
+twenty cases naming the specific attack or malformation each one stops. Script
+and style content discarded rather than rendered as prose. `javascript:`,
+`data:` and `vbscript:` hrefs demoted to text. An href hidden behind entity
+encoding, which a parser that decoded after checking the scheme would let
+through. Unclosed tags, stray angle brackets and Outlook conditional comments,
+because a parser that rejected malformed mail would refuse to show real mail.
+
+Images render but do not load until asked. A remote image in an email is a
+tracking pixel as often as it is a picture, and loading one tells the sender the
+mail was opened.
+
+The bodies had to change too. The stored body was the stripped text, which is
+right for feeding a summariser and wrong for showing a person, so the rich
+version is kept and `body_format` records which it is. The summariser is still
+handed text, stripped at read time: giving a model markup spends its context on
+tags and tracking URLs instead of on what the message says.
+
+### D92: a list needs a label, not a summary
+
+The second half of Paul's verdict, and the sharper half.
+
+The mail list showed the full paragraph summary in every row. The understanding
+was correct, the placement made it unusable, and the fix is not a better
+summary: it is a different artifact. A list row gets a severity chip and one
+line. The paragraph lives inside the thread where there is room for it.
+
+So triage produces three things rather than one: a category, a severity, and a
+gist of at most ninety characters. Measured on the first real batch, gists came
+back between 61 and 90 characters, which is a line.
+
+The load bearing instruction is that severity is about what PAUL must do, never
+about how the sender wrote it. Marketing mail says urgent constantly. A
+classifier that believed the sender would rank every promotion above a client's
+actual question, which is the failure that makes a filter worthless. On the
+first batch, seven of eight threads landed as noise and one as important
+correspondence, which is the distribution a real mailbox has.
+
+An answer outside the four allowed values is refused rather than coerced to the
+nearest one. Quietly turning an unrecognised response into 'routine' would put a
+confident label on a thread nothing understood, and a wrong label inside a
+filter is worse than a missing one, because the missing one is visible.
+
+Paul's corrections are stored beside the model's answer, never over it. The pair
+is the entire training signal: what it said next to what it should have said is
+the only thing that can teach it, and overwriting destroys exactly the half that
+carries the lesson.
+
+### D93: organise like Gmail, never write to Gmail
+
+Archiving and marking read are real needs and they run into the no-write
+guarantee, because both require `gmail.modify` in Gmail's own API. That scope
+was never requested and will not be.
+
+So triage state lives here. Archived means archived in this app; the mailbox is
+untouched. That is a genuine limitation rather than a workaround, and the UI
+says so in words rather than letting Paul discover it: "Archiving files it here.
+Your Gmail is untouched, because this app has no permission to change it."
+
+The trade is worth naming. What is given up is one-way tidying of the real
+mailbox. What is kept is that nothing this app does, no bug and no future
+change, can alter Paul's actual mail. For a tool that will eventually be
+described to a partner, the second is worth more than the first.
+
+### D94: an effect does not run during server rendering
+
+Small, and it cost a verification cycle.
+
+The thread page seeded its message bodies from the load inside `$effect`.
+Effects do not run while the server renders, so the first paint had no body at
+all and the message appeared only after hydration. It looked like the renderer
+was broken; the renderer was fine and had nothing to render.
+
+State that must exist in the server output is initialised where it is declared.
+An effect is for keeping it in step afterwards, which here means re-seeding when
+navigating between threads, since the component is reused.
+
+Same family as the pre-hydration race the suite already chases: anything that
+only happens on the client is invisible until the client arrives, and a check
+run against the server output will not see it.
+
 ## Interpretation notes
 
 Not decisions. Judgment calls made inside an existing decision, recorded so the

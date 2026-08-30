@@ -3,8 +3,8 @@ import { Hono } from 'hono';
 import type { ApiEnv } from './env';
 import { nowUtc } from '../dates';
 import { ApiError } from './validate';
-import { GoogleError, accessToken, getMessage, listMessageIds } from '../google';
-import { AiError, summariseThread } from '../ai';
+import { GoogleError, accessToken, getMessage, listMessageIds, stripHtml } from '../google';
+import { AiError, summariseThread, triageThread } from '../ai';
 
 /**
  * Gmail ingestion, browsing, and the state of the ingestion itself.
@@ -163,14 +163,20 @@ email.post('/ingest/step', async (c) => {
 
 		let fetched = 0;
 		for (const ref of page.messages) {
-			// Already have it: a resumed run should not pay for the same message
-			// twice, and re-reading would also overwrite a summary with nothing.
+			// Already have it, and have it properly: a resumed run should not pay
+			// for the same message twice.
+			//
+			// `body_format IS NULL` means the row predates keeping the rich body,
+			// so its stored body is the stripped text that read as garbage. Those
+			// are re-read rather than skipped, which is what lets one more pass
+			// upgrade everything already held instead of stranding it.
 			const existing = await c.env.DB.prepare(
-				'SELECT id FROM email_messages WHERE connection_id = ? AND provider_message_id = ?'
+				`SELECT id, body_format FROM email_messages
+         WHERE connection_id = ? AND provider_message_id = ?`
 			)
 				.bind(conn.id, ref.id)
-				.first();
-			if (existing) continue;
+				.first<{ id: string; body_format: string | null }>();
+			if (existing && existing.body_format) continue;
 
 			const message = await getMessage(tokens.access_token, ref.id, true);
 			await storeMessage(c.env.DB, c.env.FILES, conn.id, message, at);
@@ -269,12 +275,13 @@ async function storeMessage(
 			`INSERT INTO email_messages
          (id, connection_id, thread_id, provider_message_id, provider_thread_id,
           subject, from_email, from_name, to_emails, cc_emails, sent_at, snippet,
-          label_ids, is_unread, body_key, body_bytes, client_id, contact_id, fetched_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          label_ids, is_unread, body_key, body_bytes, body_format, client_id, contact_id, fetched_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(connection_id, provider_message_id) DO UPDATE SET
          subject = excluded.subject, snippet = excluded.snippet,
          label_ids = excluded.label_ids, is_unread = excluded.is_unread,
          body_key = excluded.body_key, body_bytes = excluded.body_bytes,
+         body_format = excluded.body_format,
          fetched_at = excluded.fetched_at`
 		)
 		.bind(
@@ -294,6 +301,7 @@ async function storeMessage(
 			message.is_unread,
 			key,
 			bytes,
+			message.body_format,
 			match.client_id,
 			match.contact_id,
 			at
@@ -434,7 +442,9 @@ email.get('/ingest', async (c) => {
  * ---------------------------------------------------------------------- */
 
 email.get('/threads', async (c) => {
-	const where: string[] = ['t.connection_id = (SELECT id FROM connections WHERE provider = \'google\')'];
+	const where: string[] = [
+		"t.connection_id = (SELECT id FROM connections WHERE provider = 'google')"
+	];
 	const binds: unknown[] = [];
 
 	const clientId = c.req.query('client_id');
@@ -444,32 +454,93 @@ email.get('/threads', async (c) => {
 	}
 	if (c.req.query('unlinked') === 'true') where.push('t.client_id IS NULL');
 
+	/**
+	 * Severity, with Paul's correction winning.
+	 *
+	 * Filtering has to use the same expression the list displays, or a thread
+	 * shows one label and is filtered by another. That is why the effective
+	 * value is written once here and reused.
+	 */
+	const effective = 'COALESCE(t.severity_override, t.severity)';
+	const effectiveCategory = 'COALESCE(t.category_override, t.category)';
+
+	const severity = c.req.query('severity');
+	if (severity && severity !== 'all') {
+		const wanted = severity.split(',').filter(Boolean);
+		if (wanted.length) {
+			where.push(`${effective} IN (${wanted.map(() => '?').join(',')})`);
+			binds.push(...wanted);
+		}
+	}
+
+	const category = c.req.query('category');
+	if (category && category !== 'all') {
+		where.push(`${effectiveCategory} = ?`);
+		binds.push(category);
+	}
+
+	// Archived is hidden unless asked for, the way every mail client behaves.
+	if (c.req.query('archived') === 'true') where.push('t.archived_at IS NOT NULL');
+	else where.push('t.archived_at IS NULL');
+
+	if (c.req.query('untriaged') === 'true') where.push('t.severity IS NULL');
+
 	const q = c.req.query('q')?.trim();
 	if (q) {
-		where.push('(t.subject LIKE ? OR EXISTS (SELECT 1 FROM email_messages m WHERE m.thread_id = t.id AND (m.from_email LIKE ? OR m.snippet LIKE ?)))');
+		where.push(
+			`(t.subject LIKE ? OR t.gist LIKE ? OR EXISTS (SELECT 1 FROM email_messages m
+        WHERE m.thread_id = t.id AND (m.from_email LIKE ? OR m.snippet LIKE ?)))`
+		);
 		const like = `%${q}%`;
-		binds.push(like, like, like);
+		binds.push(like, like, like, like);
 	}
 
 	const limit = Math.min(Math.max(Number(c.req.query('limit') ?? 50), 1), 200);
 
 	const { results } = await c.env.DB.prepare(
-		`SELECT t.*, cl.name AS client_name,
+		`SELECT t.id, t.subject, t.message_count, t.first_at, t.last_at,
+        t.client_id, t.gist, t.summary, t.summary_at,
+        t.severity, t.category, t.severity_override, t.category_override,
+        t.corrected_at, t.archived_at, t.read_at,
+        ${effective} AS effective_severity,
+        ${effectiveCategory} AS effective_category,
+        cl.name AS client_name,
         (SELECT COUNT(*) FROM email_messages m WHERE m.thread_id = t.id) AS actual_count,
         (SELECT m.from_email FROM email_messages m WHERE m.thread_id = t.id
           ORDER BY m.sent_at DESC LIMIT 1) AS latest_from,
+        (SELECT m.from_name FROM email_messages m WHERE m.thread_id = t.id
+          ORDER BY m.sent_at DESC LIMIT 1) AS latest_from_name,
         (SELECT m.snippet FROM email_messages m WHERE m.thread_id = t.id
           ORDER BY m.sent_at DESC LIMIT 1) AS latest_snippet
      FROM email_threads t
      LEFT JOIN clients cl ON cl.id = t.client_id
      WHERE ${where.join(' AND ')}
-     ORDER BY t.last_at DESC
+     ORDER BY
+       CASE ${effective}
+         WHEN 'urgent' THEN 0 WHEN 'important' THEN 1
+         WHEN 'routine' THEN 2 WHEN 'noise' THEN 3 ELSE 1 END,
+       t.last_at DESC
      LIMIT ?`
 	)
 		.bind(...binds, limit)
 		.all();
 
-	return c.json({ threads: results ?? [] });
+	// Counts for the filter bar, over the same set minus the severity filter, so
+	// the numbers beside each chip say how many that chip would show.
+	const counts = await c.env.DB.prepare(
+		`SELECT ${effective} AS severity, COUNT(*) AS n
+     FROM email_threads t
+     WHERE t.connection_id = (SELECT id FROM connections WHERE provider = 'google')
+       AND t.archived_at IS NULL
+     GROUP BY ${effective}`
+	).all<{ severity: string | null; n: number }>();
+
+	return c.json({
+		threads: results ?? [],
+		counts: Object.fromEntries(
+			(counts.results ?? []).map((r) => [r.severity ?? 'untriaged', Number(r.n)])
+		)
+	});
 });
 
 email.get('/threads/:id', async (c) => {
@@ -486,19 +557,44 @@ email.get('/threads/:id', async (c) => {
 		'SELECT * FROM email_messages WHERE thread_id = ? ORDER BY sent_at ASC'
 	)
 		.bind(id)
-		.all();
+		.all<{ id: string; body_key: string | null; body_format: string | null }>();
 
-	return c.json({ thread, messages: messages.results ?? [] });
+	const rows = messages.results ?? [];
+
+	/**
+	 * Bodies for the messages that will be open on arrival.
+	 *
+	 * Gmail's behaviour, and the reason Paul called the old page inefficient: a
+	 * single message thread is fully open, and a longer one opens its latest.
+	 * Making him click to see anything at all was work the page could have done.
+	 *
+	 * Only those bodies are sent. Loading every message of a long thread would
+	 * push a lot of text nobody asked for, so the rest load on demand.
+	 */
+	const openIds = rows.length === 1 ? [rows[0].id] : rows.slice(-1).map((r) => r.id);
+	const bodies: Record<string, { body: string; format: string | null }> = {};
+
+	for (const row of rows) {
+		if (!openIds.includes(row.id) || !row.body_key) continue;
+		const object = await c.env.FILES.get(row.body_key);
+		if (object) bodies[row.id] = { body: await object.text(), format: row.body_format };
+	}
+
+	return c.json({ thread, messages: rows, bodies, open_ids: openIds });
 });
 
 /** One message body, streamed out of R2. Never re-fetched from Google. */
 email.get('/messages/:id/body', async (c) => {
-	const row = await c.env.DB.prepare('SELECT body_key FROM email_messages WHERE id = ?')
+	const row = await c.env.DB.prepare(
+		'SELECT body_key, body_format FROM email_messages WHERE id = ?'
+	)
 		.bind(c.req.param('id'))
-		.first<{ body_key: string | null }>();
+		.first<{ body_key: string | null; body_format: string | null }>();
 
 	if (!row) throw new ApiError(404, 'Message not found.');
-	if (!row.body_key) return c.json({ body: null, reason: 'No body was stored for this message.' });
+	if (!row.body_key) {
+		return c.json({ body: null, format: null, reason: 'No body was stored for this message.' });
+	}
 
 	const object = await c.env.FILES.get(row.body_key);
 	if (!object) {
@@ -506,7 +602,7 @@ email.get('/messages/:id/body', async (c) => {
 		// useful than an empty string that looks like an empty email.
 		throw new ApiError(404, 'The stored body is missing from storage.');
 	}
-	return c.json({ body: await object.text() });
+	return c.json({ body: await object.text(), format: row.body_format });
 });
 
 /* -------------------------------------------------------------------------
@@ -547,7 +643,8 @@ email.post('/summarise', async (c) => {
 	const { results } = await c.env.DB.prepare(
 		`SELECT id, subject, last_at FROM email_threads
      WHERE connection_id = ?
-       AND (summary IS NULL OR summary_at IS NULL OR summary_at < last_at)
+       AND (summary IS NULL OR summary_at IS NULL OR summary_at < last_at
+            OR severity IS NULL)
      ORDER BY last_at DESC
      LIMIT ?`
 	)
@@ -560,18 +657,30 @@ email.post('/summarise', async (c) => {
 
 	for (const thread of threads) {
 		const messages = await c.env.DB.prepare(
-			`SELECT from_email, sent_at, body_key FROM email_messages
+			`SELECT from_email, sent_at, body_key, body_format FROM email_messages
        WHERE thread_id = ? ORDER BY sent_at ASC LIMIT ?`
 		)
 			.bind(thread.id, MAX_MESSAGES_PER_THREAD)
-			.all<{ from_email: string | null; sent_at: string; body_key: string | null }>();
+			.all<{
+				from_email: string | null;
+				sent_at: string;
+				body_key: string | null;
+				body_format: string | null;
+			}>();
 
 		const withBodies: { from: string | null; sent_at: string; body: string }[] = [];
 		for (const m of messages.results ?? []) {
 			if (!m.body_key) continue;
 			const object = await c.env.FILES.get(m.body_key);
 			if (!object) continue;
-			const text = (await object.text()).slice(0, MAX_CHARS_PER_MESSAGE);
+			const raw = await object.text();
+			// The model is given text, never markup. Feeding it HTML spends the
+			// context window on tags and tracking URLs instead of on what the
+			// message says.
+			const text = (m.body_format === 'html' ? stripHtml(raw) : raw).slice(
+				0,
+				MAX_CHARS_PER_MESSAGE
+			);
 			if (text.trim()) {
 				withBodies.push({ from: m.from_email, sent_at: m.sent_at, body: text });
 			}
@@ -586,16 +695,35 @@ email.post('/summarise', async (c) => {
         }
 
 		try {
-			const { summary, model } = await summariseThread(
-				apiKey,
-				thread.subject ?? '(no subject)',
-				withBodies
-			);
+			const subject = thread.subject ?? '(no subject)';
+
+			// Both questions against the same bodies, which are already loaded.
+			// Running them in parallel halves the wait for a batch.
+			const [summarised, triaged] = await Promise.all([
+				summariseThread(apiKey, subject, withBodies),
+				triageThread(apiKey, subject, withBodies)
+			]);
+
+			const at = nowUtc();
 			await c.env.DB.prepare(
-				`UPDATE email_threads SET summary = ?, summary_model = ?, summary_at = ?, updated_at = ?
+				`UPDATE email_threads
+         SET summary = ?, summary_model = ?, summary_at = ?,
+             category = ?, severity = ?, gist = ?,
+             classified_at = ?, classified_model = ?, updated_at = ?
          WHERE id = ?`
 			)
-				.bind(summary, model, nowUtc(), nowUtc(), thread.id)
+				.bind(
+					summarised.summary,
+					summarised.model,
+					at,
+					triaged.triage.category,
+					triaged.triage.severity,
+					triaged.triage.gist,
+					at,
+					triaged.model,
+					at,
+					thread.id
+				)
 				.run();
 			done.push(thread.id);
 		} catch (err) {
@@ -614,7 +742,8 @@ email.post('/summarise', async (c) => {
 	const remaining = await c.env.DB.prepare(
 		`SELECT COUNT(*) AS n FROM email_threads
      WHERE connection_id = ?
-       AND (summary IS NULL OR summary_at IS NULL OR summary_at < last_at)`
+       AND (summary IS NULL OR summary_at IS NULL OR summary_at < last_at
+            OR severity IS NULL)`
 	)
 		.bind(conn.id)
 		.first<{ n: number }>();
@@ -633,16 +762,108 @@ email.get('/summarise', async (c) => {
 	const counts = await c.env.DB.prepare(
 		`SELECT COUNT(*) AS threads,
             SUM(CASE WHEN summary IS NOT NULL THEN 1 ELSE 0 END) AS summarised,
-            SUM(CASE WHEN summary IS NOT NULL AND summary_at < last_at THEN 1 ELSE 0 END) AS stale
+            SUM(CASE WHEN severity IS NOT NULL THEN 1 ELSE 0 END) AS triaged,
+            SUM(CASE WHEN summary IS NOT NULL AND summary_at < last_at THEN 1 ELSE 0 END) AS stale,
+            SUM(CASE WHEN corrected_at IS NOT NULL THEN 1 ELSE 0 END) AS corrected
      FROM email_threads WHERE connection_id = ?`
 	)
 		.bind(conn.id)
-		.first<{ threads: number; summarised: number | null; stale: number | null }>();
+		.first<Record<string, number | null>>();
+
+	// What the model said against what Paul said it should have been. This pair
+	// is the whole training signal, which is why the override is stored beside
+	// the answer rather than on top of it.
+	const disagreements = await c.env.DB.prepare(
+		`SELECT severity AS model_said, severity_override AS paul_said, COUNT(*) AS n
+     FROM email_threads
+     WHERE connection_id = ? AND severity_override IS NOT NULL AND severity_override != severity
+     GROUP BY severity, severity_override
+     ORDER BY n DESC`
+	)
+		.bind(conn.id)
+		.all();
 
 	return c.json({
 		threads: Number(counts?.threads ?? 0),
 		summarised: Number(counts?.summarised ?? 0),
+		triaged: Number(counts?.triaged ?? 0),
 		stale: Number(counts?.stale ?? 0),
+		corrected: Number(counts?.corrected ?? 0),
+		disagreements: disagreements.results ?? [],
 		batch_size: SUMMARY_BATCH
 	});
+});
+
+/* -------------------------------------------------------------------------
+ * Corrections and triage state
+ * ---------------------------------------------------------------------- */
+
+const SEVERITIES = ['urgent', 'important', 'routine', 'noise'];
+const CATEGORIES = ['correspondence', 'automated', 'newsletter', 'notification'];
+
+/**
+ * Paul disagreeing with the model.
+ *
+ * Written to the override columns, never over the model's own answer. The pair
+ * is the signal: what it said next to what it should have said is the only
+ * thing that can teach it anything, and overwriting destroys exactly the half
+ * that carries the lesson. It also means a correction survives the thread being
+ * re-classified later.
+ */
+email.post('/threads/:id/correct', async (c) => {
+	const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+	const severity = body.severity === null || body.severity === undefined
+		? null
+		: String(body.severity);
+	const category = body.category === null || body.category === undefined
+		? null
+		: String(body.category);
+
+	if (severity !== null && !SEVERITIES.includes(severity)) {
+		throw new ApiError(400, `Severity must be one of: ${SEVERITIES.join(', ')}.`);
+	}
+	if (category !== null && !CATEGORIES.includes(category)) {
+		throw new ApiError(400, `Category must be one of: ${CATEGORIES.join(', ')}.`);
+	}
+
+	const result = await c.env.DB.prepare(
+		`UPDATE email_threads
+     SET severity_override = ?, category_override = ?, corrected_at = ?, updated_at = ?
+     WHERE id = ?`
+	)
+		.bind(severity, category, nowUtc(), nowUtc(), c.req.param('id'))
+		.run();
+
+	if (!result.meta.changes) throw new ApiError(404, 'Thread not found.');
+	return c.json({ ok: true });
+});
+
+/**
+ * Archive and read state, which live here and are never pushed to Gmail.
+ *
+ * Archiving in Gmail needs `gmail.modify`, a write scope this app deliberately
+ * never requested. So this archives the copy, not the mailbox. That is a real
+ * limitation and it is the price of the guarantee: nothing this app does can
+ * alter Paul's actual mail.
+ */
+email.post('/threads/:id/archive', async (c) => {
+	const undo = c.req.query('undo') === 'true';
+	const result = await c.env.DB.prepare(
+		'UPDATE email_threads SET archived_at = ?, updated_at = ? WHERE id = ?'
+	)
+		.bind(undo ? null : nowUtc(), nowUtc(), c.req.param('id'))
+		.run();
+	if (!result.meta.changes) throw new ApiError(404, 'Thread not found.');
+	return c.json({ ok: true, archived: !undo });
+});
+
+email.post('/threads/:id/read', async (c) => {
+	const undo = c.req.query('undo') === 'true';
+	const result = await c.env.DB.prepare(
+		'UPDATE email_threads SET read_at = ?, updated_at = ? WHERE id = ?'
+	)
+		.bind(undo ? null : nowUtc(), nowUtc(), c.req.param('id'))
+		.run();
+	if (!result.meta.changes) throw new ApiError(404, 'Thread not found.');
+	return c.json({ ok: true, read: !undo });
 });

@@ -417,8 +417,17 @@ export interface GmailMessage {
 	snippet: string | null;
 	label_ids: string | null;
 	is_unread: number;
-	/** Plain text where Gmail had it, otherwise stripped HTML, otherwise null. */
+	/**
+	 * The best body Gmail gave, kept as it arrived.
+	 *
+	 * Previously this was always stripped to plain text, which is right for
+	 * feeding a summariser and wrong for showing a person: a marketing email
+	 * stripped of markup is a wall of tracking URLs. The rich version is kept
+	 * and `body_format` says which it is, so the reader can render it and the
+	 * summariser can still be handed something plain.
+	 */
 	body: string | null;
+	body_format: 'text' | 'html' | null;
 }
 
 interface RawPart {
@@ -563,9 +572,20 @@ export async function getMessage(
 	const labels = raw.labelIds ?? [];
 
 	let body: string | null = null;
+	let bodyFormat: 'text' | 'html' | null = null;
 	if (withBody) {
 		const found = extractBody(raw.payload);
-		body = found.text ?? (found.html ? stripHtml(found.html) : null);
+		// HTML is preferred when both exist. It carries the layout, the links and
+		// the emphasis, all of which a person reads and none of which survives
+		// stripping. The plain alternative is usually the same content minus
+		// everything that made it legible.
+		if (found.html) {
+			body = found.html;
+			bodyFormat = 'html';
+		} else if (found.text) {
+			body = found.text;
+			bodyFormat = 'text';
+		}
 	}
 
 	return {
@@ -583,6 +603,7 @@ export async function getMessage(
 		snippet: raw.snippet || null,
 		label_ids: labels.length ? labels.join(',') : null,
 		is_unread: labels.includes('UNREAD') ? 1 : 0,
-		body
+		body,
+		body_format: bodyFormat
 	};
 }

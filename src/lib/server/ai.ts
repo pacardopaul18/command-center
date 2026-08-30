@@ -445,3 +445,113 @@ export async function summariseThread(
 		throw toAiError(err);
 	}
 }
+
+/**
+ * Triage of one email thread.
+ *
+ * Returns a chip, not an essay. The first version of the mail list showed the
+ * full summary in every row, which made the list unreadable: a list needs a
+ * label and a glance, and the paragraph belongs inside the thread.
+ *
+ * Severity is about what Paul must do, never about how the sender wrote it.
+ * Marketing mail says urgent constantly, and a classifier that believed the
+ * sender would rank every promotion above a client's actual question.
+ */
+const TRIAGE_SYSTEM = `You triage one email thread for a consultant.
+
+Reply with JSON only. No prose, no code fence. Exactly this shape:
+{"category":"...","severity":"...","gist":"..."}
+
+category is one of:
+  correspondence  a person wrote to a person and a reply is conceivable
+  automated       a machine sent it: receipts, alerts, job matches, calendar
+  newsletter      a subscription someone reads, or does not
+  notification    a service reporting that something happened in it
+
+severity is one of:
+  urgent     someone is waiting on Paul now, or money or a deadline is at risk
+  important  Paul must act or decide, but not today
+  routine    worth knowing, nothing to do
+  noise      nothing is lost by never opening it
+
+Severity is about what PAUL must do. It is never about how insistent the
+sender sounds. Marketing mail says urgent constantly and is still noise. A
+quiet one line question from a client that blocks their work is urgent.
+Automated mail is almost never above routine. A receipt is routine, a failed
+payment is important, a service outage affecting a client is urgent.
+
+gist is ONE line, at most 90 characters. What this is and what it wants, in
+plain words. Not a summary, not a subject line restated. If the thread wants
+nothing, say what it is and stop.
+
+Report only what the messages support. Never infer a decision from silence,
+and never turn a proposal into an agreement.`;
+
+export interface Triage {
+	category: 'correspondence' | 'automated' | 'newsletter' | 'notification';
+	severity: 'urgent' | 'important' | 'routine' | 'noise';
+	gist: string;
+}
+
+const CATEGORIES = ['correspondence', 'automated', 'newsletter', 'notification'];
+const SEVERITIES = ['urgent', 'important', 'routine', 'noise'];
+
+/**
+ * Triages a thread, refusing to guess when the model answers oddly.
+ *
+ * A model that returns something outside the four allowed values is not
+ * lightly coerced to the nearest one. Quietly turning an unrecognised answer
+ * into 'routine' would put a confident label on a thread nothing understood,
+ * and a wrong label in a filter is worse than an absent one, because an absent
+ * one is visible.
+ */
+export async function triageThread(
+	apiKey: string,
+	subject: string,
+	messages: { from: string | null; sent_at: string; body: string }[]
+): Promise<{ triage: Triage; model: string }> {
+	const rendered = messages
+		.map((m) => ['From: ' + (m.from ?? 'unknown'), 'Sent: ' + m.sent_at, '', m.body].join('\n'))
+		.join('\n\n---\n\n');
+
+	try {
+		const message = await client(apiKey).messages.create({
+			model: MODEL,
+			max_tokens: 400,
+			system: TRIAGE_SYSTEM,
+			messages: [{ role: 'user', content: 'Subject: ' + subject + '\n\n' + rendered }]
+		});
+
+		assertUsable(message);
+		const raw = textOf(message).trim();
+
+		// Models sometimes wrap JSON in a fence despite being told not to. That is
+		// a formatting habit rather than a failure, so it is unwrapped rather than
+		// rejected.
+		const body = raw.replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
+
+		let parsed: Record<string, unknown>;
+		try {
+			parsed = JSON.parse(body) as Record<string, unknown>;
+		} catch {
+			throw new AiError(502, 'Claude did not return usable triage JSON.');
+		}
+
+		const category = String(parsed.category ?? '').toLowerCase();
+		const severity = String(parsed.severity ?? '').toLowerCase();
+		if (!CATEGORIES.includes(category) || !SEVERITIES.includes(severity)) {
+			throw new AiError(502, 'Claude returned a category or severity outside the allowed set.');
+		}
+
+		const gist = enforceHouseStyle(String(parsed.gist ?? '').trim()).slice(0, 200);
+		if (!gist) throw new AiError(502, 'Claude returned an empty gist.');
+
+		return {
+			triage: { category, severity, gist } as Triage,
+			model: message.model
+		};
+	} catch (err) {
+		if (err instanceof AiError) throw err;
+		throw toAiError(err);
+	}
+}
