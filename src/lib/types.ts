@@ -657,3 +657,48 @@ export interface Contract {
 	created_at: string;
 	updated_at: string;
 }
+
+export interface Connection {
+	id: string;
+	provider: 'google';
+	account_email: string | null;
+	granted_scopes: string | null;
+	status: 'connected' | 'needs_reauth' | 'disconnected';
+	status_note: string | null;
+	connected_at: string | null;
+	last_refresh_at: string | null;
+	last_read_at: string | null;
+}
+
+/** What `GET /api/connections` reports. Never any part of a credential. */
+export interface ConnectionStatus {
+	connection: Connection | null;
+	token_present: boolean;
+	client_id_present: boolean;
+	client_secret_present: boolean;
+	scopes: readonly string[];
+	granted_scopes: string | null;
+	expires_at: string | null;
+	writes_anything: boolean;
+	testing_mode_note: string;
+}
+
+export interface CalendarEventRow {
+	id: string;
+	provider_event_id: string;
+	summary: string | null;
+	location: string | null;
+	starts_at: string;
+	ends_at: string | null;
+	all_day: number;
+	organizer: string | null;
+	attendee_count: number | null;
+	html_link: string | null;
+	meeting_id: string | null;
+	meeting_title: string | null;
+}
+
+/** The last segment of a Google scope URL, which is the part worth reading. */
+export function scopeLabel(scope: string): string {
+	return scope.split('/').pop() ?? scope;
+}

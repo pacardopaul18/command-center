@@ -1,8 +1,12 @@
 import type { PageLoad } from './$types';
-import type { AsanaStatus, AsanaSyncStatus } from '$lib/types';
+import type { AsanaStatus, AsanaSyncStatus, ConnectionStatus } from '$lib/types';
 
 export const load: PageLoad = async ({ fetch }) => {
-	const [res, syncRes] = await Promise.all([fetch('/api/asana'), fetch('/api/asana/sync')]);
+	const [res, syncRes, connRes] = await Promise.all([
+		fetch('/api/asana'),
+		fetch('/api/asana/sync'),
+		fetch('/api/connections')
+	]);
 
 	if (!res.ok) {
 		const body = (await res.json().catch(() => ({}))) as { error?: string };
@@ -14,5 +18,7 @@ export const load: PageLoad = async ({ fetch }) => {
 	// fixed and a page that will not open is no help at all.
 	const sync = syncRes.ok ? ((await syncRes.json()) as AsanaSyncStatus) : null;
 
-	return { asana: (await res.json()) as AsanaStatus, sync };
+	const connections = connRes.ok ? ((await connRes.json()) as ConnectionStatus) : null;
+
+	return { asana: (await res.json()) as AsanaStatus, sync, connections };
 };

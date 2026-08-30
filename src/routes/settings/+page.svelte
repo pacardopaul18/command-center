@@ -8,7 +8,9 @@
 	import Select from '$lib/components/Select.svelte';
 	import { apiWrite } from '$lib/http';
 	import { formatMoment } from '$lib/format';
+	import { scopeLabel } from '$lib/types';
 	import type { AsanaRef, AsanaSyncOutcome } from '$lib/types';
+	import { page } from '$app/state';
 	import type { PageData } from './$types';
 
 	/**
@@ -78,6 +80,57 @@
 			await invalidateAll();
 		}
 		syncing = false;
+	}
+
+	/**
+	 * The Google callback comes back as a page navigation carrying its outcome in
+	 * the URL, because a redirect cannot return JSON to anybody who will read it.
+	 */
+	const googleNotice = $derived(page.url.searchParams.get('google'));
+
+	let connecting = $state(false);
+
+	async function connectGoogle() {
+		connecting = true;
+		errorMessage = '';
+		const result = await apiWrite<{ url: string }>('/api/connections/google/start', 'POST', {});
+		if (!result.ok || !result.data) {
+			errorMessage = result.error ?? 'Could not start the Google connection.';
+			connecting = false;
+			return;
+		}
+		// Leaving the page is the point: consent happens on Google's own screen.
+		window.location.href = result.data.url;
+	}
+
+	async function disconnectGoogle() {
+		if (!confirm('Disconnect this Google account?')) return;
+		connecting = true;
+		errorMessage = '';
+		const result = await apiWrite('/api/connections/google/disconnect', 'POST', {});
+		if (!result.ok) errorMessage = result.error ?? 'Could not disconnect.';
+		else {
+			notice = 'Disconnected. The stored credentials were removed.';
+			await invalidateAll();
+		}
+		connecting = false;
+	}
+
+	async function refreshCalendar() {
+		connecting = true;
+		errorMessage = '';
+		const result = await apiWrite<{ fetched: number; window_days: number }>(
+			'/api/connections/google/calendar/refresh',
+			'POST',
+			{}
+		);
+		if (!result.ok || !result.data) {
+			errorMessage = result.error ?? 'Could not read the calendar.';
+		} else {
+			notice = `Read ${result.data.fetched} event${result.data.fetched === 1 ? '' : 's'} from the next ${result.data.window_days} days.`;
+			await invalidateAll();
+		}
+		connecting = false;
 	}
 
 	let workspaces = $state<AsanaRef[]>([]);
@@ -370,6 +423,102 @@
 	{/if}
 </Card>
 
+<Card title="Connections" subtitle="Google, read only. Paul's own account only.">
+	{#if googleNotice}
+		<p class="notice" role="status">{googleNotice}</p>
+	{/if}
+
+	{#if !data.connections}
+		<p class="empty">Could not read the connection state.</p>
+	{:else}
+		{@const c = data.connections}
+
+		<p class="hint">
+			This reads a calendar and reads mail. It never writes anything: no sending, no
+			replying, no drafts, no labels, no calendar changes. That is not a promise about
+			how the code behaves, it is a consequence of which permissions were requested.
+			The permission to send was never asked for, so it cannot be used by mistake.
+		</p>
+
+		<p class="hint">
+			<strong>Your own account only.</strong> Connecting a partner or firm account is a
+			conversation that has not happened yet, and this app is not the place to shortcut
+			it. Do not sign in here with an account that is not yours.
+		</p>
+
+		{#if !c.client_id_present || !c.client_secret_present}
+			<p class="hint">
+				Not configured yet.
+				{#if !c.client_id_present}<code>GOOGLE_CLIENT_ID</code> is missing from wrangler.toml.{/if}
+				{#if !c.client_secret_present}<code>GOOGLE_CLIENT_SECRET</code> is not set on the Worker.{/if}
+			</p>
+		{/if}
+
+		<div class="actions">
+			{#if c.connection?.status === 'connected'}
+				<Button variant="secondary" onclick={refreshCalendar} disabled={connecting}>
+					{connecting ? 'Working...' : 'Read the calendar'}
+				</Button>
+				<Button variant="ghost" onclick={disconnectGoogle} disabled={connecting}>Disconnect</Button>
+			{:else}
+				<Button
+					onclick={connectGoogle}
+					disabled={connecting || !c.client_id_present || !c.client_secret_present}
+				>
+					{connecting ? 'Working...' : 'Connect Google'}
+				</Button>
+			{/if}
+		</div>
+
+		<dl class="facts">
+			<div>
+				<dt>Account</dt>
+				<dd>{c.connection?.account_email ?? 'Not connected'}</dd>
+			</div>
+			<div>
+				<dt>State</dt>
+				<dd>
+					{c.connection?.status === 'connected'
+						? 'Connected'
+						: c.connection?.status === 'needs_reauth'
+							? 'Needs reconnecting'
+							: 'Not connected'}
+				</dd>
+			</div>
+			<div>
+				<dt>Calendar last read</dt>
+				<dd class="mono">
+					{c.connection?.last_read_at ? formatMoment(c.connection.last_read_at) : 'Never'}
+				</dd>
+			</div>
+			<div>
+				<dt>Writes anything</dt>
+				<dd>No</dd>
+			</div>
+		</dl>
+
+		{#if c.connection?.status_note}
+			<p class="hint">{c.connection.status_note}</p>
+		{/if}
+
+		<h3 class="sub-head">What it asks for</h3>
+		<ul class="scopes">
+			{#each c.scopes as scope (scope)}
+				<li class="mono">{scopeLabel(scope)}</li>
+			{/each}
+		</ul>
+		{#if c.granted_scopes}
+			<p class="hint">
+				Granted by Google: <span class="mono">{c.granted_scopes.split(' ').map(scopeLabel).join(', ')}</span>.
+				What was granted can be narrower than what was asked for, so this is what
+				actually applies.
+			</p>
+		{/if}
+
+		<p class="hint">{c.testing_mode_note}</p>
+	{/if}
+</Card>
+
 <style>
 	.head {
 		display: flex;
@@ -582,6 +731,22 @@
 		font-size: var(--text-xs);
 		color: var(--text-secondary);
 		word-break: break-word;
+	}
+
+	.scopes {
+		list-style: none;
+		margin: 0 0 var(--space-3);
+		padding: 0;
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--space-2);
+	}
+
+	.scopes li {
+		font-size: var(--text-xs);
+		border: 1px solid var(--border);
+		border-radius: 999px;
+		padding: 2px 8px;
 	}
 
 	.save {

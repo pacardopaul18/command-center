@@ -20,9 +20,13 @@ declare global {
 				RESEND_API_KEY?: string;
 				ANTHROPIC_API_KEY?: string;
 				ASANA_TOKEN?: string;
+				GOOGLE_CLIENT_SECRET?: string;
 				// Plain vars from wrangler.toml, not secrets.
 				DIGEST_FROM?: string;
 				DIGEST_TO?: string;
+				// The OAuth client id is public by design: it appears in the
+				// consent URL every user sees. Only the secret is a secret.
+				GOOGLE_CLIENT_ID?: string;
 			};
 			cf?: import('@cloudflare/workers-types').CfProperties;
 			ctx: import('@cloudflare/workers-types').ExecutionContext;

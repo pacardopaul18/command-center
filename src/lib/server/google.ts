@@ -1,0 +1,358 @@
+import type { KVNamespace } from '@cloudflare/workers-types';
+
+/**
+ * Google OAuth, calendar read, and nothing that writes.
+ *
+ * Built dark: this connects Paul's own Google account and no other. Partner and
+ * firm accounts connect only after the partner conversation, and Settings says
+ * so in words rather than leaving it as an intention nobody wrote down.
+ *
+ * SCOPES ARE THE SAFETY MECHANISM. `gmail.send` is not requested, not
+ * configurable, and not reachable. That is D70: a scope never granted cannot be
+ * used by a later bug, a bad refactor, or a confused model, because the token
+ * this app holds is physically incapable of sending. The weak version of the
+ * rule is "never call the send endpoint", which survives exactly as long as
+ * every future change remembers it. This version has nothing to remember.
+ *
+ * Classification, read off the console rather than assumed (D78):
+ *   calendar.readonly  SENSITIVE
+ *   gmail.readonly     RESTRICTED
+ *
+ * Restricted is why this stays in Testing mode. Publishing a Restricted-scope
+ * app means Google verification plus a CASA assessment, and that is a long-lead
+ * gate on partner accounts, not on Paul's own.
+ */
+
+const AUTH_ENDPOINT = 'https://accounts.google.com/o/oauth2/v2/auth';
+const TOKEN_ENDPOINT = 'https://oauth2.googleapis.com/token';
+const USERINFO_ENDPOINT = 'https://www.googleapis.com/oauth2/v2/userinfo';
+const CALENDAR_ENDPOINT = 'https://www.googleapis.com/calendar/v3/calendars/primary/events';
+
+/**
+ * Everything this app will ever ask for.
+ *
+ * Read scopes only. Adding a write scope here is a decision that has to be made
+ * on purpose, in this list, with this comment in view.
+ */
+export const SCOPES = [
+	'https://www.googleapis.com/auth/calendar.readonly',
+	'https://www.googleapis.com/auth/gmail.readonly',
+	'openid',
+	'email'
+] as const;
+
+/** KV key for the tokens. Deliberately not a D1 column: see migration 0011. */
+export const TOKEN_KEY = 'google:tokens';
+
+/** KV key for the one-time state value that ties a callback to its start. */
+const STATE_KEY = 'google:oauth-state';
+
+/** Google refuses a token exchange whose state does not match. So do we. */
+const STATE_TTL_SECONDS = 600;
+
+export class GoogleError extends Error {
+	status: number;
+	detail: string | null;
+	/** Set when Google says the refresh token itself is dead. */
+	needsReauth: boolean;
+
+	constructor(status: number, message: string, detail: string | null = null, needsReauth = false) {
+		super(message);
+		this.status = status;
+		this.detail = detail;
+		this.needsReauth = needsReauth;
+	}
+}
+
+export interface StoredTokens {
+	access_token: string;
+	refresh_token: string | null;
+	/** Absolute, so a stored token can be judged without knowing when it arrived. */
+	expires_at: string;
+	scope: string;
+}
+
+export async function readTokens(kv: KVNamespace): Promise<StoredTokens | null> {
+	const raw = await kv.get(TOKEN_KEY);
+	if (!raw) return null;
+	try {
+		return JSON.parse(raw) as StoredTokens;
+	} catch {
+		// Unreadable tokens are treated as absent rather than as a fault. The
+		// worst case is reconnecting, which is a button.
+		return null;
+	}
+}
+
+export async function writeTokens(kv: KVNamespace, tokens: StoredTokens): Promise<void> {
+	await kv.put(TOKEN_KEY, JSON.stringify(tokens));
+}
+
+export async function clearTokens(kv: KVNamespace): Promise<void> {
+	await kv.delete(TOKEN_KEY);
+}
+
+/**
+ * The URL that starts the flow, plus the state it must come back with.
+ *
+ * `access_type=offline` and `prompt=consent` are both required to be handed a
+ * refresh token. Without them Google returns an access token that dies in an
+ * hour and no way to renew it, and the connection appears to work until it
+ * quietly stops.
+ */
+export async function authorizeUrl(
+	kv: KVNamespace,
+	clientId: string,
+	redirectUri: string
+): Promise<string> {
+	const state = crypto.randomUUID();
+	await kv.put(STATE_KEY, state, { expirationTtl: STATE_TTL_SECONDS });
+
+	const params = new URLSearchParams({
+		client_id: clientId,
+		redirect_uri: redirectUri,
+		response_type: 'code',
+		scope: SCOPES.join(' '),
+		access_type: 'offline',
+		prompt: 'consent',
+		include_granted_scopes: 'true',
+		state
+	});
+	return `${AUTH_ENDPOINT}?${params.toString()}`;
+}
+
+/**
+ * Checks the state a callback came back with, and spends it.
+ *
+ * One use only. A state that could be replayed is not doing the job it exists
+ * for, which is proving this callback belongs to a flow this app started.
+ */
+export async function consumeState(kv: KVNamespace, state: string | null): Promise<boolean> {
+	if (!state) return false;
+	const expected = await kv.get(STATE_KEY);
+	await kv.delete(STATE_KEY);
+	return Boolean(expected) && expected === state;
+}
+
+async function tokenRequest(body: URLSearchParams): Promise<Record<string, unknown>> {
+	let res: Response;
+	try {
+		res = await fetch(TOKEN_ENDPOINT, {
+			method: 'POST',
+			headers: { 'content-type': 'application/x-www-form-urlencoded' },
+			body: body.toString()
+		});
+	} catch {
+		throw new GoogleError(502, 'Could not reach Google. Nothing was changed.');
+	}
+
+	const parsed = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+
+	if (!res.ok) {
+		const code = typeof parsed.error === 'string' ? parsed.error : null;
+		const detail =
+			typeof parsed.error_description === 'string' ? parsed.error_description : code;
+
+		// `invalid_grant` is the one that matters: the refresh token is dead, and
+		// in Testing mode that happens every seven days by design. It is not a
+		// fault to investigate, it is a reconnect to perform, and saying so is the
+		// difference between a useful message and a stack trace.
+		if (code === 'invalid_grant') {
+			throw new GoogleError(
+				401,
+				'Google will not renew this connection. Reconnect the account. ' +
+					'In Testing mode Google expires the refresh token every seven days.',
+				detail,
+				true
+			);
+		}
+		throw new GoogleError(502, `Google rejected the token request (${res.status}).`, detail);
+	}
+
+	return parsed;
+}
+
+function toStored(payload: Record<string, unknown>, previous: StoredTokens | null): StoredTokens {
+	const expiresIn = Number(payload.expires_in ?? 3600);
+	return {
+		access_token: String(payload.access_token ?? ''),
+		// Google returns a refresh token on the first exchange and usually not on
+		// a refresh. Dropping the old one because this response lacked it is how
+		// a working connection turns into one that cannot renew.
+		refresh_token:
+			typeof payload.refresh_token === 'string'
+				? payload.refresh_token
+				: (previous?.refresh_token ?? null),
+		expires_at: new Date(Date.now() + expiresIn * 1000).toISOString(),
+		scope: typeof payload.scope === 'string' ? payload.scope : (previous?.scope ?? '')
+	};
+}
+
+export async function exchangeCode(
+	code: string,
+	clientId: string,
+	clientSecret: string,
+	redirectUri: string
+): Promise<StoredTokens> {
+	const payload = await tokenRequest(
+		new URLSearchParams({
+			code,
+			client_id: clientId,
+			client_secret: clientSecret,
+			redirect_uri: redirectUri,
+			grant_type: 'authorization_code'
+		})
+	);
+
+	const tokens = toStored(payload, null);
+	if (!tokens.refresh_token) {
+		// Without one, the connection dies in an hour with no way back except a
+		// manual reconnect nobody will know to perform. Better to fail loudly now.
+		throw new GoogleError(
+			502,
+			'Google did not return a refresh token. Remove this app from your Google ' +
+				'account permissions and connect again so it prompts for consent.'
+		);
+	}
+	return tokens;
+}
+
+/** True when the token is gone or close enough to gone to renew it first. */
+export function needsRefresh(tokens: StoredTokens, skewSeconds = 120): boolean {
+	return Date.parse(tokens.expires_at) - Date.now() < skewSeconds * 1000;
+}
+
+export async function refreshTokens(
+	tokens: StoredTokens,
+	clientId: string,
+	clientSecret: string
+): Promise<StoredTokens> {
+	if (!tokens.refresh_token) {
+		throw new GoogleError(401, 'This connection has no refresh token. Reconnect the account.', null, true);
+	}
+	const payload = await tokenRequest(
+		new URLSearchParams({
+			refresh_token: tokens.refresh_token,
+			client_id: clientId,
+			client_secret: clientSecret,
+			grant_type: 'refresh_token'
+		})
+	);
+	return toStored(payload, tokens);
+}
+
+/**
+ * A usable access token, renewing first if it is about to expire.
+ *
+ * Every caller goes through here rather than reading KV directly, so there is
+ * one place that knows when a token is stale and one place that writes the
+ * renewed one back.
+ */
+export async function accessToken(
+	kv: KVNamespace,
+	clientId: string,
+	clientSecret: string
+): Promise<StoredTokens> {
+	const tokens = await readTokens(kv);
+	if (!tokens) throw new GoogleError(400, 'No Google account is connected.');
+	if (!needsRefresh(tokens)) return tokens;
+
+	const renewed = await refreshTokens(tokens, clientId, clientSecret);
+	await writeTokens(kv, renewed);
+	return renewed;
+}
+
+async function apiGet<T>(token: string, url: string): Promise<T> {
+	let res: Response;
+	try {
+		res = await fetch(url, { headers: { authorization: `Bearer ${token}` } });
+	} catch {
+		throw new GoogleError(502, 'Could not reach Google.');
+	}
+	if (res.status === 401 || res.status === 403) {
+		throw new GoogleError(
+			401,
+			'Google refused the request with this connection. Reconnect the account.',
+			null,
+			true
+		);
+	}
+	if (!res.ok) throw new GoogleError(502, `Google returned an error (${res.status}).`);
+	return (await res.json()) as T;
+}
+
+export async function whoAmI(token: string): Promise<{ email: string | null }> {
+	const body = await apiGet<{ email?: string }>(token, USERINFO_ENDPOINT);
+	return { email: typeof body.email === 'string' ? body.email : null };
+}
+
+export interface CalendarEvent {
+	provider_event_id: string;
+	summary: string | null;
+	description: string | null;
+	location: string | null;
+	starts_at: string;
+	ends_at: string | null;
+	all_day: number;
+	organizer: string | null;
+	attendee_count: number | null;
+	html_link: string | null;
+}
+
+interface RawEvent {
+	id?: string;
+	summary?: string;
+	description?: string;
+	location?: string;
+	htmlLink?: string;
+	status?: string;
+	start?: { date?: string; dateTime?: string };
+	end?: { date?: string; dateTime?: string };
+	organizer?: { email?: string; displayName?: string };
+	attendees?: unknown[];
+}
+
+/**
+ * Events between two instants, from the primary calendar.
+ *
+ * `singleEvents=true` expands a recurring series into its occurrences, which is
+ * what a day view needs. Without it a weekly standup arrives as one event with
+ * a recurrence rule this app would have to interpret itself, and interpreting
+ * RRULE correctly is a project.
+ *
+ * An all-day event carries `date`; a timed one carries `dateTime`. Both are
+ * kept as Google sent them, because collapsing them to one shape loses which
+ * kind it was, and "9am" and "all of Tuesday" are not the same fact.
+ */
+export async function listEvents(
+	token: string,
+	timeMin: string,
+	timeMax: string
+): Promise<CalendarEvent[]> {
+	const params = new URLSearchParams({
+		timeMin,
+		timeMax,
+		singleEvents: 'true',
+		orderBy: 'startTime',
+		maxResults: '100'
+	});
+
+	const body = await apiGet<{ items?: RawEvent[] }>(token, `${CALENDAR_ENDPOINT}?${params}`);
+
+	return (body.items ?? [])
+		// A cancelled occurrence still comes back. Showing it as a meeting would
+		// put something on Paul's day that is not happening.
+		.filter((e) => e.status !== 'cancelled' && e.id && (e.start?.date || e.start?.dateTime))
+		.map((e) => ({
+			provider_event_id: String(e.id),
+			summary: e.summary ?? null,
+			description: e.description ?? null,
+			location: e.location ?? null,
+			starts_at: e.start?.dateTime ?? String(e.start?.date),
+			ends_at: e.end?.dateTime ?? e.end?.date ?? null,
+			all_day: e.start?.dateTime ? 0 : 1,
+			organizer: e.organizer?.email ?? e.organizer?.displayName ?? null,
+			attendee_count: Array.isArray(e.attendees) ? e.attendees.length : null,
+			html_link: e.htmlLink ?? null
+		}));
+}

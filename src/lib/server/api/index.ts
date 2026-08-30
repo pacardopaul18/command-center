@@ -3,6 +3,7 @@ import type { ApiEnv } from './env';
 import { actionItems } from './action-items';
 import { asana } from './asana';
 import { client360 } from './client-360';
+import { connections } from './connections';
 import { backups } from './backups';
 import { clients } from './clients';
 import { digests } from './digests';
@@ -59,6 +60,7 @@ api.route('/asana', asana);
 // Contacts, contracts and the client overview all hang off the same router.
 api.route('/', client360);
 api.route('/backups', backups);
+api.route('/connections', connections);
 api.route('/clients', clients);
 api.route('/digests', digests);
 api.route('/invoicing', invoicing);

@@ -41,6 +41,7 @@ file records what was decided along the way that neither of them says, and why.
 | T-ws2-asana | Phase 2 workstream 2: two-way Asana sync by polling | BUILT 2026-08-30, D75 to D77, unverified against a real token. Migration 0009 applied local then remote, 9 of 9, snapshot `snapshot-2026-08-30-pre-0009.sql` taken first. All nine constraint cases probed. Reconciler tested as a pure function and mutation-checked; the run tested end to end against the real schema with Asana stubbed, including the D69 path. Run by hand from Settings; nothing wired to cron |
 | T-ws3-client360 | Phase 2 workstream 3: Client 360, contacts and contracts | DONE 2026-08-30, D79 and D80. Migration 0010 applied local then remote, 10 of 10, snapshot `snapshot-2026-08-30-pre-0010.sql` taken first. All 13 constraint cases probed. Money proven identical to the Invoicing screen on 22 invoices before the page was built, and asserted in the suite. Defect found live and fixed: partial unique index matchers named the index rather than the column, in contacts and in tickets |
 | T-ws4-google | Google Cloud OAuth client, Paul's own account | DONE 2026-08-30, D78. Client created, redirect URIs registered, `GOOGLE_CLIENT_SECRET` on the Worker (confirmed by name only). Client ID still to land as a plain var. Google restricted-scope verification and CASA logged as a long-lead gate on partner accounts, not on the build |
+| T-ws4-connections | Phase 2 workstream 4: connections, Google, built dark | CALENDAR HALF BUILT 2026-08-30, D81 to D83. Migration 0011 applied local then remote, 11 of 11, snapshot taken first. All 13 constraint cases probed. OAuth flow, token refresh, calendar read and the Settings panel done and probed live for every path that does not need a real client id. Tokens in KV, never D1, per D81. Scope guard tests mutation checked. AWAITING `GOOGLE_CLIENT_ID` to run one real authorization; Gmail read not started |
 | T-v2-baseline | Partner time baseline audit, running 15-minute-increment note | OPEN, DRI Paul, starting week of 2026-08-31. Prerequisite for the v2 partner-hours-saved dashboard, D52. Nothing blocks on it in v1 |
 
 ## Decisions
@@ -1998,6 +1999,72 @@ argument for fixing the visible one properly rather than locally.
 
 Worth stating as a rule: an error matcher is not verified by reading it. It is
 verified by causing the error.
+
+### D81: credentials do not go in D1, because the backup would spread them
+
+Workstream 4, calendar first. Migration `0011_connections.sql`.
+
+The estimate said "`connections`, holding OAuth tokens". The table does not hold
+them, and the reason is D58.
+
+The nightly backup enumerates `sqlite_master` and dumps every table in the
+database to R2. A Google refresh token is a long-lived credential that mints
+access tokens until it is revoked. Putting one in a D1 column means writing that
+credential, in plaintext, into a new R2 object every night, and keeping it for
+the whole retention window. The backup exists to make data recoverable. It would
+silently have become a mechanism for copying a credential into more places.
+
+So tokens live in KV, which is not part of the D1 dump, and `connections` holds
+only what is safe to back up: which account, what it may read, when it was last
+refreshed. The consequence is deliberate: restoring a backup returns the
+connection record without the credential, and the app says reconnect. A restored
+database should not silently regain the ability to read somebody's mail.
+
+Worth generalising. Adding a table is not only a schema decision now that
+something copies every table off-site on a timer. The question "what happens to
+this column in a backup" did not exist before D58 and applies to every migration
+after it.
+
+### D82: the scope list is the safety mechanism, and the suite guards it
+
+Gmail is read-only and cannot send. The enforcement is that `gmail.send` is
+never requested, so the token is physically incapable of it (D70). But that
+guarantee lasts exactly as long as the scope list stays what it is, and a list
+in a file is precisely the thing that grows quietly during an unrelated change.
+
+So the list is now asserted. Five tests: the exact four scopes, no scope
+containing any write capability, every Gmail and Calendar scope ending in
+`.readonly`, no write endpoint referenced anywhere in the two source files, and
+no token column in migration 0011. Mutation checked: adding `gmail.send` to the
+list fails three of them, and the message names the decision being overturned
+rather than reporting a mismatch.
+
+The test asserting exactly one `method: 'POST'` in `google.ts` is the one worth
+explaining. Every Google read goes through a GET-only helper. The single POST is
+the OAuth token exchange, which writes nothing to the user's account. A second
+POST appearing is either a write or a refactor that deserves a look, and both
+are worth a failing test.
+
+This is the D67 family again: every artifact this project trusts gets trusted
+only after being exercised. Beliefs, bundles, fixtures, tests, error matchers,
+and now permission lists.
+
+### D83: built dark is enforced in copy, not left as intent
+
+The ruling was that partner and firm accounts connect only after the partner
+conversation, and that it be enforced in Settings copy rather than in intent.
+
+The panel says, in the same words: your own account only, connecting a partner
+or firm account is a conversation that has not happened yet, and do not sign in
+here with an account that is not yours. It also states plainly that nothing is
+ever written: no sending, no replying, no drafts, no labels, no calendar
+changes, and that this follows from which permissions were requested rather than
+from how the code behaves.
+
+`GET /api/connections` returns `writes_anything: false` as a field. Stating it in
+the API as well as the page means the claim sits next to the code that would
+have to change to make it false, rather than only in prose a reader has to
+trust.
 
 ## Interpretation notes
 
