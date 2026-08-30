@@ -22,6 +22,7 @@
 		{ href: '/sops', label: 'SOPs', exact: false },
 		{ href: '/templates', label: 'Templates', exact: false },
 		{ href: '/clients', label: 'Clients', exact: false },
+		{ href: '/mail', label: 'Mail', exact: false },
 		{ href: '/invoices', label: 'Invoicing', exact: false },
 		{ href: '/reports', label: 'Reports', exact: false },
 		{ href: '/settings', label: 'Settings', exact: false }

@@ -390,3 +390,58 @@ ${input.situation}`
 		throw toAiError(err);
 	}
 }
+
+const THREAD_SYSTEM = `You summarise an email thread for a consultant's own reference.
+
+Write two to four sentences of plain prose. No bullets, no headings, no preamble.
+
+Cover, in this order and only where the thread supports it: what the thread is
+about, what was decided or agreed, and what is outstanding and on whom.
+
+Rules that matter more than completeness:
+- Report only what the messages say. Never infer a decision from silence, and
+  never turn a proposal into an agreement.
+- If nothing was decided, say so plainly rather than manufacturing a conclusion.
+- Name people as the messages name them.
+- Do not restate the subject line as a summary.
+- Marketing mail, notifications and automated receipts are common. If the thread
+  is one of those, say what it is in one sentence and stop.
+
+This summary is read next to the thread itself, so it does not need to repeat
+detail a glance would give.`;
+
+/**
+ * Summarises one email thread.
+ *
+ * Deliberately the same shape as `summariseTranscript`: same client, same house
+ * style enforcement, same error handling. A thread and a transcript are both a
+ * conversation somebody needs the gist of, and building a second path for the
+ * second one would mean two prompts to keep honest instead of one.
+ */
+export async function summariseThread(
+	apiKey: string,
+	subject: string,
+	messages: { from: string | null; sent_at: string; body: string }[]
+): Promise<{ summary: string; model: string }> {
+	const rendered = messages
+		.map((m) => ['From: ' + (m.from ?? 'unknown'), 'Sent: ' + m.sent_at, '', m.body].join('\n'))
+		.join('\n\n---\n\n');
+
+	try {
+		const message = await client(apiKey).messages.create({
+			model: MODEL,
+			max_tokens: MAX_TOKENS,
+			system: THREAD_SYSTEM,
+			messages: [{ role: 'user', content: 'Subject: ' + subject + '\n\n' + rendered }]
+		});
+
+		assertUsable(message);
+		// Enforced, not requested, exactly as the transcript path does it.
+		const summary = enforceHouseStyle(textOf(message));
+		if (!summary) throw new AiError(502, 'Claude returned an empty summary.');
+		return { summary, model: message.model };
+	} catch (err) {
+		if (err instanceof AiError) throw err;
+		throw toAiError(err);
+	}
+}

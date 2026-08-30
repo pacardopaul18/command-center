@@ -45,3 +45,4 @@ playwright-report/
 
 # Local dev server log, an artifact of running the suite.
 dev.out
+remote.out

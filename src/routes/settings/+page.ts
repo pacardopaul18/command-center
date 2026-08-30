@@ -1,11 +1,17 @@
 import type { PageLoad } from './$types';
-import type { AsanaStatus, AsanaSyncStatus, ConnectionStatus } from '$lib/types';
+import type {
+	AsanaStatus,
+	AsanaSyncStatus,
+	ConnectionStatus,
+	EmailIngestStatus
+} from '$lib/types';
 
 export const load: PageLoad = async ({ fetch }) => {
-	const [res, syncRes, connRes] = await Promise.all([
+	const [res, syncRes, connRes, mailRes] = await Promise.all([
 		fetch('/api/asana'),
 		fetch('/api/asana/sync'),
-		fetch('/api/connections')
+		fetch('/api/connections'),
+		fetch('/api/email/ingest')
 	]);
 
 	if (!res.ok) {
@@ -20,5 +26,9 @@ export const load: PageLoad = async ({ fetch }) => {
 
 	const connections = connRes.ok ? ((await connRes.json()) as ConnectionStatus) : null;
 
-	return { asana: (await res.json()) as AsanaStatus, sync, connections };
+	// Mail state is context. A failure reading it must not stop Settings loading,
+	// since Settings is where a broken connection gets fixed.
+	const mail = mailRes.ok ? ((await mailRes.json()) as EmailIngestStatus) : null;
+
+	return { asana: (await res.json()) as AsanaStatus, sync, connections, mail };
 };

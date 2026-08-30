@@ -42,6 +42,7 @@ file records what was decided along the way that neither of them says, and why.
 | T-ws3-client360 | Phase 2 workstream 3: Client 360, contacts and contracts | DONE 2026-08-30, D79 and D80. Migration 0010 applied local then remote, 10 of 10, snapshot `snapshot-2026-08-30-pre-0010.sql` taken first. All 13 constraint cases probed. Money proven identical to the Invoicing screen on 22 invoices before the page was built, and asserted in the suite. Defect found live and fixed: partial unique index matchers named the index rather than the column, in contacts and in tickets |
 | T-ws4-google | Google Cloud OAuth client, Paul's own account | DONE 2026-08-30, D78. Client created, redirect URIs registered, `GOOGLE_CLIENT_SECRET` on the Worker (confirmed by name only). Client ID still to land as a plain var. Google restricted-scope verification and CASA logged as a long-lead gate on partner accounts, not on the build |
 | T-ws4-connections | Phase 2 workstream 4: connections, Google, built dark | CALENDAR HALF BUILT 2026-08-30, D81 to D83. Migration 0011 applied local then remote, 11 of 11, snapshot taken first. All 13 constraint cases probed. OAuth flow, token refresh, calendar read and the Settings panel done and probed live for every path that does not need a real client id. Tokens in KV, never D1, per D81. Scope guard tests mutation checked. AWAITING `GOOGLE_CLIENT_ID` to run one real authorization; Gmail read not started |
+| T-ws4-gmail | Phase 2 workstream 4: Gmail read, ingest, browse and the AI pass | BUILT 2026-08-30, D84 to D88. Migration 0012 applied local then remote, 12 of 12, snapshot taken first. All 15 constraint cases probed. Exercised against Paul's real account: 186 messages and 162 threads ingested over a three day window, pause and resume proven, bodies round-tripped out of R2, five threads summarised clean of em dashes. Two defects found by running it: a per-page estimate shown as a total (D85) and a comma inside a quoted display name (D87). Bodies in R2, never D1, per D86. Client linking returns nothing until contacts carry email addresses, which is correct and currently empty |
 | T-v2-baseline | Partner time baseline audit, running 15-minute-increment note | OPEN, DRI Paul, starting week of 2026-08-31. Prerequisite for the v2 partner-hours-saved dashboard, D52. Nothing blocks on it in v1 |
 
 ## Decisions
@@ -2065,6 +2066,108 @@ from how the code behaves.
 the API as well as the page means the claim sits next to the code that would
 have to change to make it false, rather than only in prose a reader has to
 trust.
+
+### D84: ingestion is batched and resumable, and its progress is a record
+
+Gmail read, built. Migration `0012_email_ingest.sql`.
+
+Listing a month of mail is one cheap call. Reading it is one call per message,
+hundreds of them, and a Worker request will not live long enough to do that. So
+a run is a series of small batches, each recording where it got to before it
+returns.
+
+The consequence that matters is not performance. It is that nothing depends on
+a single request surviving. A batch that fails costs one batch, the cursor stays
+where it was, and the next attempt covers the same page again. Re-reading a page
+is free; losing one silently is not, which is why the cursor is deliberately not
+advanced on failure. Same rule as the digest sent marker and the Asana sync
+cursor: the record of having done a thing is written after the thing succeeded.
+
+Progress is stored rather than returned. Paul has to see ingestion state, not
+infer it, and a number that exists only inside a request that has already ended
+cannot be shown to anybody. A page opened halfway through a run shows the same
+truth as one that watched it happen.
+
+Proven on real mail: a three day window, 186 messages, 162 threads, every one
+with a body, pause and resume exercised mid-run, and the completion transition
+reached.
+
+### D85: a per-page estimate shown as a total reads as a bug
+
+Caught in the first real run, and it would have shipped as a visibly broken
+progress bar.
+
+Gmail's `resultSizeEstimate` is per page, not per query. The run reported 201 on
+page one and 11 on the last. The code was overwriting the stored total each
+page, so the readout would have said "186 of 11": a progress bar past its own
+end, which reads as broken software rather than as an estimate behaving like an
+estimate.
+
+The first page's estimate is now kept and later ones ignored, because page one
+is the closest thing Gmail offers to a total. The readout also says the word
+estimate, so arriving early or late is honest rather than confusing.
+
+Only visible by running it against real data. A fixture would have had one page.
+
+### D86: mail bodies do not go in D1, for the same reason credentials do not
+
+D81 said credentials stay out of D1 because the nightly backup dumps every table
+to R2. Mail is the same argument at a larger scale: a body column would copy the
+full text of Paul's mailbox into a new R2 object every night, for the whole
+retention window, growing without bound.
+
+So bodies live in R2 and are referenced. Written once.
+
+Subjects and snippets ARE in D1, and so they are in the nightly dump. That is a
+deliberate, narrower exposure rather than an oversight: they are what makes a
+list readable, and a list nobody can scan is not worth ingesting for. The full
+text is the part that does not need copying nightly to be recoverable.
+
+D58 changed what a migration means. "What happens to this column in a backup"
+did not exist as a question before something started copying every table
+off-site on a timer, and it now applies to every table added after it.
+
+### D87: the parsing is where a mail reader actually breaks
+
+Seventeen tests against the decoding, and they are not ceremony. Fetching either
+works or returns an error. Decoding fails quietly, and every failure looks like
+working software: a body that is empty, a name that is mangled, a reply whose
+text was silently dropped.
+
+One real defect found this way. `parseAddressList` split the header on commas,
+and a quoted display name routinely contains one: `"Acme, Inc." <a@x.test>` is
+ordinary business mail. The naive split produced a fragment that parsed as the
+address `"acme` and stored it as a recipient. It is right most of the time,
+which is exactly why it survives review. Now split quote aware.
+
+The other cases are the same family. Gmail's base64 is base64url, which `atob`
+does not accept, and whether that matters depends on the content of the
+particular message. A body decoded as latin1 mangles every accented name and
+smart quote, which is most real correspondence. A reply with an attachment nests
+its text one level deeper, so stopping at the top level loses the body of
+precisely the messages that matter most.
+
+### D88: a summary reports what the thread says, including that nothing happened
+
+The AI pass reuses `summariseTranscript`'s shape exactly: same client, same
+house style enforcement, same error handling. A thread and a transcript are both
+a conversation somebody needs the gist of, and a second path would mean two
+prompts to keep honest instead of one.
+
+The prompt's load bearing instruction is the negative one: never infer a
+decision from silence, never turn a proposal into an agreement, and if nothing
+was decided say so. A summariser that manufactures a conclusion is worse than no
+summary, because the conclusion is confident and the reader has no way to see it
+was invented.
+
+A thread with no readable body is skipped rather than summarised from its
+subject line, for the same reason. Threads are re-summarised when they grow,
+which is why `summary_at` is stored: a summary with no date cannot be known to
+be stale.
+
+Verified on real mail: five threads, 170 to 295 characters each, and zero em or
+en dashes, which is the house style rule holding through a path that had never
+been through it before.
 
 ## Interpretation notes
 

@@ -702,3 +702,31 @@ export interface CalendarEventRow {
 export function scopeLabel(scope: string): string {
 	return scope.split('/').pop() ?? scope;
 }
+
+/** The stored state of a mail ingestion run. Read, never inferred. */
+export interface EmailIngestState {
+	status: 'idle' | 'running' | 'paused' | 'done' | 'failed';
+	window_days: number;
+	total_estimate: number | null;
+	discovered: number;
+	fetched: number;
+	started_at: string | null;
+	updated_at: string | null;
+	finished_at: string | null;
+	last_error: string | null;
+}
+
+export interface EmailStored {
+	messages: number;
+	with_body: number;
+	threads: number;
+	oldest: string | null;
+	newest: string | null;
+}
+
+export interface EmailIngestStatus {
+	account: string | null;
+	state: EmailIngestState | null;
+	batch_size: number;
+	stored: EmailStored;
+}

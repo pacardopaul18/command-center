@@ -356,3 +356,233 @@ export async function listEvents(
 			html_link: e.htmlLink ?? null
 		}));
 }
+
+/* -------------------------------------------------------------------------
+ * Gmail, read only
+ * ---------------------------------------------------------------------- */
+
+const GMAIL_ENDPOINT = 'https://gmail.googleapis.com/gmail/v1/users/me';
+
+export interface MessageRef {
+	id: string;
+	threadId: string;
+}
+
+export interface MessagePage {
+	messages: MessageRef[];
+	nextPageToken: string | null;
+	/** Gmail's own estimate. An estimate, and named as one. */
+	resultSizeEstimate: number | null;
+}
+
+/**
+ * One page of message ids matching a query.
+ *
+ * Ids only, which is what Gmail returns here. Each message then needs its own
+ * fetch, and that asymmetry is the reason ingestion is batched: listing a month
+ * of mail is one cheap call, reading it is hundreds of separate ones.
+ */
+export async function listMessageIds(
+	token: string,
+	query: string,
+	pageToken: string | null,
+	pageSize = 100
+): Promise<MessagePage> {
+	const params = new URLSearchParams({ q: query, maxResults: String(pageSize) });
+	if (pageToken) params.set('pageToken', pageToken);
+
+	const body = await apiGet<{
+		messages?: MessageRef[];
+		nextPageToken?: string;
+		resultSizeEstimate?: number;
+	}>(token, `${GMAIL_ENDPOINT}/messages?${params}`);
+
+	return {
+		messages: body.messages ?? [],
+		nextPageToken: body.nextPageToken ?? null,
+		resultSizeEstimate:
+			typeof body.resultSizeEstimate === 'number' ? body.resultSizeEstimate : null
+	};
+}
+
+export interface GmailMessage {
+	provider_message_id: string;
+	provider_thread_id: string;
+	subject: string | null;
+	from_email: string | null;
+	from_name: string | null;
+	to_emails: string | null;
+	cc_emails: string | null;
+	sent_at: string;
+	snippet: string | null;
+	label_ids: string | null;
+	is_unread: number;
+	/** Plain text where Gmail had it, otherwise stripped HTML, otherwise null. */
+	body: string | null;
+}
+
+interface RawPart {
+	mimeType?: string;
+	body?: { data?: string; size?: number };
+	parts?: RawPart[];
+}
+
+/** Gmail base64url, which is not what atob expects. */
+export function decodeBody(data: string): string {
+	const normalised = data.replace(/-/g, '+').replace(/_/g, '/');
+	const binary = atob(normalised);
+	const bytes = Uint8Array.from(binary, (ch) => ch.charCodeAt(0));
+	// Mail is routinely not ASCII. Decoding as latin1 mangles every accented
+	// name and every smart quote, which is most real correspondence.
+	return new TextDecoder('utf-8').decode(bytes);
+}
+
+/**
+ * The readable body of a message.
+ *
+ * Prefers text/plain. Falls back to text/html with tags stripped, because a
+ * body of raw markup is worse than no body for both reading and summarising.
+ * Walks nested parts, since a reply with an attachment nests the text one level
+ * deeper than a simple message and stopping at the top level silently loses it.
+ */
+export function extractBody(part: RawPart | undefined, depth = 0): { text: string | null; html: string | null } {
+	if (!part || depth > 8) return { text: null, html: null };
+
+	if (part.body?.data) {
+		const decoded = decodeBody(part.body.data);
+		if (part.mimeType === 'text/plain') return { text: decoded, html: null };
+		if (part.mimeType === 'text/html') return { text: null, html: decoded };
+	}
+
+	let text: string | null = null;
+	let html: string | null = null;
+	for (const child of part.parts ?? []) {
+		const found = extractBody(child, depth + 1);
+		text = text ?? found.text;
+		html = html ?? found.html;
+		if (text) break;
+	}
+	return { text, html };
+}
+
+export function stripHtml(html: string): string {
+	return html
+		.replace(/<style[\s\S]*?<\/style>/gi, ' ')
+		.replace(/<script[\s\S]*?<\/script>/gi, ' ')
+		.replace(/<br\s*\/?>/gi, '\n')
+		.replace(/<\/(p|div|tr|li|h[1-6])>/gi, '\n')
+		.replace(/<[^>]+>/g, ' ')
+		.replace(/&nbsp;/g, ' ')
+		.replace(/&amp;/g, '&')
+		.replace(/&lt;/g, '<')
+		.replace(/&gt;/g, '>')
+		.replace(/&quot;/g, '"')
+		.replace(/&#39;/g, "'")
+		.replace(/[ \t]+/g, ' ')
+		.replace(/\n{3,}/g, '\n\n')
+		.trim();
+}
+
+/** `Paul Pacardo <paul@x.test>` into its two halves. */
+export function parseAddress(raw: string | null): { name: string | null; email: string | null } {
+	if (!raw) return { name: null, email: null };
+	const angled = raw.match(/^\s*(.*?)\s*<([^>]+)>\s*$/);
+	if (angled) {
+		const name = angled[1].replace(/^["']|["']$/g, '').trim();
+		return { name: name || null, email: angled[2].trim().toLowerCase() };
+	}
+	const bare = raw.trim();
+	return { name: null, email: bare ? bare.toLowerCase() : null };
+}
+
+/**
+ * Splits a header on the commas that separate addresses.
+ *
+ * Not `split(',')`. A display name may contain a comma, and quoted ones
+ * routinely do: `"Acme, Inc." <a@x.test>` is ordinary business mail. Splitting
+ * naively turns that into two fragments, one of which parses as the address
+ * `"acme` and lands in the stored recipients as nonsense. Found by a test
+ * rather than by reading, because the naive version is right most of the time.
+ */
+function splitAddresses(raw: string): string[] {
+	const parts: string[] = [];
+	let current = '';
+	let inQuotes = false;
+	let inAngles = false;
+
+	for (const ch of raw) {
+		if (ch === '"') inQuotes = !inQuotes;
+		else if (ch === '<' && !inQuotes) inAngles = true;
+		else if (ch === '>' && !inQuotes) inAngles = false;
+
+		if (ch === ',' && !inQuotes && !inAngles) {
+			parts.push(current);
+			current = '';
+			continue;
+		}
+		current += ch;
+	}
+	parts.push(current);
+	return parts.filter((one) => one.trim());
+}
+
+/** Every address in a header that may carry several. */
+export function parseAddressList(raw: string | null): string | null {
+	if (!raw) return null;
+	const found = splitAddresses(raw)
+		.map((one) => parseAddress(one).email)
+		.filter((one): one is string => Boolean(one));
+	return found.length ? found.join(', ') : null;
+}
+
+export async function getMessage(
+	token: string,
+	id: string,
+	withBody: boolean
+): Promise<GmailMessage> {
+	const format = withBody ? 'full' : 'metadata';
+	const params = new URLSearchParams({ format });
+	if (!withBody) {
+		for (const h of ['Subject', 'From', 'To', 'Cc', 'Date']) params.append('metadataHeaders', h);
+	}
+
+	const raw = await apiGet<{
+		id?: string;
+		threadId?: string;
+		snippet?: string;
+		labelIds?: string[];
+		internalDate?: string;
+		payload?: RawPart & { headers?: { name?: string; value?: string }[] };
+	}>(token, `${GMAIL_ENDPOINT}/messages/${encodeURIComponent(id)}?${params}`);
+
+	const headers = new Map(
+		(raw.payload?.headers ?? []).map((h) => [String(h.name ?? '').toLowerCase(), h.value ?? ''])
+	);
+
+	const from = parseAddress(headers.get('from') ?? null);
+	const labels = raw.labelIds ?? [];
+
+	let body: string | null = null;
+	if (withBody) {
+		const found = extractBody(raw.payload);
+		body = found.text ?? (found.html ? stripHtml(found.html) : null);
+	}
+
+	return {
+		provider_message_id: String(raw.id ?? id),
+		provider_thread_id: String(raw.threadId ?? ''),
+		subject: headers.get('subject') || null,
+		from_email: from.email,
+		from_name: from.name,
+		to_emails: parseAddressList(headers.get('to') ?? null),
+		cc_emails: parseAddressList(headers.get('cc') ?? null),
+		// internalDate is milliseconds since epoch, as a string. It is Gmail's own
+		// receipt time and is more reliable than the Date header, which is written
+		// by the sender and can say anything at all.
+		sent_at: new Date(Number(raw.internalDate ?? Date.now())).toISOString(),
+		snippet: raw.snippet || null,
+		label_ids: labels.length ? labels.join(',') : null,
+		is_unread: labels.includes('UNREAD') ? 1 : 0,
+		body
+	};
+}

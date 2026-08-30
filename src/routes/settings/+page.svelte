@@ -9,6 +9,7 @@
 	import { apiWrite } from '$lib/http';
 	import { formatMoment } from '$lib/format';
 	import { scopeLabel } from '$lib/types';
+	import IngestProgress from '$lib/components/IngestProgress.svelte';
 	import type { AsanaRef, AsanaSyncOutcome } from '$lib/types';
 	import { page } from '$app/state';
 	import type { PageData } from './$types';
@@ -89,6 +90,77 @@
 	const googleNotice = $derived(page.url.searchParams.get('google'));
 
 	let connecting = $state(false);
+
+	/**
+	 * Runs batches until the ingest finishes, pauses or fails.
+	 *
+	 * The loop lives here rather than on the server because each batch is its own
+	 * request, and that is the whole point: nothing depends on one long request
+	 * surviving. Closing this page stops the loop and loses nothing, because the
+	 * cursor is stored after every batch.
+	 */
+	async function runIngest() {
+		connecting = true;
+		errorMessage = '';
+		for (let batch = 0; batch < 500; batch++) {
+			const result = await apiWrite<{ status: string; fetched: number }>(
+				'/api/email/ingest/step',
+				'POST',
+				{}
+			);
+			if (!result.ok || !result.data) {
+				errorMessage = result.error ?? 'The mail read stopped.';
+				break;
+			}
+			await invalidateAll();
+			if (result.data.status !== 'running') break;
+		}
+		connecting = false;
+	}
+
+	async function startIngest(days: number) {
+		connecting = true;
+		errorMessage = '';
+		const result = await apiWrite(`/api/email/ingest/start?days=${days}`, 'POST', {});
+		connecting = false;
+		if (!result.ok) {
+			errorMessage = result.error ?? 'Could not start reading mail.';
+			return;
+		}
+		notice = `Reading the last ${days} days.`;
+		await runIngest();
+	}
+
+	/**
+	 * Summarises threads in batches until none are left needing one.
+	 *
+	 * Batched here for the same reason ingestion is: each call is its own
+	 * request, and closing the page loses nothing already written.
+	 */
+	async function summarise() {
+		connecting = true;
+		errorMessage = '';
+		for (let batch = 0; batch < 200; batch++) {
+			const result = await apiWrite<{ remaining: number; summarised: number }>(
+				'/api/email/summarise',
+				'POST',
+				{}
+			);
+			if (!result.ok || !result.data) {
+				errorMessage = result.error ?? 'Summarising stopped.';
+				break;
+			}
+			await invalidateAll();
+			if (result.data.remaining === 0 || result.data.summarised === 0) break;
+		}
+		connecting = false;
+	}
+
+	async function pauseIngest() {
+		const result = await apiWrite('/api/email/ingest/pause', 'POST', {});
+		if (!result.ok) errorMessage = result.error ?? 'Could not pause.';
+		else await invalidateAll();
+	}
 
 	async function connectGoogle() {
 		connecting = true;
@@ -519,6 +591,38 @@
 	{/if}
 </Card>
 
+<Card title="Mail" subtitle="Reading only. Nothing is ever sent, drafted or labelled.">
+	{#if !data.mail}
+		<p class="empty">Connect a Google account to read mail.</p>
+	{:else}
+		<IngestProgress
+			ingest={data.mail.state}
+			stored={data.mail.stored}
+			account={data.mail.account}
+			busy={connecting}
+			onStart={startIngest}
+			onRun={runIngest}
+			onPause={pauseIngest}
+		/>
+		<p class="hint">
+			Bodies are stored in R2 and referenced, never in the database. The nightly backup
+			copies every database table off-site, and a mailbox does not need copying every
+			night to be recoverable.
+		</p>
+		<div class="actions">
+			<Button variant="secondary" onclick={summarise} disabled={connecting}>
+				{connecting ? 'Working...' : 'Summarise threads'}
+			</Button>
+			<a class="browse" href="/mail">Browse what has been read</a>
+		</div>
+		<p class="hint">
+			A summary says what a thread is about, what was decided and what is outstanding.
+			It reports only what the messages say: a thread where nothing was decided is
+			summarised as one where nothing was decided.
+		</p>
+	{/if}
+</Card>
+
 <style>
 	.head {
 		display: flex;
@@ -731,6 +835,11 @@
 		font-size: var(--text-xs);
 		color: var(--text-secondary);
 		word-break: break-word;
+	}
+
+	.browse {
+		align-self: center;
+		font-size: var(--text-sm);
 	}
 
 	.scopes {
