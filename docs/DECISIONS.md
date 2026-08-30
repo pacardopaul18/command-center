@@ -3577,6 +3577,70 @@ is the same reservation entered against the MVP gate and for the same reason.
 - That the digest lands in an inbox. See R7.
 - That daily use has happened. See above.
 
+### D123: a screen nobody opened under the condition it was built for
+
+CR-1's guarantee tests were written before the redesign and run against the old
+views first, as a regression harness rather than a description of new code. Three
+passed, two failed, and the failure was not cosmetic: the thread detail page
+never passed the account through. Page load, body fetch and all five writes
+threw as soon as a second account existed.
+
+E1 shipped multi-account. That screen was never once opened with two accounts
+connected, and with one account `resolveAccount` defaults, so everything looked
+correct for as long as the condition the feature exists for was absent.
+
+The rule is not "write more tests". It is that a foundation change has to be
+exercised on every surface that consumes it, under the condition it introduces.
+E1's own suite passed throughout, because it tested the routes and this was a
+caller. Segregation tests at the API layer do not protect the views.
+
+### D124: the archive count, and two ways to describe the wrong set
+
+The redesign asked the list endpoint a question nobody had asked before: how
+many threads are archived. It answered with the inbox total.
+
+`counts` is pinned to non-archived rows, which is correct for what it feeds, the
+severity chips. Requesting it with `archived=true` therefore returned inbox
+numbers, and summing them looked exactly like an answer, because both are just
+numbers with no unit attached. The same fault ran the other way too: while the
+reader was looking at the archive, the chips were counting the inbox.
+
+Both fixed at the source. Counts follow the toggle, and the archive total is its
+own query, because it is its own question and cannot be read off a block that
+describes whichever side is on screen.
+
+The general point is D85 again in a different costume. A number that is
+plausible is not a number that is verified, and the way to tell them apart is a
+fixture where the two candidate answers cannot coincide. Three inbox and two
+archived, deliberately unequal, is the whole test design.
+
+### D125: the parser test and the page test are different guarantees
+
+The renderer withholds remote image sources until the reader asks, because a
+remote image in mail is a tracking pixel as often as a picture. That was built,
+with the right copy, and had one test: which sources survive parsing.
+
+That is a different question. It governs what is kept in the tree, not whether
+the browser is ever pointed at it. Between the two sits a template, and the
+template is where the guard actually lives. So the guarantee was asserted at the
+layer that can violate it: a real HTML body seeded into R2, a listener on
+outbound requests, and a check that the host is never called before the reader
+asks and is called once they do.
+
+Mutation checked both ways, which matters more than usual here. Removing the
+hold fails it, and so would silently dropping images altogether, which is the
+way this test would otherwise have passed for the wrong reason.
+
+### D126: a label is not worth a schema change
+
+The prototype labels a draft by how it was written, from the thread or from
+Paul's own words. The drafts table has no column for that.
+
+The label is held for the visit and falls back to plain "Draft" on reload,
+rather than adding a column, a migration and a remote apply so a caption can
+survive a refresh. On reload the app does not know, and says the thing it does
+know instead of asserting an origin it cannot support.
+
 ### D130: the ledger books in USD, and says so per row
 
 The firm is US-based and books in USD. Paul works from the Philippines, which is
