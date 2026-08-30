@@ -8,6 +8,7 @@
 	import Select from '$lib/components/Select.svelte';
 	import StatusChip from '$lib/components/StatusChip.svelte';
 	import type { PageData } from './$types';
+	import CalendarWeek from '$lib/components/CalendarWeek.svelte';
 
 	let { data }: { data: PageData } = $props();
 
@@ -84,6 +85,14 @@
 	</div>
 	<Button onclick={() => (showForm = !showForm)}>{showForm ? 'Cancel' : 'New meeting'}</Button>
 </header>
+
+{#if data.calendar.events.length > 0 || data.calendar.last_read_at}
+	<div class="block">
+		<Card title="What is coming up" subtitle="The next two weeks, from the calendars you chose.">
+			<CalendarWeek events={data.calendar.events} lastReadAt={data.calendar.last_read_at} />
+		</Card>
+	</div>
+{/if}
 
 <p class="status-line" role="status" aria-live="polite">{notice}</p>
 

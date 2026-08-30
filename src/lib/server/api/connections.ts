@@ -11,6 +11,7 @@ import {
 	clearTokens,
 	consumeState,
 	exchangeCode,
+	listCalendars,
 	listEvents,
 	readTokens,
 	whoAmI,
@@ -212,61 +213,91 @@ connections.post('/google/calendar/refresh', async (c) => {
 	const record = await row(c.env.DB);
 	if (!record) throw new ApiError(400, 'No Google account is connected.');
 
+	const connectionId = String((record as { id: string }).id);
 	const days = Math.min(Math.max(Number(c.req.query('days') ?? 14), 1), 60);
 	const from = new Date();
 	const to = new Date(Date.now() + days * 86_400_000);
+	const at = nowUtc();
 
-	let events;
-	let tokens;
+	/**
+	 * Only the calendars Paul turned on.
+	 *
+	 * When none are chosen this falls back to the primary calendar, so the
+	 * feature works before he has visited the calendar list. Reading every
+	 * calendar an account can see would pull holidays, week numbers and whatever
+	 * else Google adds by default.
+	 */
+	const chosen = await c.env.DB.prepare(
+		'SELECT id, provider_calendar_id, summary FROM calendars WHERE sync_enabled = 1'
+	).all<{ id: string; provider_calendar_id: string; summary: string | null }>();
+
+	const targets = (chosen.results ?? []).length
+		? (chosen.results ?? [])
+		: [{ id: null as string | null, provider_calendar_id: 'primary', summary: 'Primary' }];
+
+	let fetched = 0;
+
 	try {
-		tokens = await accessToken(c.env.SESSIONS, clientId, clientSecret);
-		events = await listEvents(tokens.access_token, from.toISOString(), to.toISOString());
+		const tokens = await accessToken(c.env.SESSIONS, clientId, clientSecret);
+
+		for (const target of targets) {
+			const events = await listEvents(
+				tokens.access_token,
+				from.toISOString(),
+				to.toISOString(),
+				target.provider_calendar_id
+			);
+
+			for (const e of events) {
+				await c.env.DB.prepare(
+					`INSERT INTO calendar_events
+             (id, connection_id, calendar_id, provider_event_id, summary, description, location,
+              starts_at, ends_at, all_day, organizer, attendee_count, html_link, fetched_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT(connection_id, provider_event_id) DO UPDATE SET
+             calendar_id = excluded.calendar_id,
+             summary = excluded.summary,
+             description = excluded.description,
+             location = excluded.location,
+             starts_at = excluded.starts_at,
+             ends_at = excluded.ends_at,
+             all_day = excluded.all_day,
+             organizer = excluded.organizer,
+             attendee_count = excluded.attendee_count,
+             html_link = excluded.html_link,
+             fetched_at = excluded.fetched_at`
+				)
+					.bind(
+						crypto.randomUUID(),
+						connectionId,
+						target.id,
+						e.provider_event_id,
+						e.summary,
+						e.description,
+						e.location,
+						e.starts_at,
+						e.ends_at,
+						e.all_day,
+						e.organizer,
+						e.attendee_count,
+						e.html_link,
+						at
+					)
+					.run();
+				fetched += 1;
+			}
+
+			if (target.id) {
+				await c.env.DB.prepare('UPDATE calendars SET last_synced_at = ? WHERE id = ?')
+					.bind(at, target.id)
+					.run();
+			}
+		}
 	} catch (err) {
 		if (err instanceof GoogleError && err.needsReauth) {
 			await markNeedsReauth(c.env.DB, err.message);
 		}
 		throw asApiError(err);
-	}
-
-	const at = nowUtc();
-	const connectionId = String((record as { id: string }).id);
-
-	// Upsert on Google's own event id, so a re-read updates rather than
-	// duplicates and a moved meeting moves rather than appearing twice.
-	for (const e of events) {
-		await c.env.DB.prepare(
-			`INSERT INTO calendar_events
-         (id, connection_id, provider_event_id, summary, description, location,
-          starts_at, ends_at, all_day, organizer, attendee_count, html_link, fetched_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT(connection_id, provider_event_id) DO UPDATE SET
-         summary = excluded.summary,
-         description = excluded.description,
-         location = excluded.location,
-         starts_at = excluded.starts_at,
-         ends_at = excluded.ends_at,
-         all_day = excluded.all_day,
-         organizer = excluded.organizer,
-         attendee_count = excluded.attendee_count,
-         html_link = excluded.html_link,
-         fetched_at = excluded.fetched_at`
-		)
-			.bind(
-				crypto.randomUUID(),
-				connectionId,
-				e.provider_event_id,
-				e.summary,
-				e.description,
-				e.location,
-				e.starts_at,
-				e.ends_at,
-				e.all_day,
-				e.organizer,
-				e.attendee_count,
-				e.html_link,
-				at
-			)
-			.run();
 	}
 
 	await c.env.DB.prepare(
@@ -276,7 +307,13 @@ connections.post('/google/calendar/refresh', async (c) => {
 		.bind(at, at, at, GOOGLE_ID)
 		.run();
 
-	return c.json({ ok: true, fetched: events.length, window_days: days, at });
+	return c.json({
+		ok: true,
+		fetched,
+		calendars: targets.length,
+		window_days: days,
+		at
+	});
 });
 
 /** The cached calendar, read from D1. Never calls Google. */
@@ -299,4 +336,98 @@ connections.get('/google/calendar', async (c) => {
 		events: results ?? [],
 		last_read_at: (record as { last_read_at?: string } | null)?.last_read_at ?? null
 	});
+});
+
+/* -------------------------------------------------------------------------
+ * Calendars
+ * ---------------------------------------------------------------------- */
+
+/**
+ * Refreshes the list of calendars this account can see.
+ *
+ * Reads the list only. Whether each one syncs is Paul's choice and is never
+ * changed by a refresh: a calendar he turned on stays on, and a new one arrives
+ * off, because a list that switches itself on would quietly start reading
+ * somebody else's diary.
+ */
+connections.post('/google/calendars/refresh', async (c) => {
+	const { clientId, clientSecret } = requireConfig(c.env);
+	const record = await row(c.env.DB);
+	if (!record) throw new ApiError(400, 'No Google account is connected.');
+
+	const connectionId = String((record as { id: string }).id);
+	const at = nowUtc();
+
+	try {
+		const tokens = await accessToken(c.env.SESSIONS, clientId, clientSecret);
+		const calendars = await listCalendars(tokens.access_token);
+
+		for (const cal of calendars) {
+			await c.env.DB.prepare(
+				`INSERT INTO calendars
+           (id, connection_id, provider_calendar_id, summary, description, time_zone,
+            is_primary, access_role, background_color, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(connection_id, provider_calendar_id) DO UPDATE SET
+           summary = excluded.summary,
+           description = excluded.description,
+           time_zone = excluded.time_zone,
+           is_primary = excluded.is_primary,
+           access_role = excluded.access_role,
+           background_color = excluded.background_color,
+           updated_at = excluded.updated_at`
+			)
+				.bind(
+					crypto.randomUUID(),
+					connectionId,
+					cal.provider_calendar_id,
+					cal.summary,
+					cal.description,
+					cal.time_zone,
+					cal.is_primary,
+					cal.access_role,
+					cal.background_color,
+					at,
+					at
+				)
+				.run();
+		}
+
+		return c.json({ ok: true, found: calendars.length });
+	} catch (err) {
+		if (err instanceof GoogleError && err.needsReauth) {
+			await markNeedsReauth(c.env.DB, err.message);
+		}
+		throw asApiError(err);
+	}
+});
+
+connections.get('/google/calendars', async (c) => {
+	const { results } = await c.env.DB.prepare(
+		`SELECT c.*, (SELECT COUNT(*) FROM calendar_events e WHERE e.calendar_id = c.id) AS event_count
+     FROM calendars c
+     ORDER BY c.is_primary DESC, c.summary COLLATE NOCASE`
+	).all();
+	return c.json({ calendars: results ?? [] });
+});
+
+connections.post('/google/calendars/:id/toggle', async (c) => {
+	const on = c.req.query('on') === 'true';
+	const result = await c.env.DB.prepare(
+		'UPDATE calendars SET sync_enabled = ?, updated_at = ? WHERE id = ?'
+	)
+		.bind(on ? 1 : 0, nowUtc(), c.req.param('id'))
+		.run();
+	if (!result.meta.changes) throw new ApiError(404, 'Calendar not found.');
+
+	// Turning a calendar off removes what it put here. Leaving the events behind
+	// would mean a calendar Paul stopped watching still filling his day view,
+	// with no way to tell where those entries came from.
+	if (!on) {
+		await c.env.DB.prepare('DELETE FROM calendar_events WHERE calendar_id = ?')
+			.bind(c.req.param('id'))
+			.run();
+	}
+
+	return c.json({ ok: true, sync_enabled: on });
 });

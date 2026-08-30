@@ -2503,6 +2503,84 @@ schema work went ahead, while every AI path was written and left unexercised.
 The drafting pass has never produced a draft, and that is stated rather than
 implied.
 
+### D103: not every thread deserves the expensive model
+
+Cost control, built into the shape of the work rather than bolted on as a limit.
+
+Triage answers a four way question. It now runs on the small fast model and is
+shown the subject, the sender and about twelve hundred characters of the
+opening, because the rest of a conversation does not improve a four way answer.
+Summaries stay on the larger model and are written only for threads triage
+called urgent or important. On a real mailbox that is a small minority, and
+paying the large model to recognise a job alert as a job alert was most of the
+bill.
+
+A thread only just judged urgent gets its summary in the same pass rather than
+waiting for the next firing, so the expensive call follows the cheap one
+immediately when it is warranted and never otherwise.
+
+Nothing is redone for a thread whose newest message has not changed, and that is
+keyed on the id of that message rather than on `summary_at < last_at`. A
+timestamp comparison re-runs whenever anything touches `last_at`, including a
+re-read that changed nothing anybody said, and it ties when two writes land in
+the same second. An id is exact: unchanged means there is nothing new to read,
+so there is nothing to pay for.
+
+### D104: the meter reports tokens, not money
+
+Every call now records what it cost, read off the API response rather than
+estimated from row counts. A spend meter built on guesses is a second thing that
+can be wrong about money.
+
+No price is stored. A hardcoded rate goes stale silently, and a meter that is
+confidently wrong about a bill is worse than one that reports tokens and lets
+Paul apply the current rate himself. The table shows calls, input and output
+tokens, broken down by job and by model, so a surprising bill can be traced to
+the kind of work that caused it.
+
+### D105: a shared calendar needs no new permission
+
+`calendar.readonly` already lists every calendar the account can see, and that
+includes every calendar anybody has shared with Paul. Confirmed on his real
+account: three calendars, two his own and one with an access role of reader,
+which is somebody else's diary already visible.
+
+So subscribing to a colleague's calendar is not a feature this app has to build
+a permission flow for. They share it in Google, which is ordinary office
+behaviour, and it appears in the list. The only gate is the human one.
+
+Nothing syncs by default. The list Google returns includes holidays, week
+numbers and anything ever shared, and pulling all of it would fill the day view
+with things nobody asked to watch. Each calendar is turned on deliberately, and
+turning one off deletes the events it contributed, because a calendar Paul
+stopped watching should not keep filling his day with entries he cannot trace.
+
+The view is a list of days rather than a month grid. A grid is the wrong shape
+for the question actually being asked, which is what is happening next and
+whether anything collides with the work already planned, and a seven column grid
+does not survive a phone.
+
+### D106: decoding twice was the CPU ceiling
+
+The third and last cause of the worker exceeding its limit during the body
+re-read, and the one that actually fixed it.
+
+Collecting both MIME alternatives was correct, and decoding both was not. The
+walk decoded plain and HTML for every message and the caller then discarded one
+of them, so half the most expensive operation in the ingest was work thrown
+away. The walk now returns the encoded candidates and only the chosen one is
+decoded.
+
+With that, and the earlier input cap, the re-read ran to completion: 863 of 865
+bodies now stored as HTML where they were previously stripped text. Verified on
+a real urgent thread, which renders thirty seven paragraphs and nineteen real
+links where it used to render a wall.
+
+Three fixes for one symptom, and each looked sufficient at the time. Worth
+noting that the order mattered: the batch size and the input cap made the
+failure rarer, which made it look almost solved, and only removing the duplicate
+work made it stop.
+
 ## Interpretation notes
 
 Not decisions. Judgment calls made inside an existing decision, recorded so the

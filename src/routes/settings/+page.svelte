@@ -10,6 +10,8 @@
 	import { formatMoment } from '$lib/format';
 	import { scopeLabel } from '$lib/types';
 	import IngestProgress from '$lib/components/IngestProgress.svelte';
+	import CalendarList from '$lib/components/CalendarList.svelte';
+	import type { CalendarRow } from '$lib/components/CalendarList.svelte';
 	import type { AsanaRef, AsanaSyncOutcome } from '$lib/types';
 	import { page } from '$app/state';
 	import type { PageData } from './$types';
@@ -99,6 +101,40 @@
 	 */
 	let connecting = $state(false);
 	let mailBusy = $state(false);
+	let calBusy = $state(false);
+
+	async function findCalendars() {
+		calBusy = true;
+		errorMessage = '';
+		const result = await apiWrite<{ found: number }>(
+			'/api/connections/google/calendars/refresh',
+			'POST',
+			{}
+		);
+		if (!result.ok) errorMessage = result.error ?? 'Could not read your calendars.';
+		else {
+			notice = `Found ${result.data?.found ?? 0} calendars.`;
+			await invalidateAll();
+		}
+		calBusy = false;
+	}
+
+	/**
+	 * Turning one off removes the events it put here, so nothing lingers in the
+	 * day view from a calendar Paul stopped watching.
+	 */
+	async function toggleCalendar(calendar: CalendarRow, on: boolean) {
+		calBusy = true;
+		errorMessage = '';
+		const result = await apiWrite(
+			`/api/connections/google/calendars/${calendar.id}/toggle?on=${on}`,
+			'POST',
+			{}
+		);
+		if (!result.ok) errorMessage = result.error ?? 'Could not change that calendar.';
+		else await invalidateAll();
+		calBusy = false;
+	}
 
 	/**
 	 * Runs batches until the ingest finishes, pauses or fails.
@@ -656,6 +692,86 @@
 	{/if}
 </Card>
 
+
+<Card title="Calendars" subtitle="Nothing syncs until you choose it.">
+	<CalendarList
+		calendars={data.calendars}
+		busy={calBusy}
+		onRefresh={findCalendars}
+		onToggle={toggleCalendar}
+	/>
+	{#if data.connections?.connection?.status === 'connected'}
+		<Button variant="secondary" onclick={refreshCalendar} disabled={connecting}>
+			{connecting ? 'Working...' : 'Read events now'}
+		</Button>
+	{/if}
+</Card>
+
+<Card title="What the AI has spent" subtitle="Measured, not estimated.">
+	{#if !data.spend}
+		<p class="hint">Could not read usage.</p>
+	{:else}
+		<dl class="facts">
+			<div>
+				<dt>Calls, last 24h</dt>
+				<dd class="mono">{data.spend.last_24h.calls}</dd>
+			</div>
+			<div>
+				<dt>Input tokens, 24h</dt>
+				<dd class="mono">{data.spend.last_24h.input_tokens.toLocaleString()}</dd>
+			</div>
+			<div>
+				<dt>Output tokens, 24h</dt>
+				<dd class="mono">{data.spend.last_24h.output_tokens.toLocaleString()}</dd>
+			</div>
+			<div>
+				<dt>Threads triaged</dt>
+				<dd class="mono">{data.spend.triaged} of {data.spend.threads}</dd>
+			</div>
+		</dl>
+
+		{#if data.spend.usage.length > 0}
+			<div class="table-scroll">
+				<table>
+					<thead>
+						<tr>
+							<th scope="col">Job</th>
+							<th scope="col">Model</th>
+							<th scope="col" class="right">Calls</th>
+							<th scope="col" class="right">In</th>
+							<th scope="col" class="right">Out</th>
+						</tr>
+					</thead>
+					<tbody>
+						{#each data.spend.usage as row (row.kind + row.model)}
+							<tr>
+								<td>{row.kind}</td>
+								<td class="mono">{row.model}</td>
+								<td class="right mono">{row.calls}</td>
+								<td class="right mono">{row.input_tokens.toLocaleString()}</td>
+								<td class="right mono">{row.output_tokens.toLocaleString()}</td>
+							</tr>
+						{/each}
+					</tbody>
+				</table>
+			</div>
+		{:else}
+			<p class="hint">No calls recorded yet.</p>
+		{/if}
+
+		<p class="hint">
+			Triage runs on the small fast model and reads only the subject and the opening.
+			Summaries run on the larger one, and only for threads triage called urgent or
+			important. Nothing is re-read for a thread whose newest message has not changed.
+		</p>
+		<p class="hint">
+			Token counts come from what the API reported. No price is stored here, because a
+			hardcoded rate goes stale quietly and then the meter is confidently wrong about
+			money.
+		</p>
+	{/if}
+</Card>
+
 <style>
 	.head {
 		display: flex;
@@ -868,6 +984,38 @@
 		font-size: var(--text-xs);
 		color: var(--text-secondary);
 		word-break: break-word;
+	}
+
+	.table-scroll {
+		overflow-x: auto;
+		margin-bottom: var(--space-3);
+	}
+
+	table {
+		width: 100%;
+		border-collapse: collapse;
+		font-size: var(--text-sm);
+	}
+
+	th {
+		text-align: left;
+		font-weight: 700;
+		font-size: var(--text-xs);
+		text-transform: uppercase;
+		letter-spacing: 0.04em;
+		color: var(--text-secondary);
+		border-bottom: 1px solid var(--border);
+		padding: var(--space-2);
+		white-space: nowrap;
+	}
+
+	td {
+		padding: var(--space-2);
+		border-bottom: 1px solid var(--border);
+	}
+
+	.right {
+		text-align: right;
 	}
 
 	.browse {

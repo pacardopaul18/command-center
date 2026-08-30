@@ -5,13 +5,16 @@ import type {
 	ConnectionStatus,
 	EmailIngestStatus
 } from '$lib/types';
+import type { CalendarRow } from '$lib/components/CalendarList.svelte';
 
 export const load: PageLoad = async ({ fetch }) => {
-	const [res, syncRes, connRes, mailRes] = await Promise.all([
+	const [res, syncRes, connRes, mailRes, calRes, spendRes] = await Promise.all([
 		fetch('/api/asana'),
 		fetch('/api/asana/sync'),
 		fetch('/api/connections'),
-		fetch('/api/email/ingest')
+		fetch('/api/email/ingest'),
+		fetch('/api/connections/google/calendars'),
+		fetch('/api/email/summarise')
 	]);
 
 	if (!res.ok) {
@@ -30,5 +33,21 @@ export const load: PageLoad = async ({ fetch }) => {
 	// since Settings is where a broken connection gets fixed.
 	const mail = mailRes.ok ? ((await mailRes.json()) as EmailIngestStatus) : null;
 
-	return { asana: (await res.json()) as AsanaStatus, sync, connections, mail };
+	const calendars = calRes.ok
+		? ((await calRes.json()) as { calendars: CalendarRow[] }).calendars
+		: [];
+
+	// The spend meter. Context, so a failure reading it must not stop Settings.
+	const spend = spendRes.ok
+		? ((await spendRes.json()) as {
+				usage: { kind: string; model: string; calls: number; input_tokens: number; output_tokens: number }[];
+				last_24h: { calls: number; input_tokens: number; output_tokens: number };
+				threads: number;
+				triaged: number;
+				summarised: number;
+				remaining?: number;
+			})
+		: null;
+
+	return { asana: (await res.json()) as AsanaStatus, sync, connections, mail, calendars, spend };
 };

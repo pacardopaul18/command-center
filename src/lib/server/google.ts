@@ -26,7 +26,7 @@ import type { KVNamespace } from '@cloudflare/workers-types';
 const AUTH_ENDPOINT = 'https://accounts.google.com/o/oauth2/v2/auth';
 const TOKEN_ENDPOINT = 'https://oauth2.googleapis.com/token';
 const USERINFO_ENDPOINT = 'https://www.googleapis.com/oauth2/v2/userinfo';
-const CALENDAR_ENDPOINT = 'https://www.googleapis.com/calendar/v3/calendars/primary/events';
+const CALENDAR_BASE = 'https://www.googleapis.com/calendar/v3';
 
 /**
  * Everything this app will ever ask for.
@@ -286,6 +286,52 @@ export async function whoAmI(token: string): Promise<{ email: string | null }> {
 	return { email: typeof body.email === 'string' ? body.email : null };
 }
 
+export interface CalendarRef {
+	provider_calendar_id: string;
+	summary: string | null;
+	description: string | null;
+	time_zone: string | null;
+	is_primary: number;
+	access_role: string | null;
+	background_color: string | null;
+}
+
+/**
+ * Every calendar this account can see.
+ *
+ * That includes calendars other people have shared with Paul, which is the
+ * whole answer to subscribing to a colleague's calendar: they share it in
+ * Google, and it appears here. No additional scope, no approval flow, nothing
+ * for this app to request. `accessRole` records whether it is his or somebody
+ * else's, which is the distinction that will matter in the partner
+ * conversation.
+ */
+export async function listCalendars(token: string): Promise<CalendarRef[]> {
+	const body = await apiGet<{
+		items?: {
+			id?: string;
+			summary?: string;
+			description?: string;
+			timeZone?: string;
+			primary?: boolean;
+			accessRole?: string;
+			backgroundColor?: string;
+		}[];
+	}>(token, `${CALENDAR_BASE}/users/me/calendarList?maxResults=250`);
+
+	return (body.items ?? [])
+		.filter((c) => c.id)
+		.map((c) => ({
+			provider_calendar_id: String(c.id),
+			summary: c.summary ?? null,
+			description: c.description ?? null,
+			time_zone: c.timeZone ?? null,
+			is_primary: c.primary ? 1 : 0,
+			access_role: c.accessRole ?? null,
+			background_color: c.backgroundColor ?? null
+		}));
+}
+
 export interface CalendarEvent {
 	provider_event_id: string;
 	summary: string | null;
@@ -327,7 +373,8 @@ interface RawEvent {
 export async function listEvents(
 	token: string,
 	timeMin: string,
-	timeMax: string
+	timeMax: string,
+	calendarId = 'primary'
 ): Promise<CalendarEvent[]> {
 	const params = new URLSearchParams({
 		timeMin,
@@ -337,7 +384,10 @@ export async function listEvents(
 		maxResults: '100'
 	});
 
-	const body = await apiGet<{ items?: RawEvent[] }>(token, `${CALENDAR_ENDPOINT}?${params}`);
+	const body = await apiGet<{ items?: RawEvent[] }>(
+		token,
+		`${CALENDAR_BASE}/calendars/${encodeURIComponent(calendarId)}/events?${params}`
+	);
 
 	return (body.items ?? [])
 		// A cancelled occurrence still comes back. Showing it as a meeting would
@@ -527,30 +577,54 @@ export function decodeBody(data: string): string {
  * Walks nested parts, since a reply with an attachment nests the text one level
  * deeper than a simple message and stopping at the top level silently loses it.
  */
-export function extractBody(part: RawPart | undefined, depth = 0): { text: string | null; html: string | null } {
+/**
+ * Finds the body parts WITHOUT decoding them.
+ *
+ * Decoding is the expensive step: it walks every character of the payload, and
+ * marketing HTML runs to hundreds of kilobytes. Collecting both alternatives
+ * and decoding both meant doing that work twice per message and discarding one
+ * result, which is what kept the re-read hitting the worker CPU ceiling. The
+ * walk now returns the encoded candidates and the caller decodes only the one
+ * it is going to keep.
+ */
+export function findBodyParts(
+	part: RawPart | undefined,
+	depth = 0
+): { text: string | null; html: string | null } {
 	if (!part || depth > 8) return { text: null, html: null };
 
 	if (part.body?.data) {
-		const decoded = decodeBody(part.body.data);
-		if (part.mimeType === 'text/plain') return { text: decoded, html: null };
-		if (part.mimeType === 'text/html') return { text: null, html: decoded };
+		if (part.mimeType === 'text/plain') return { text: part.body.data, html: null };
+		if (part.mimeType === 'text/html') return { text: null, html: part.body.data };
 	}
 
-	// BOTH alternatives are collected, and the caller picks. Stopping the walk
-	// as soon as a plain part turned up was the whole reason rich mail rendered
-	// as hard-wrapped text: in multipart/alternative the plain part comes first
-	// and the HTML sibling was never visited. The preference belongs to the
-	// caller, and it cannot express a preference between things it never saw.
+	// BOTH alternatives are collected. Stopping as soon as a plain part turned
+	// up was the whole reason rich mail rendered as hard-wrapped text: in
+	// multipart/alternative the plain part comes first, so the HTML sibling was
+	// never visited, and a caller cannot prefer something it was never shown.
 	let text: string | null = null;
 	let html: string | null = null;
 	for (const child of part.parts ?? []) {
-		const found = extractBody(child, depth + 1);
+		const found = findBodyParts(child, depth + 1);
 		text = text ?? found.text;
 		html = html ?? found.html;
 		if (text && html) break;
 	}
 	return { text, html };
 }
+
+/** The decoded alternatives. Used by the tests; the ingest decodes lazily. */
+export function extractBody(
+	part: RawPart | undefined,
+	depth = 0
+): { text: string | null; html: string | null } {
+	const raw = findBodyParts(part, depth);
+	return {
+		text: raw.text === null ? null : decodeBody(raw.text),
+		html: raw.html === null ? null : decodeBody(raw.html)
+	};
+}
+
 
 export function stripHtml(html: string): string {
 	return html
@@ -652,16 +726,16 @@ export async function getMessage(
 	let body: string | null = null;
 	let bodyFormat: 'text' | 'html' | null = null;
 	if (withBody) {
-		const found = extractBody(raw.payload);
 		// HTML is preferred when both exist. It carries the layout, the links and
 		// the emphasis, all of which a person reads and none of which survives
-		// stripping. The plain alternative is usually the same content minus
-		// everything that made it legible.
+		// stripping. Only the chosen one is decoded, because decoding is the
+		// expensive step and doing it twice per message is work thrown away.
+		const found = findBodyParts(raw.payload);
 		if (found.html) {
-			body = found.html;
+			body = decodeBody(found.html);
 			bodyFormat = 'html';
 		} else if (found.text) {
-			body = found.text;
+			body = decodeBody(found.text);
 			bodyFormat = 'text';
 		}
 	}

@@ -21,6 +21,32 @@ import { enforceHouseStyle, HOUSE_STYLE } from './house-style';
 
 export const MODEL = 'claude-sonnet-5';
 
+/**
+ * The cheap model, for the questions that do not need the expensive one.
+ *
+ * Triage answers a four way question from a subject, a snippet and the start of
+ * one message. Most of a mailbox is noise, and paying the large model to
+ * recognise a job alert as a job alert is the definition of spending money on
+ * nothing. Summaries stay on the larger model, and only for threads triage said
+ * were worth reading.
+ */
+export const CHEAP_MODEL = 'claude-haiku-4-5-20251001';
+
+/** What one call actually cost, read off the response rather than guessed. */
+export interface Usage {
+	model: string;
+	input_tokens: number;
+	output_tokens: number;
+}
+
+function usageOf(message: { model: string; usage?: { input_tokens?: number; output_tokens?: number } }): Usage {
+	return {
+		model: message.model,
+		input_tokens: Number(message.usage?.input_tokens ?? 0),
+		output_tokens: Number(message.usage?.output_tokens ?? 0)
+	};
+}
+
 /** Leaves room for adaptive thinking plus the answer. */
 const MAX_TOKENS = 16_000;
 
@@ -422,7 +448,7 @@ export async function summariseThread(
 	apiKey: string,
 	subject: string,
 	messages: { from: string | null; sent_at: string; body: string }[]
-): Promise<{ summary: string; model: string }> {
+): Promise<{ summary: string; model: string; usage: Usage }> {
 	const rendered = messages
 		.map((m) => ['From: ' + (m.from ?? 'unknown'), 'Sent: ' + m.sent_at, '', m.body].join('\n'))
 		.join('\n\n---\n\n');
@@ -439,7 +465,7 @@ export async function summariseThread(
 		// Enforced, not requested, exactly as the transcript path does it.
 		const summary = enforceHouseStyle(textOf(message));
 		if (!summary) throw new AiError(502, 'Claude returned an empty summary.');
-		return { summary, model: message.model };
+		return { summary, model: message.model, usage: usageOf(message) };
 	} catch (err) {
 		if (err instanceof AiError) throw err;
 		throw toAiError(err);
@@ -480,6 +506,10 @@ quiet one line question from a client that blocks their work is urgent.
 Automated mail is almost never above routine. A receipt is routine, a failed
 payment is important, a service outage affecting a client is urgent.
 
+You are shown the subject, the sender and the opening of the thread. That is
+enough for this question. Do not ask for more and do not speculate about what
+the rest might contain.
+
 gist is ONE line, at most 90 characters. What this is and what it wants, in
 plain words. Not a summary, not a subject line restated. If the thread wants
 nothing, say what it is and stop.
@@ -509,14 +539,14 @@ export async function triageThread(
 	apiKey: string,
 	subject: string,
 	messages: { from: string | null; sent_at: string; body: string }[]
-): Promise<{ triage: Triage; model: string }> {
+): Promise<{ triage: Triage; model: string; usage: Usage }> {
 	const rendered = messages
 		.map((m) => ['From: ' + (m.from ?? 'unknown'), 'Sent: ' + m.sent_at, '', m.body].join('\n'))
 		.join('\n\n---\n\n');
 
 	try {
 		const message = await client(apiKey).messages.create({
-			model: MODEL,
+			model: CHEAP_MODEL,
 			max_tokens: 400,
 			system: TRIAGE_SYSTEM,
 			messages: [{ role: 'user', content: 'Subject: ' + subject + '\n\n' + rendered }]
@@ -548,7 +578,8 @@ export async function triageThread(
 
 		return {
 			triage: { category, severity, gist } as Triage,
-			model: message.model
+			model: message.model,
+			usage: usageOf(message)
 		};
 	} catch (err) {
 		if (err instanceof AiError) throw err;
@@ -607,7 +638,7 @@ export interface DraftInput {
 export async function draftReply(
 	apiKey: string,
 	input: DraftInput
-): Promise<{ body: string; model: string }> {
+): Promise<{ body: string; model: string; usage: Usage }> {
 	const thread = input.messages
 		.map((m) => ['From: ' + (m.from ?? 'unknown'), 'Sent: ' + m.sent_at, '', m.body].join('\n'))
 		.join('\n\n---\n\n');
@@ -644,7 +675,7 @@ export async function draftReply(
 		assertUsable(message);
 		const body = enforceHouseStyle(textOf(message));
 		if (!body) throw new AiError(502, 'Claude returned an empty draft.');
-		return { body, model: message.model };
+		return { body, model: message.model, usage: usageOf(message) };
 	} catch (err) {
 		if (err instanceof AiError) throw err;
 		throw toAiError(err);

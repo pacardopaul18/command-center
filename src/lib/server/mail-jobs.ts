@@ -9,6 +9,7 @@ import {
 	stripHtml
 } from './google';
 import { AiError, summariseThread, triageThread } from './ai';
+import type { Usage } from './ai';
 
 /**
  * Mail work, as jobs that can be run by anything.
@@ -72,6 +73,18 @@ const MAX_MESSAGES_PER_THREAD = 12;
  * rather than a long summary. Bounding the whole thread bounds the answer.
  */
 const MAX_CHARS_PER_THREAD = 24_000;
+
+/**
+ * What triage is shown: the subject, the sender and the opening.
+ *
+ * A four way question does not need the whole conversation. Sending it anyway
+ * was paying for tokens that changed no answer, and on a mailbox this size that
+ * is most of the bill.
+ */
+const TRIAGE_CHARS = 1200;
+
+/** Severities worth paying the larger model to summarise. */
+const WORTH_SUMMARISING: readonly string[] = ['urgent', 'important'];
 
 /** Roughly what one message costs: a Gmail read, an R2 put, a few D1 writes. */
 const COST_PER_MESSAGE = 6;
@@ -422,6 +435,55 @@ export async function ingestStep(env: MailEnv, budgetUnits: number): Promise<Ing
 	}
 }
 
+/**
+ * Keeps a thread inside the size the model can answer about.
+ *
+ * Trimmed from the front: recent messages are what a summary is mostly about,
+ * and the oldest are usually already covered by whatever came before.
+ */
+function trimThread(
+	bodies: { from: string | null; sent_at: string; body: string }[]
+): { from: string | null; sent_at: string; body: string }[] {
+	let total = 0;
+	const kept: typeof bodies = [];
+	for (let i = bodies.length - 1; i >= 0; i--) {
+		if (total + bodies[i].body.length > MAX_CHARS_PER_THREAD) break;
+		total += bodies[i].body.length;
+		kept.unshift(bodies[i]);
+	}
+	return kept.length > 0 ? kept : [bodies[0]];
+}
+
+/**
+ * Records what a call cost.
+ *
+ * Written from the response rather than estimated from row counts, so the meter
+ * in Settings reports measured usage. A spend meter built on guesses is a
+ * second thing that can be wrong about money.
+ */
+async function recordUsage(
+	db: D1Database,
+	kind: 'triage' | 'summary' | 'draft',
+	usage: Usage,
+	threadId: string | null
+): Promise<void> {
+	await db
+		.prepare(
+			`INSERT INTO ai_usage (id, kind, model, input_tokens, output_tokens, thread_id, at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
+		)
+		.bind(
+			crypto.randomUUID(),
+			kind,
+			usage.model,
+			usage.input_tokens,
+			usage.output_tokens,
+			threadId,
+			nowUtc()
+		)
+		.run();
+}
+
 export interface TriageOutcome {
 	summarised: number;
 	/** No readable body, so nothing to judge. */
@@ -446,16 +508,34 @@ export async function triageBatch(env: MailEnv, budgetUnits: number): Promise<Tr
 	const conn = await connectionRow(env.DB);
 	if (!conn) throw new Error('No Google account is connected.');
 
+	/**
+	 * Threads whose newest message has not been triaged.
+	 *
+	 * Keyed on the id of the latest message rather than on `summary_at < last_at`.
+	 * A timestamp comparison re-runs whenever anything moves `last_at`, including
+	 * a re-read that changed nothing anybody said, and it ties on writes landing
+	 * in the same second. An id is exact: unchanged means there is nothing new to
+	 * read, so there is nothing to pay for.
+	 */
 	const { results } = await env.DB.prepare(
-		`SELECT id, subject, last_at FROM email_threads
-     WHERE connection_id = ?
-       AND (summary IS NULL OR summary_at IS NULL OR summary_at < last_at OR severity IS NULL)
-       AND NOT (severity IS NULL AND classified_at IS NOT NULL)
-     ORDER BY last_at DESC
-     LIMIT 40`
+		`SELECT t.id, t.subject, t.last_at, t.severity, t.severity_override,
+            (SELECT m.id FROM email_messages m WHERE m.thread_id = t.id
+              ORDER BY m.sent_at DESC LIMIT 1) AS newest_message_id
+     FROM email_threads t
+     WHERE t.connection_id = ?
+       AND NOT (t.severity IS NULL AND t.classified_at IS NOT NULL)
+     ORDER BY t.last_at DESC
+     LIMIT 200`
 	)
 		.bind(conn.id)
-		.all<{ id: string; subject: string | null; last_at: string | null }>();
+		.all<{
+			id: string;
+			subject: string | null;
+			last_at: string | null;
+			severity: string | null;
+			severity_override: string | null;
+			newest_message_id: string | null;
+		}>();
 
 	let summarised = 0;
 	let skipped = 0;
@@ -463,6 +543,28 @@ export async function triageBatch(env: MailEnv, budgetUnits: number): Promise<Tr
 
 	for (const thread of results ?? []) {
 		if (!budget.canAfford(COST_PER_THREAD)) break;
+
+		// Everything is triaged. Only what triage said matters is summarised, and
+		// nothing is done twice for a thread whose newest message has not changed.
+		const needsTriage = await env.DB.prepare(
+			`SELECT 1 FROM email_threads
+       WHERE id = ? AND (severity IS NULL OR triaged_message_id IS NOT ?)`
+		)
+			.bind(thread.id, thread.newest_message_id)
+			.first();
+
+		const effective = thread.severity_override ?? thread.severity;
+		const deservesSummary = effective !== null && WORTH_SUMMARISING.includes(effective);
+		const needsSummary = deservesSummary
+			? await env.DB.prepare(
+					`SELECT 1 FROM email_threads
+         WHERE id = ? AND (summary IS NULL OR summary_message_id IS NOT ?)`
+				)
+					.bind(thread.id, thread.newest_message_id)
+					.first()
+			: null;
+
+		if (!needsTriage && !needsSummary) continue;
 
 		const messages = await env.DB.prepare(
 			`SELECT from_email, sent_at, body_key, body_format FROM email_messages
@@ -482,8 +584,6 @@ export async function triageBatch(env: MailEnv, budgetUnits: number): Promise<Tr
 			const object = await env.FILES.get(m.body_key);
 			if (!object) continue;
 			const raw = await object.text();
-			// The model is given text, never markup: feeding it HTML spends the
-			// context window on tags and tracking URLs.
 			const text = (m.body_format === 'html' ? stripHtml(raw) : raw).slice(
 				0,
 				MAX_CHARS_PER_MESSAGE
@@ -491,86 +591,90 @@ export async function triageBatch(env: MailEnv, budgetUnits: number): Promise<Tr
 			if (text.trim()) withBodies.push({ from: m.from_email, sent_at: m.sent_at, body: text });
 		}
 
-		// Trim from the front when a thread is very long. The recent messages are
-		// what a summary is mostly about, and the oldest are usually the part
-		// already covered by whatever came before.
-		let total = 0;
-		const trimmed: typeof withBodies = [];
-		for (let i = withBodies.length - 1; i >= 0; i--) {
-			if (total + withBodies[i].body.length > MAX_CHARS_PER_THREAD) break;
-			total += withBodies[i].body.length;
-			trimmed.unshift(withBodies[i]);
-		}
-		const sending = trimmed.length > 0 ? trimmed : [withBodies[0]];
-
-		// Nothing readable is not a failure, and not a thread to invent a label
-		// for. Triaging a subject line alone produces a confident answer with no
-		// evidence under it.
 		if (withBodies.length === 0) {
 			skipped += 1;
 			continue;
 		}
 
 		const subject = thread.subject ?? '(no subject)';
-		try {
-			const [summarisedThread, triaged] = await Promise.all([
-				summariseThread(apiKey, subject, sending),
-				triageThread(apiKey, subject, sending)
-			]);
+		const at = nowUtc();
 
-			const at = nowUtc();
-			await env.DB.prepare(
-				`UPDATE email_threads
-         SET summary = ?, summary_model = ?, summary_at = ?,
-             category = ?, severity = ?, gist = ?,
-             classified_at = ?, classified_model = ?, updated_at = ?
-         WHERE id = ?`
-			)
-				.bind(
-					summarisedThread.summary,
-					summarisedThread.model,
-					at,
-					triaged.triage.category,
-					triaged.triage.severity,
-					triaged.triage.gist,
-					at,
-					triaged.model,
-					at,
-					thread.id
+		try {
+			if (needsTriage) {
+				// The opening only. A four way answer does not improve with the rest
+				// of the conversation, and on this many threads the difference is
+				// most of the bill.
+				const opening = [
+					{
+						from: withBodies[0].from,
+						sent_at: withBodies[0].sent_at,
+						body: withBodies[0].body.slice(0, TRIAGE_CHARS)
+					}
+				];
+				const triaged = await triageThread(apiKey, subject, opening);
+				await env.DB.prepare(
+					`UPDATE email_threads
+           SET category = ?, severity = ?, gist = ?, classified_at = ?,
+               classified_model = ?, triaged_message_id = ?, updated_at = ?
+           WHERE id = ?`
 				)
-				.run();
-			budget.spend(COST_PER_THREAD);
+					.bind(
+						triaged.triage.category,
+						triaged.triage.severity,
+						triaged.triage.gist,
+						at,
+						triaged.model,
+						thread.newest_message_id,
+						at,
+						thread.id
+					)
+					.run();
+				await recordUsage(env.DB, 'triage', triaged.usage, thread.id);
+				budget.spend(2);
+
+				// A thread only just judged urgent should get its summary in the same
+				// pass rather than waiting for the next firing.
+				if (WORTH_SUMMARISING.includes(triaged.triage.severity)) {
+					const trimmed = trimThread(withBodies);
+					const summarised = await summariseThread(apiKey, subject, trimmed);
+					await env.DB.prepare(
+						`UPDATE email_threads
+             SET summary = ?, summary_model = ?, summary_at = ?, summary_message_id = ?,
+                 updated_at = ? WHERE id = ?`
+					)
+						.bind(
+							summarised.summary,
+							summarised.model,
+							at,
+							thread.newest_message_id,
+							at,
+							thread.id
+						)
+						.run();
+					await recordUsage(env.DB, 'summary', summarised.usage, thread.id);
+					budget.spend(COST_PER_THREAD);
+				}
+			} else if (needsSummary) {
+				const trimmed = trimThread(withBodies);
+				const summarised = await summariseThread(apiKey, subject, trimmed);
+				await env.DB.prepare(
+					`UPDATE email_threads
+           SET summary = ?, summary_model = ?, summary_at = ?, summary_message_id = ?,
+               updated_at = ? WHERE id = ?`
+				)
+					.bind(summarised.summary, summarised.model, at, thread.newest_message_id, at, thread.id)
+					.run();
+				await recordUsage(env.DB, 'summary', summarised.usage, thread.id);
+				budget.spend(COST_PER_THREAD);
+			}
+
 			summarised += 1;
 		} catch (err) {
-			/**
-			 * Transient against permanent, and the distinction is load bearing.
-			 *
-			 * A rate limit or an unreachable API says nothing about this thread. The
-			 * first version of this recovery marked every failure as attempted, so
-			 * thirteen perfectly good threads were about to be written off over a
-			 * network blip and never looked at again. Transient failures end the
-			 * batch and leave the thread untouched for the next run.
-			 *
-			 * Only a failure that will recur no matter how often it is retried, such
-			 * as a thread whose answer will not fit, is recorded as attempted.
-			 */
-			const transient =
-				err instanceof AiError && (err.status === 429 || err.status >= 500);
+			const transient = err instanceof AiError && (err.status === 429 || err.status >= 500);
 			if (transient) {
 				console.error('triage stopping, transient failure', String(err));
 				break;
 			}
-
-			// ONE BAD THREAD MUST NOT BLOCK THE QUEUE.
-			//
-			// Throwing here killed the whole batch, and because the failing thread
-			// stayed first in the ordering, every following run hit it again and
-			// died in the same place. The backlog could never drain past it.
-			//
-			// So the attempt is recorded and the loop continues. `classified_at`
-			// means it was tried; `severity` still null means no answer was got.
-			// The thread stays visibly untriaged rather than being given a made up
-			// label, and the pending query skips anything already attempted.
 			console.error('triage failed for thread', thread.id, String(err));
 			await env.DB.prepare(
 				'UPDATE email_threads SET classified_at = ?, updated_at = ? WHERE id = ?'
@@ -583,10 +687,12 @@ export async function triageBatch(env: MailEnv, budgetUnits: number): Promise<Tr
 	}
 
 	const remaining = await env.DB.prepare(
-		`SELECT COUNT(*) AS n FROM email_threads
-     WHERE connection_id = ?
-       AND (summary IS NULL OR summary_at IS NULL OR summary_at < last_at OR severity IS NULL)
-       AND NOT (severity IS NULL AND classified_at IS NOT NULL)`
+		`SELECT COUNT(*) AS n FROM email_threads t
+     WHERE t.connection_id = ?
+       AND NOT (t.severity IS NULL AND t.classified_at IS NOT NULL)
+       AND (t.severity IS NULL
+            OR t.triaged_message_id IS NOT (SELECT m.id FROM email_messages m
+                 WHERE m.thread_id = t.id ORDER BY m.sent_at DESC LIMIT 1))`
 	)
 		.bind(conn.id)
 		.first<{ n: number }>();

@@ -455,7 +455,35 @@ email.get('/summarise', async (c) => {
 		.bind(conn.id)
 		.all();
 
+	/**
+	 * Measured spend, read from what the API reported rather than estimated.
+	 *
+	 * Prices are not stored here. A hardcoded rate goes stale silently and then
+	 * the meter is confidently wrong about money, which is worse than a meter
+	 * that reports tokens and lets Paul apply the current rate himself.
+	 */
+	const usage = await c.env.DB.prepare(
+		`SELECT kind, model, COUNT(*) AS calls,
+            SUM(input_tokens) AS input_tokens, SUM(output_tokens) AS output_tokens,
+            MAX(at) AS last_at
+     FROM ai_usage GROUP BY kind, model ORDER BY calls DESC`
+	).all();
+
+	const today = await c.env.DB.prepare(
+		`SELECT COUNT(*) AS calls, SUM(input_tokens) AS input_tokens,
+            SUM(output_tokens) AS output_tokens
+     FROM ai_usage WHERE at >= ?`
+	)
+		.bind(new Date(Date.now() - 86_400_000).toISOString())
+		.first<Record<string, number | null>>();
+
 	return c.json({
+		usage: usage.results ?? [],
+		last_24h: {
+			calls: Number(today?.calls ?? 0),
+			input_tokens: Number(today?.input_tokens ?? 0),
+			output_tokens: Number(today?.output_tokens ?? 0)
+		},
 		threads: Number(counts?.threads ?? 0),
 		summarised: Number(counts?.summarised ?? 0),
 		triaged: Number(counts?.triaged ?? 0),

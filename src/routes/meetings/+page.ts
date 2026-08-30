@@ -1,3 +1,4 @@
+import type { EventRow } from '$lib/components/CalendarWeek.svelte';
 import type { PageLoad } from './$types';
 import type { Client, Meeting, Project } from '$lib/types';
 
@@ -5,10 +6,11 @@ export const load: PageLoad = async ({ fetch, url }) => {
 	const q = url.searchParams.get('q') ?? '';
 	const query = q ? `?q=${encodeURIComponent(q)}` : '';
 
-	const [meetingsRes, clientsRes, projectsRes] = await Promise.all([
+	const [meetingsRes, clientsRes, projectsRes, calendarRes] = await Promise.all([
 		fetch(`/api/meetings${query}`),
 		fetch('/api/clients'),
-		fetch('/api/projects')
+		fetch('/api/projects'),
+		fetch('/api/connections/google/calendar?days=14')
 	]);
 
 	if (!meetingsRes.ok) {
@@ -22,5 +24,11 @@ export const load: PageLoad = async ({ fetch, url }) => {
 		? ((await projectsRes.json()) as { projects: Project[] }).projects
 		: [];
 
-	return { meetings, clients, projects, q };
+	return { meetings, clients, projects, q ,
+		// The calendar is context. A failure reading it must not stop the
+		// meetings list rendering.
+		calendar: calendarRes.ok
+			? ((await calendarRes.json()) as { events: EventRow[]; last_read_at: string | null })
+			: { events: [] as EventRow[], last_read_at: null }
+	};
 };
