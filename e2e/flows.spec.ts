@@ -92,7 +92,33 @@ test.describe('typing before the client is ready', () => {
 		released();
 		await page.waitForLoadState('networkidle');
 
-		await expect(input).toHaveValue(TITLE);
+		/**
+		 * T-W1 instrumentation.
+		 *
+		 * This assertion has failed intermittently under full-suite load and has
+		 * never been reproduced on demand, so it is not yet known whether it is a
+		 * slow harness or real pre-hydration input loss. The difference matters:
+		 * the second is a user-visible defect on every page load.
+		 *
+		 * The evidence needed is the value the input actually held, and whether
+		 * the app had hydrated by the time it was read. Captured before the
+		 * assertion so a failure carries its own diagnosis rather than needing a
+		 * reproduction that has not been forthcoming.
+		 */
+		const hydrated = await page
+			.locator('body')
+			.evaluate(() => document.documentElement.hasAttribute('data-sveltekit-preload-data') || Boolean((window as unknown as { __sveltekit?: unknown }).__sveltekit))
+			.catch(() => null);
+		const actual = await input.inputValue();
+
+		expect(
+			actual,
+			`T-W1: input value after hydration was ${JSON.stringify(actual)}, expected ` +
+				`${JSON.stringify(TITLE)}. Hydration detected: ${hydrated}. ` +
+				(actual === ''
+					? 'EMPTY means the client overwrote pre-hydration input, which is a real defect.'
+					: 'A non-empty mismatch means something else edited the field.')
+		).toBe(TITLE);
 
 		await form.getByRole('button', { name: 'Add item' }).click();
 		await expect(page.locator('.status-line')).toContainText('Action item added.');
