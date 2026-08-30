@@ -181,12 +181,26 @@
 		color: var(--muted);
 	}
 
+	/*
+	 * Wraps, and the wrapping is load bearing.
+	 *
+	 * Below 960px the sidebar becomes a top bar and this list is a row of links.
+	 * Without a wrap it simply runs off the right edge: at 412px with ten items
+	 * it measured 777px against a 412px viewport, dragging every page 381px
+	 * sideways and breaking the rule that the page never scrolls horizontally.
+	 *
+	 * It was correct with eight items and became wrong when Reports and Settings
+	 * were added, which is why the test asserts the overflow rather than the item
+	 * count: the next entry would have broken it again silently.
+	 */
 	ul {
 		display: flex;
+		flex-wrap: wrap;
 		gap: var(--space-1);
 		list-style: none;
 		margin: 0;
 		padding: 0;
+		min-width: 0;
 	}
 
 	.nav-link {

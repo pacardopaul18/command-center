@@ -318,6 +318,22 @@
 		margin-top: var(--space-4);
 	}
 
+	/*
+	 * Without this the cards refuse to shrink below their longest row.
+	 *
+	 * `grid-template-columns: 1fr` is `minmax(auto, 1fr)`, and that automatic
+	 * minimum is the content's own width, so a long action item title makes the
+	 * card wider than the viewport and takes the whole page sideways with it.
+	 * The ellipsis on the title never gets a chance to apply, because nothing
+	 * ever tells the card it is allowed to be narrower than its contents.
+	 *
+	 * Found at 412px against the volume seed, whose titles are longer than the
+	 * handful the cockpit was originally built with.
+	 */
+	.bands > :global(*) {
+		min-width: 0;
+	}
+
 	.rows {
 		list-style: none;
 		margin: 0;

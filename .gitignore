@@ -40,3 +40,5 @@ npm-debug.log*
 
 # Rendered screenshots from volume testing. Regenerable, and large.
 shots/
+test-results/
+playwright-report/
