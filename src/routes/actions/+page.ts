@@ -1,6 +1,6 @@
 import type { PageLoad } from './$types';
 import { ACTION_VIEWS } from '$lib/types';
-import type { ActionItem, ActionItemCounts, ActionView, Project } from '$lib/types';
+import type { ActionItem, ActionItemCounts, ActionView, Paging, Project } from '$lib/types';
 
 export const load: PageLoad = async ({ fetch, url }) => {
 	const raw = url.searchParams.get('view') ?? 'open';
@@ -14,11 +14,17 @@ export const load: PageLoad = async ({ fetch, url }) => {
 	const query = new URLSearchParams({ view });
 	if (q) query.set('q', q);
 	if (projectId) query.set('project_id', projectId);
+	// Paging lives in the URL so a page is linkable and survives a reload.
+	const pageNum = url.searchParams.get('page');
+	const pageSize = url.searchParams.get('page_size');
+	if (pageNum) query.set('page', pageNum);
+	if (pageSize) query.set('page_size', pageSize);
 
-	const [itemsRes, projectsRes, asanaRes] = await Promise.all([
+	const [itemsRes, projectsRes, asanaRes, ownersRes] = await Promise.all([
 		fetch(`/api/action-items?${query}`),
 		fetch('/api/projects'),
-		fetch('/api/asana')
+		fetch('/api/asana'),
+		fetch('/api/people/owners')
 	]);
 
 	if (!itemsRes.ok) {
@@ -31,6 +37,7 @@ export const load: PageLoad = async ({ fetch, url }) => {
 		view: ActionView;
 		items: ActionItem[];
 		counts: ActionItemCounts;
+		paging: Paging;
 	};
 
 	const projects = projectsRes.ok
@@ -48,5 +55,11 @@ export const load: PageLoad = async ({ fetch, url }) => {
 			})
 		: { token_present: false, ready: false, blocked_because: 'Could not read the Asana settings.' };
 
-	return { ...data, view, q, projectId, projects, asana };
+	// Owners for the picker. A failure here must not stop the list loading, so it
+	// degrades to an empty roster and the field falls back to a plain input.
+	const owners = ownersRes.ok
+		? ((await ownersRes.json()) as { owners: string[] }).owners
+		: [];
+
+	return { ...data, view, q, projectId, projects, asana, owners };
 };

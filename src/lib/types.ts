@@ -449,3 +449,14 @@ export interface AsanaStatus {
 	ready: boolean;
 	blocked_because: string | null;
 }
+
+// --- Paging ---
+
+/** What a paginated list endpoint returns alongside its rows. */
+export interface Paging {
+	page: number;
+	page_size: number;
+	total: number;
+	page_count: number;
+	sizes: readonly number[];
+}

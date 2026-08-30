@@ -33,8 +33,31 @@
 	let {
 		type,
 		data,
-		today
-	}: { type: ReportType; data: Record<string, any>; today: string } = $props();
+		today,
+		/** Print renders every section, because a filtered document is a lie. */
+		filterable = true
+	}: { type: ReportType; data: Record<string, any>; today: string; filterable?: boolean } = $props();
+
+	/**
+	 * Which section the reader has narrowed to, or null for all of them.
+	 *
+	 * Client side and deliberately not in the URL. The figures are already
+	 * loaded, so this is a way of reading what is on screen rather than a
+	 * different query, and putting it in the URL would imply the print view and
+	 * a shared link inherit it. They do not: `filterable` is false there and
+	 * every section renders.
+	 */
+	let active = $state<string | null>(null);
+
+	function toggle(key: string) {
+		if (!filterable) return;
+		active = active === key ? null : key;
+	}
+
+	/** True when a section should render under the current selection. */
+	function shown(key: string): boolean {
+		return !filterable || active === null || active === key;
+	}
 
 	const meta = $derived(reportMeta(type));
 	const totals = $derived((data.totals ?? {}) as Record<string, number | null>);
@@ -70,21 +93,55 @@
 	{#if type === 'slipping'}
 		{@const t = totals}
 		<div class="tiles">
-			<div class="tile" class:alarm={Number(t.total_count) > 0}>
+			<!--
+				A button only where it does something. On the print route the tiles
+				are figures in a document, and a document should not contain
+				controls: they would be announced as pressable to a screen reader
+				and mean nothing on paper.
+			-->
+			<svelte:element
+				this={filterable ? 'button' : 'div'}
+				type={filterable ? 'button' : undefined}
+				role={filterable ? 'button' : undefined}
+				class="tile"
+				class:alarm={Number(t.total_count) > 0}
+				class:inert={!filterable}
+				aria-pressed={filterable ? active === null : undefined}
+				onclick={filterable ? () => (active = null) : undefined}
+			>
 				<span class="tile-value">{t.total_count}</span>
 				<span class="tile-label">Items slipping</span>
-			</div>
-			<div class="tile"><span class="tile-value">{t.overdue_actions}</span><span class="tile-label">Overdue actions</span></div>
-			<div class="tile"><span class="tile-value">{t.overdue_invoices}</span><span class="tile-label">Overdue invoices</span></div>
-			<div class="tile"><span class="tile-value">{t.at_risk_projects}</span><span class="tile-label">Projects at risk</span></div>
-			<div class="tile"><span class="tile-value">{t.pending_proposals}</span><span class="tile-label">Undecided proposals</span></div>
+			</svelte:element>
+			{#each [['overdue_actions', 'Overdue actions'], ['overdue_invoices', 'Overdue invoices'], ['at_risk_projects', 'Projects at risk'], ['pending_proposals', 'Undecided proposals']] as [key, label] (key)}
+				<svelte:element
+					this={filterable ? 'button' : 'div'}
+					type={filterable ? 'button' : undefined}
+					role={filterable ? 'button' : undefined}
+					class="tile"
+					class:selected={active === key}
+					class:inert={!filterable}
+					aria-pressed={filterable ? active === key : undefined}
+					onclick={filterable ? () => toggle(key) : undefined}
+				>
+					<span class="tile-value">{t[key]}</span>
+					<span class="tile-label">{label}</span>
+				</svelte:element>
+			{/each}
 		</div>
+
+		{#if filterable && active}
+			<p class="filtered" role="status">
+				Showing one section. <button type="button" class="link" onclick={() => (active = null)}>
+					Show everything
+				</button>
+			</p>
+		{/if}
 
 		{#if Number(t.total_count) === 0}
 			<p class="empty">Nothing is overdue, at risk, or waiting on a decision.</p>
 		{/if}
 
-		{#if data.overdue_actions?.length}
+		{#if data.overdue_actions?.length && shown('overdue_actions')}
 			<h2>Overdue action items</h2>
 			<div class="scroll">
 				<table>
@@ -104,7 +161,7 @@
 			</div>
 		{/if}
 
-		{#if data.overdue_invoices?.length}
+		{#if data.overdue_invoices?.length && shown('overdue_invoices')}
 			<h2>Overdue invoices</h2>
 			<div class="scroll">
 				<table>
@@ -124,7 +181,7 @@
 			</div>
 		{/if}
 
-		{#if data.at_risk_projects?.length}
+		{#if data.at_risk_projects?.length && shown('at_risk_projects')}
 			<h2>Projects at risk or past target</h2>
 			<div class="scroll">
 				<table>
@@ -147,7 +204,7 @@
 			</div>
 		{/if}
 
-		{#if data.ambiguous_actions?.length}
+		{#if data.ambiguous_actions?.length && active === null}
 			<h2>Ambiguous, nobody owns these</h2>
 			<div class="scroll">
 				<table>
@@ -165,7 +222,7 @@
 			</div>
 		{/if}
 
-		{#if data.pending_proposals?.length}
+		{#if data.pending_proposals?.length && shown('pending_proposals')}
 			<h2>Extracted but undecided</h2>
 			<div class="scroll">
 				<table>
@@ -438,6 +495,13 @@
 		}
 	}
 
+	/*
+	 * Tiles are buttons that narrow the page to their own section. They stay
+	 * visually tiles rather than becoming obvious controls, because the summary
+	 * is the primary thing and the filtering is a convenience on top of it.
+	 * `inert` is the print view, where they are neither pressable nor styled as
+	 * though they were.
+	 */
 	.tile {
 		display: flex;
 		flex-direction: column;
@@ -446,6 +510,45 @@
 		border: 1px solid var(--border-thin);
 		border-radius: var(--radius-md);
 		background: var(--surface-card);
+		font: inherit;
+		text-align: left;
+		cursor: pointer;
+	}
+
+	.tile.inert {
+		cursor: default;
+	}
+
+	.tile:not(.inert):hover {
+		border-color: var(--border-strong);
+		background: var(--surface-hover);
+	}
+
+	.tile:focus-visible {
+		outline: 2px solid var(--navy);
+		outline-offset: 2px;
+	}
+
+	/* Selection is a border and a marker, never colour alone. D28. */
+	.tile.selected {
+		border-color: var(--navy);
+		box-shadow: inset 3px 0 0 var(--navy);
+	}
+
+	.filtered {
+		margin: 0;
+		font-size: var(--text-sm);
+		color: var(--text-secondary);
+	}
+
+	.link {
+		border: 0;
+		padding: 0;
+		background: none;
+		font: inherit;
+		color: var(--text-link);
+		text-decoration: underline;
+		cursor: pointer;
 	}
 
 	.tile.alarm {
@@ -499,11 +602,13 @@
 
 	th {
 		font-size: var(--text-xs);
-		font-weight: var(--weight-medium);
+		font-weight: var(--weight-semibold);
 		text-transform: uppercase;
 		letter-spacing: var(--tracking-label);
-		color: var(--text-secondary);
+		color: var(--text-body);
 		white-space: nowrap;
+		border-bottom: 2px solid var(--border-strong);
+		background: var(--surface-row-alt);
 	}
 
 	tbody tr:last-child td {
@@ -570,10 +675,16 @@
 		}
 
 		.tile,
-		.tile.alarm {
+		.tile.alarm,
+		.tile.selected {
 			background: none;
 			border: 1px solid #999;
+			box-shadow: none;
 			padding: 8pt;
+		}
+
+		.filtered {
+			display: none;
 		}
 
 		.tile-value {

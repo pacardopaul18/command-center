@@ -55,6 +55,38 @@ const ORDER_BY = `
     a.created_at DESC
 `;
 
+/**
+ * Page sizes the UI offers. Anything else is rejected rather than silently
+ * clamped, so a caller asking for 5000 rows learns that it did not happen.
+ */
+export const PAGE_SIZES = [10, 50, 100, 200, 500] as const;
+export const DEFAULT_PAGE_SIZE = 50;
+
+export function readPaging(c: { req: { query(name: string): string | undefined } }): {
+	page: number;
+	pageSize: number;
+} {
+	const rawSize = c.req.query('page_size');
+	let pageSize: number = DEFAULT_PAGE_SIZE;
+	if (rawSize !== undefined) {
+		const n = Number(rawSize);
+		if (!(PAGE_SIZES as readonly number[]).includes(n)) {
+			throw new ApiError(400, `page_size must be one of ${PAGE_SIZES.join(', ')}.`);
+		}
+		pageSize = n;
+	}
+
+	const rawPage = c.req.query('page');
+	let page = 1;
+	if (rawPage !== undefined) {
+		const n = Number(rawPage);
+		if (!Number.isInteger(n) || n < 1) throw new ApiError(400, 'page must be a positive whole number.');
+		page = n;
+	}
+
+	return { page, pageSize };
+}
+
 export const actionItems = new Hono<ApiEnv>();
 
 actionItems.get('/', async (c) => {
@@ -97,9 +129,27 @@ actionItems.get('/', async (c) => {
 	for (const fragment of scoped) where.push(fragment.list);
 	binds.push(...scopedBinds);
 
-	const { results } = await db
-		.prepare(`${SELECT} WHERE ${where.join(' AND ')} ${ORDER_BY}`)
+	// Pagination. Profiled before it was built, and the profile moved the target:
+	// 3000 rows is a 1.2 MB payload, but it renders as 9.3 MB of HTML across
+	// 130,000 DOM nodes, because D22's two layouts put every row in the document
+	// twice. The payload was the smaller half of the problem. Limiting rows fixes
+	// both halves at once, which is why this is the performance fix as well as
+	// the usability one.
+	const { page, pageSize } = readPaging(c);
+
+	const totalRow = await db
+		.prepare(`SELECT COUNT(*) AS n FROM action_items a WHERE ${where.join(' AND ')}`)
 		.bind(...binds)
+		.first<{ n: number }>();
+	const total = Number(totalRow?.n ?? 0);
+	const pageCount = Math.max(1, Math.ceil(total / pageSize));
+	// A filter change can leave the caller past the end. Clamp rather than
+	// return an empty page, which reads as "no results" and is a different claim.
+	const safePage = Math.min(page, pageCount);
+
+	const { results } = await db
+		.prepare(`${SELECT} WHERE ${where.join(' AND ')} ${ORDER_BY} LIMIT ? OFFSET ?`)
+		.bind(...binds, pageSize, (safePage - 1) * pageSize)
 		.all();
 
 	// The counts feed the filter chips, so they ignore the active view but keep
@@ -125,6 +175,7 @@ actionItems.get('/', async (c) => {
 		today,
 		view,
 		items: results ?? [],
+		paging: { page: safePage, page_size: pageSize, total, page_count: pageCount, sizes: PAGE_SIZES },
 		counts: {
 			all: counts?.all_count ?? 0,
 			open: counts?.open_count ?? 0,

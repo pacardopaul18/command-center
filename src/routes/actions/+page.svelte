@@ -15,6 +15,7 @@
 	import { asanaTaskUrl } from '$lib/types';
 	import Button from '$lib/components/Button.svelte';
 	import Card from '$lib/components/Card.svelte';
+	import Pager from '$lib/components/Pager.svelte';
 	import FormField from '$lib/components/FormField.svelte';
 	import Input from '$lib/components/Input.svelte';
 	import Select from '$lib/components/Select.svelte';
@@ -23,6 +24,21 @@
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
+
+	/**
+	 * The owner picker's options.
+	 *
+	 * The roster comes from the server: users, then every owner the data already
+	 * names. The value currently on the record is added if it is missing, because
+	 * a select that cannot represent what it was given silently rewrites it on
+	 * the next save, and losing an owner that way would be invisible.
+	 */
+	function ownerOptions(current: string | null | undefined): string[] {
+		const list = [...data.owners];
+		const value = (current ?? '').trim();
+		if (value && !list.some((o) => o.toLowerCase() === value.toLowerCase())) list.unshift(value);
+		return list;
+	}
 
 	let busy = $state(false);
 	let notice = $state('');
@@ -239,7 +255,12 @@
 					</FormField>
 				</div>
 				<FormField label="Owner">
-					<Input bind:value={draft.owner} placeholder="Who owns it" />
+					<Select bind:value={draft.owner}>
+						<option value="">Unassigned</option>
+						{#each ownerOptions(draft.owner) as name (name)}
+							<option value={name}>{name}</option>
+						{/each}
+					</Select>
 				</FormField>
 				<FormField label="Deadline">
 					<Input type="date" bind:value={draft.deadline} mono />
@@ -521,6 +542,8 @@
 			</li>
 		{/each}
 	</ul>
+
+	<Pager paging={data.paging} label="action items" />
 {/if}
 
 {#if editingId}
@@ -536,7 +559,12 @@
 							</FormField>
 						</div>
 						<FormField label="Owner">
-							<Input bind:value={edit.owner} />
+							<Select bind:value={edit.owner}>
+								<option value="">Unassigned</option>
+								{#each ownerOptions(edit.owner) as name (name)}
+									<option value={name}>{name}</option>
+								{/each}
+							</Select>
 						</FormField>
 						<FormField label="Deadline">
 							<Input type="date" bind:value={edit.deadline} mono />
@@ -864,7 +892,10 @@
 		th {
 			padding: var(--space-2) var(--space-3);
 			text-align: left;
-			font-weight: var(--weight-medium);
+			font-weight: var(--weight-semibold);
+			color: var(--text-body);
+			border-bottom: 2px solid var(--border-strong);
+			background: var(--surface-row-alt);
 		}
 
 		td {

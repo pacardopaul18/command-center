@@ -1,9 +1,15 @@
 import type { PageLoad } from './$types';
-import type { AgingBucket, BillingPeriod, Client, Invoice } from '$lib/types';
+import type { AgingBucket, BillingPeriod, Client, Invoice, Paging } from '$lib/types';
 
-export const load: PageLoad = async ({ fetch }) => {
+export const load: PageLoad = async ({ fetch, url }) => {
+	const query = new URLSearchParams();
+	for (const key of ['page', 'page_size']) {
+		const v = url.searchParams.get(key);
+		if (v) query.set(key, v);
+	}
+
 	const [invRes, clientsRes] = await Promise.all([
-		fetch('/api/invoicing'),
+		fetch(`/api/invoicing?${query}`),
 		fetch('/api/clients')
 	]);
 
@@ -17,6 +23,7 @@ export const load: PageLoad = async ({ fetch }) => {
 		periods: BillingPeriod[];
 		invoices: Invoice[];
 		bands: { aging_bucket: AgingBucket; invoice_count: number; outstanding_cents: number }[];
+		paging: Paging;
 	};
 
 	const clients = clientsRes.ok

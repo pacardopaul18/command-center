@@ -403,11 +403,23 @@
 		padding-left: var(--space-2);
 	}
 
+	/*
+	 * Truncation is a desktop affordance. It assumes a hover or a wider window to
+	 * recover the rest, and a phone has neither, so at narrow widths a truncated
+	 * title is information the reader simply cannot get to. Below 720px these
+	 * wrap instead.
+	 */
 	.title {
 		display: block;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
+		overflow-wrap: anywhere;
+	}
+
+	@media (min-width: 720px) {
+		.title {
+			overflow: hidden;
+			text-overflow: ellipsis;
+			white-space: nowrap;
+		}
 	}
 
 	.meta {
@@ -415,9 +427,15 @@
 		margin-top: 2px;
 		font-size: var(--text-xs);
 		color: var(--text-secondary);
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
+		overflow-wrap: anywhere;
+	}
+
+	@media (min-width: 720px) {
+		.meta {
+			overflow: hidden;
+			text-overflow: ellipsis;
+			white-space: nowrap;
+		}
 	}
 
 	.empty {

@@ -222,10 +222,34 @@
 		text-decoration: none;
 	}
 
+	/*
+	 * The active item is a pill with a gold marker rather than a slightly paler
+	 * highlight. The old treatment was a 10% shift in background alpha, which is
+	 * invisible at a glance and indistinguishable from hover, so the nav never
+	 * actually told you where you were.
+	 *
+	 * Gold is the accent and stays an accent: a 3px marker and a tint, not a
+	 * filled block. The pill reads as present rather than loud, and the contrast
+	 * carries the state on its own without relying on colour, since the weight
+	 * and the marker both change too.
+	 */
+	.nav-link[aria-current='page']::before {
+		content: '';
+		position: absolute;
+		left: 0;
+		top: 50%;
+		transform: translateY(-50%);
+		width: 3px;
+		height: 60%;
+		border-radius: 0 2px 2px 0;
+		background: var(--gold);
+	}
+
 	.nav-link[aria-current='page'] {
-		background: rgba(255, 255, 255, 0.16);
+		position: relative;
+		background: rgba(201, 168, 76, 0.14);
 		color: #ffffff;
-		font-weight: var(--weight-medium);
+		font-weight: var(--weight-semibold);
 	}
 
 	main {

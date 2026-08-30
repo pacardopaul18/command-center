@@ -72,9 +72,12 @@ async function preflight() {
 			const res = await fetch(`${BASE}/api/action-items?view=all`);
 			const body = await res.json();
 			const want = JSON.parse(readFileSync('seed/expected.json', 'utf8')).counts.action_items;
-			if (body.items.length < want) {
+			// paging.total, not items.length. The list is a page now, and counting
+			// the rows on screen would report 50 no matter how much is loaded.
+			const have = body.paging?.total ?? body.items?.length ?? 0;
+			if (have < want) {
 				problems.push(
-					`The volume seed does not look loaded: ${body.items.length} action items, ` +
+					`The volume seed does not look loaded: ${have} action items, ` +
 						`expected at least ${want}. Run: npm run seed:load`
 				);
 			}

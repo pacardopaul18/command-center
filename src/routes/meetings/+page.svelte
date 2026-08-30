@@ -136,11 +136,17 @@
 {/if}
 
 <form class="filters" onsubmit={applySearch}>
-	<FormField label="Search" hint="Searches titles, attendees and transcript text.">
+	<FormField label="Search">
 		<Input name="q" type="search" value={data.q} placeholder="Anything said on a call" />
 	</FormField>
 	<Button variant="secondary" type="submit">Search</Button>
 </form>
+<!--
+	The hint sits under the form rather than inside the field. Inside, it made
+	that grid cell taller than the button's cell, and `align-items: end` then
+	aligned the button to the bottom of the hint instead of to the input.
+-->
+<p class="filter-hint">Searches titles, attendees and transcript text.</p>
 
 {#if data.meetings.length === 0}
 	<p class="empty">
@@ -222,6 +228,12 @@
 	.form-actions {
 		margin-top: var(--space-4);
 	}
+	.filter-hint {
+		margin: var(--space-2) 0 0;
+		font-size: var(--text-sm);
+		color: var(--text-secondary);
+	}
+
 	.filters {
 		display: grid;
 		grid-template-columns: 1fr;

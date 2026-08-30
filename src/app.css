@@ -85,6 +85,27 @@ textarea {
 }
 
 /* 11px uppercase mono, the design system's label treatment. */
+/*
+ * Table headers, app wide.
+ *
+ * They were the same weight and nearly the same colour as the data underneath,
+ * which is survivable at four rows and not at four hundred: scrolling a long
+ * table, there was nothing to tell you which line was the header when it came
+ * back into view. Heavier, darker, and separated from the body by a real rule
+ * rather than the hairline every other row uses.
+ */
+th {
+	font-weight: var(--weight-semibold);
+	color: var(--text-body);
+	letter-spacing: var(--tracking-label);
+}
+
+thead th {
+	border-bottom: 2px solid var(--border-strong);
+	background: var(--surface-row-alt);
+	white-space: nowrap;
+}
+
 .label-mono {
 	font-family: var(--font-mono);
 	font-size: var(--text-xs);

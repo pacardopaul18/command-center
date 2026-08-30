@@ -14,6 +14,7 @@
 	import { formatDay } from '$lib/format';
 	import Button from '$lib/components/Button.svelte';
 	import Card from '$lib/components/Card.svelte';
+	import Pager from '$lib/components/Pager.svelte';
 	import FormField from '$lib/components/FormField.svelte';
 	import Input from '$lib/components/Input.svelte';
 	import Select from '$lib/components/Select.svelte';
@@ -435,6 +436,8 @@
 			</li>
 		{/each}
 	</ul>
+
+	<Pager paging={data.paging} label="invoices" />
 {/if}
 
 <style>
@@ -681,8 +684,11 @@
 		th {
 			padding: var(--space-2) var(--space-3);
 			text-align: left;
-			font-weight: var(--weight-medium);
+			font-weight: var(--weight-semibold);
 			white-space: nowrap;
+			color: var(--text-body);
+			border-bottom: 2px solid var(--border-strong);
+			background: var(--surface-row-alt);
 		}
 		td {
 			padding: var(--space-3);

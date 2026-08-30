@@ -24,6 +24,21 @@ async function tile(page: import('@playwright/test').Page, label: string) {
 
 const num = (s: string) => Number(s.replace(/[^0-9.-]/g, ''));
 
+/** Interaction needs the client to have taken over. See the note in flows.spec. */
+async function ready(page: import('@playwright/test').Page) {
+	await page.waitForLoadState('networkidle');
+}
+
+/**
+ * Section headings, scoped to the report.
+ *
+ * A bare `h2` locator also picks up the quick add dialog's title, which is in
+ * every page's DOM whether the dialog is open or not.
+ */
+function sections(page: import('@playwright/test').Page) {
+	return page.locator('.report h2');
+}
+
 test.describe('reports render at volume with the right numbers', () => {
 	test('what is slipping', async ({ page }) => {
 		await page.goto('/reports/slipping');
@@ -61,6 +76,48 @@ test.describe('reports render at volume with the right numbers', () => {
 		await page.goto('/reports/actions');
 		await expect(page.getByRole('heading', { level: 1 })).toHaveText('Action item completion');
 		expect(num(await tile(page, 'Still open'))).toBe(expected.totals.action_items_open);
+	});
+});
+
+test.describe('summary cards filter the list below', () => {
+	test('clicking a card narrows to its section, clicking again restores', async ({ page }) => {
+		await page.goto('/reports/slipping');
+		await ready(page);
+		const headings = () => sections(page);
+		const before = await headings().count();
+		expect(before).toBeGreaterThan(1);
+
+		await page.getByRole('button', { name: /Overdue invoices/ }).click();
+		await expect(page.getByRole('heading', { name: 'Overdue invoices' })).toBeVisible();
+		await expect(page.getByRole('heading', { name: 'Overdue action items' })).toHaveCount(0);
+		await expect(headings()).toHaveCount(1);
+
+		await page.getByRole('button', { name: /Overdue invoices/ }).click();
+		await expect(headings()).toHaveCount(before);
+	});
+
+	test('the selected card is announced, not just tinted', async ({ page }) => {
+		await page.goto('/reports/slipping');
+		await ready(page);
+		const card = page.getByRole('button', { name: /Projects at risk/ });
+		await card.click();
+		await expect(card).toHaveAttribute('aria-pressed', 'true');
+		await expect(page.getByRole('status')).toContainText('Showing one section');
+	});
+
+	test('show everything clears the filter', async ({ page }) => {
+		await page.goto('/reports/slipping');
+		await ready(page);
+		const before = await sections(page).count();
+		await page.getByRole('button', { name: /Overdue actions/ }).click();
+		await page.getByRole('button', { name: 'Show everything' }).click();
+		await expect(sections(page)).toHaveCount(before);
+	});
+
+	test('the print view is never filtered, because a filtered document is a lie', async ({ page }) => {
+		await page.goto('/reports/slipping/print');
+		expect(await sections(page).count()).toBeGreaterThan(1);
+		await expect(page.getByRole('button', { name: /Overdue invoices/ })).toHaveCount(0);
 	});
 });
 
@@ -104,6 +161,34 @@ test.describe('accessibility basics survive volume', () => {
 			}
 		});
 	}
+
+	test('table headers are distinguishable from the rows under them', async ({ page }) => {
+		await page.goto('/reports/slipping');
+		const th = page.locator('thead th').first();
+		const td = page.locator('tbody td').first();
+		const weight = (l: ReturnType<typeof page.locator>) =>
+			l.evaluate((e) => Number(getComputedStyle(e).fontWeight));
+		expect(await weight(th)).toBeGreaterThan(await weight(td));
+		expect(await th.evaluate((e) => getComputedStyle(e).borderBottomWidth)).toBe('2px');
+	});
+
+	for (const path of ['/', '/actions?view=all', '/invoices', '/reports/slipping']) {
+		test(`${path} never scrolls sideways at 412px`, async ({ page }) => {
+			await page.setViewportSize({ width: 412, height: 900 });
+			await page.goto(path);
+			const overflow = await page.evaluate(
+				() => document.documentElement.scrollWidth - document.documentElement.clientWidth
+			);
+			expect(overflow, 'horizontal overflow at 412px').toBeLessThanOrEqual(1);
+		});
+	}
+
+	test('titles wrap rather than truncate on a phone', async ({ page }) => {
+		await page.setViewportSize({ width: 412, height: 900 });
+		await page.goto('/');
+		const title = page.locator('.title').first();
+		expect(await title.evaluate((e) => getComputedStyle(e).whiteSpace)).not.toBe('nowrap');
+	});
 
 	test('wide tables scroll inside their own box, the page never scrolls sideways', async ({ page }) => {
 		await page.setViewportSize({ width: 412, height: 900 });

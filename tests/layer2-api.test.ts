@@ -56,25 +56,25 @@ describe('layer 2: health and schema', () => {
 });
 
 describe('layer 2: action items', () => {
-	it('the open view returns what was generated', async () => {
+	it('the open view totals what was generated', async () => {
 		const { json } = await api('/api/action-items?view=open');
-		expect(json.items.length).toBe(expected.totals.action_items_open);
+		expect(json.paging.total).toBe(expected.totals.action_items_open);
 	});
 
-	it('the overdue view matches the generated overdue band', async () => {
+	it('the overdue view totals the generated overdue band', async () => {
 		const { json } = await api('/api/action-items?view=overdue');
-		expect(json.items.length).toBe(expected.action_bands.overdue);
+		expect(json.paging.total).toBe(expected.action_bands.overdue);
 	});
 
-	it('the due today view matches', async () => {
+	it('the due today view totals match', async () => {
 		const { json } = await api('/api/action-items?view=today');
-		expect(json.items.length).toBe(expected.action_bands.due_today);
+		expect(json.paging.total).toBe(expected.action_bands.due_today);
 	});
 
 	it('search narrows the set and every hit really matches', async () => {
-		const { json } = await api('/api/action-items?view=all&q=invoice');
-		expect(json.items.length).toBeGreaterThan(0);
-		expect(json.items.length).toBeLessThan(expected.counts.action_items);
+		const { json } = await api('/api/action-items?view=all&q=invoice&page_size=500');
+		expect(json.paging.total).toBeGreaterThan(0);
+		expect(json.paging.total).toBeLessThan(expected.counts.action_items);
 		for (const item of json.items) {
 			const hay = `${item.title} ${item.context ?? ''} ${item.owner ?? ''}`.toLowerCase();
 			expect(hay).toContain('invoice');
@@ -103,7 +103,7 @@ describe('layer 2: action items', () => {
 	});
 
 	it('creates, patches and deletes, leaving the counts where it found them', async () => {
-		const before = (await api('/api/action-items?view=all')).json.items.length;
+		const before = (await api('/api/action-items?view=all')).json.paging.total;
 
 		const created = await api('/api/action-items', body({ title: 'SUITE probe item' }));
 		expect(created.res.status).toBe(201);
@@ -128,8 +128,83 @@ describe('layer 2: action items', () => {
 		const removed = await api(`/api/action-items/${id}`, { method: 'DELETE' });
 		expect(removed.res.status).toBe(200);
 
-		const after = (await api('/api/action-items?view=all')).json.items.length;
+		const after = (await api('/api/action-items?view=all')).json.paging.total;
 		expect(after).toBe(before);
+	});
+});
+
+describe('layer 2: pagination', () => {
+	it('defaults to a page rather than the whole table', async () => {
+		const { json } = await api('/api/action-items?view=all');
+		expect(json.items.length).toBe(50);
+		expect(json.paging.total).toBe(expected.counts.action_items);
+		expect(json.paging.page).toBe(1);
+		expect(json.paging.page_count).toBe(Math.ceil(expected.counts.action_items / 50));
+	});
+
+	for (const size of [10, 50, 100, 200, 500]) {
+		it(`honours page_size ${size}`, async () => {
+			const { json } = await api(`/api/action-items?view=all&page_size=${size}`);
+			expect(json.items.length).toBe(size);
+			expect(json.paging.page_size).toBe(size);
+		});
+	}
+
+	it('rejects a page size it does not offer, rather than clamping quietly', async () => {
+		const { res, json } = await api('/api/action-items?page_size=17');
+		expect(res.status).toBe(400);
+		expect(json.error).toMatch(/10, 50, 100, 200, 500/);
+	});
+
+	it('rejects a nonsense page', async () => {
+		expect((await api('/api/action-items?page=0')).res.status).toBe(400);
+		expect((await api('/api/action-items?page=abc')).res.status).toBe(400);
+	});
+
+	it('clamps past the end instead of returning an empty page', async () => {
+		const { json } = await api('/api/action-items?view=all&page_size=50&page=9999');
+		expect(json.paging.page).toBe(json.paging.page_count);
+		expect(json.items.length).toBeGreaterThan(0);
+	});
+
+	it('pages do not overlap and cover the set', async () => {
+		const a = await api('/api/action-items?view=all&page_size=10&page=1');
+		const b = await api('/api/action-items?view=all&page_size=10&page=2');
+		const ids = new Set(a.json.items.map((i: any) => i.id));
+		expect(b.json.items.some((i: any) => ids.has(i.id))).toBe(false);
+	});
+
+	it('invoice bands are computed over every invoice, not the page', async () => {
+		const { json } = await api('/api/invoicing?page_size=10');
+		expect(json.invoices.length).toBe(10);
+		const banded = json.bands.reduce((s: number, b: any) => s + Number(b.invoice_count), 0);
+		expect(banded).toBe(expected.totals.unpaid_invoices);
+	});
+
+	it('the payload is a fraction of the unpaginated one', async () => {
+		const small = await api('/api/action-items?view=all&page_size=10');
+		const large = await api('/api/action-items?view=all&page_size=500');
+		expect(small.text.length * 10).toBeLessThan(large.text.length);
+	});
+});
+
+describe('layer 2: the owner picker is sourced, not typed', () => {
+	it('offers the roster and every owner the data names', async () => {
+		const { res, json } = await api('/api/people/owners');
+		expect(res.status).toBe(200);
+		expect(json.owners.length).toBeGreaterThan(json.users.length);
+		expect(new Set(json.owners).size).toBe(json.owners.length);
+	});
+
+	it('never offers the seed fingerprint as a person', async () => {
+		const { json } = await api('/api/people/owners');
+		for (const u of json.users) expect(u.display_name).not.toMatch(/^[0-9a-f]{16}$/);
+		expect(json.owners).toContain('Paul Pacardo');
+	});
+
+	it('every offered owner really appears on an item or in users', async () => {
+		const { json } = await api('/api/people/owners');
+		expect(json.owners.every((o: string) => typeof o === 'string' && o.trim().length > 0)).toBe(true);
 	});
 });
 
@@ -147,7 +222,7 @@ describe('layer 2: Asana push guards', () => {
 	});
 
 	it('refuses to push a seeded item, so no v- row can reach a real workspace', async () => {
-		const list = await api('/api/action-items?view=open');
+		const list = await api('/api/action-items?view=open&page_size=10');
 		const seeded = list.json.items.find((i: any) => String(i.id).startsWith('v-'));
 		expect(seeded).toBeTruthy();
 		const { res, json } = await api(`/api/action-items/${seeded.id}/asana`, { method: 'POST' });

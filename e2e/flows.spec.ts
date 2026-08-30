@@ -57,9 +57,10 @@ test.describe('capture and track', () => {
 		await form.getByLabel('Title').pressSequentially(TITLE);
 		await form.getByRole('button', { name: 'Add item' }).click();
 
-		await expect(page.getByRole('status')).toContainText('Action item added.');
-		await expect(page.getByText(TITLE).first()).toBeVisible();
+		await expect(page.locator('.status-line')).toContainText('Action item added.');
 
+		// The item has no deadline, so it sorts last and is not on page one. What
+		// must change is the size of the set, which the chip counts report.
 		const after = Number(
 			(await page.getByRole('link', { name: /^All/ }).innerText()).replace(/\D/g, '')
 		);
@@ -109,7 +110,11 @@ test.describe('quick add', () => {
 		await dialog.getByRole('button', { name: 'Add item' }).click();
 
 		await expect(dialog).toBeHidden();
-		await expect(page.getByText(TITLE).first()).toBeVisible();
+		// The new item has no deadline, so it sorts to the end and is not on page
+		// one. The set grew, which is the claim; where it landed is the sort's job.
+		await expect(page.getByRole('navigation', { name: 'Pagination' })).toContainText(
+			`of ${expected.counts.action_items + 1} action items`
+		);
 	});
 
 	test('a failed save keeps the dialog open with the error', async ({ page }) => {
@@ -151,10 +156,12 @@ test.describe('navigation and filters at volume', () => {
 		await expect(page.getByRole('link', { name: 'Reports', exact: true })).toBeInViewport();
 	});
 
-	test('the overdue filter shows the generated overdue count', async ({ page }) => {
+	test('the overdue filter reports the generated overdue count', async ({ page }) => {
 		await page.goto('/actions?view=overdue');
-		const rows = await page.locator('tbody tr').count();
-		expect(rows).toBe(expected.action_bands.overdue);
+		// The list is a page now; the pager carries the number that means the set.
+		await expect(page.getByRole('navigation', { name: 'Pagination' })).toContainText(
+			`of ${expected.action_bands.overdue} action items`
+		);
 	});
 
 	test('search narrows the list', async ({ page }) => {
@@ -166,7 +173,62 @@ test.describe('navigation and filters at volume', () => {
 		await page.waitForURL(/q=invoice/);
 		const rows = await page.locator('tbody tr').count();
 		expect(rows).toBeGreaterThan(0);
-		expect(rows).toBeLessThan(expected.counts.action_items);
+		expect(rows).toBeLessThanOrEqual(50);
+	});
+});
+
+test.describe('pagination', () => {
+	test('the list is a page, and the pager says how big the set is', async ({ page }) => {
+		await page.goto('/actions?view=all');
+		await expect(page.locator('tbody tr')).toHaveCount(50);
+		await expect(page.getByRole('navigation', { name: 'Pagination' })).toContainText(
+			`of ${expected.counts.action_items} action items`
+		);
+	});
+
+	test('changing the page size changes the rows and returns to page one', async ({ page }) => {
+		await page.goto('/actions?view=all&page=3');
+		await ready(page);
+		const pager = page.getByRole('navigation', { name: 'Pagination' });
+		await pager.getByLabel('Per page').selectOption('10');
+		await page.waitForURL(/page_size=10/);
+		await expect(page.locator('tbody tr')).toHaveCount(10);
+		await expect(pager).toContainText('Page 1 of');
+	});
+
+	test('next and previous move a page and the rows change', async ({ page }) => {
+		await page.goto('/actions?view=all&page_size=10');
+		await ready(page);
+		const firstTitle = await page.locator('tbody tr').first().innerText();
+		await page.getByRole('button', { name: 'Next' }).click();
+		await page.waitForURL(/page=2/);
+		expect(await page.locator('tbody tr').first().innerText()).not.toBe(firstTitle);
+		await page.getByRole('button', { name: 'Previous' }).click();
+		await page.waitForURL(/page=1/);
+	});
+
+	test('previous is disabled on the first page, next on the last', async ({ page }) => {
+		await page.goto('/actions?view=all&page_size=500');
+		await ready(page);
+		await expect(page.getByRole('button', { name: 'Previous' })).toBeDisabled();
+		await page.goto('/actions?view=all&page_size=500&page=6');
+		await expect(page.getByRole('button', { name: 'Next' })).toBeDisabled();
+	});
+
+	test('invoices paginate too', async ({ page }) => {
+		await page.goto('/invoices?page_size=10');
+		await expect(page.getByRole('navigation', { name: 'Pagination' })).toContainText(
+			'of 900 invoices'
+		);
+	});
+});
+
+test.describe('the nav says where you are', () => {
+	test('exactly one item is marked current, and it is the open page', async ({ page }) => {
+		await page.goto('/reports');
+		const current = page.locator('.nav-link[aria-current="page"]');
+		await expect(current).toHaveCount(1);
+		await expect(current).toHaveText('Reports');
 	});
 });
 

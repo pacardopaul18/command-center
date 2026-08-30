@@ -10,6 +10,7 @@ import {
 	requiredText
 } from './validate';
 import { INVOICE_STATUSES, PERIOD_STATUSES } from '$lib/types';
+import { PAGE_SIZES, readPaging } from './action-items';
 import type { InvoiceStatus, PeriodStatus } from '$lib/types';
 
 /**
@@ -103,9 +104,20 @@ invoicing.get('/', async (c) => {
 		)
 		.all();
 
+	// Invoices paginate. Billing periods do not: there are a few hundred at most
+	// and the screen groups by them, so splitting them across pages would break
+	// the grouping to save nothing.
+	const { page, pageSize } = readPaging(c);
+	const totalRow = await db
+		.prepare('SELECT COUNT(*) AS n FROM invoices')
+		.first<{ n: number }>();
+	const total = Number(totalRow?.n ?? 0);
+	const pageCount = Math.max(1, Math.ceil(total / pageSize));
+	const safePage = Math.min(page, pageCount);
+
 	const invoices = await db
-		.prepare(`${INVOICE_SELECT} ORDER BY is_overdue DESC, i.due_date ASC`)
-		.bind(day)
+		.prepare(`${INVOICE_SELECT} ORDER BY is_overdue DESC, i.due_date ASC LIMIT ? OFFSET ?`)
+		.bind(day, pageSize, (safePage - 1) * pageSize)
 		.all();
 
 	// Band totals come from the same derivation as the rows, in one query, so
@@ -126,7 +138,11 @@ invoicing.get('/', async (c) => {
 		today: day,
 		periods: periods.results ?? [],
 		invoices: invoices.results ?? [],
-		bands: bands.results ?? []
+		// The bands are deliberately computed over every invoice, not the page.
+		// A total that only counts the rows on screen is a different number
+		// wearing the same label.
+		bands: bands.results ?? [],
+		paging: { page: safePage, page_size: pageSize, total, page_count: pageCount, sizes: PAGE_SIZES }
 	});
 });
 

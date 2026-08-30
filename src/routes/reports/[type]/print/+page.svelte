@@ -64,7 +64,7 @@
 		</dl>
 	</header>
 
-	<ReportBody type={data.type} data={data.data} today={data.today} />
+	<ReportBody type={data.type} data={data.data} today={data.today} filterable={false} />
 
 	<footer>
 		<p>
