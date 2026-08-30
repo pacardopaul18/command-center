@@ -572,3 +572,97 @@ decision:
 
 *Session 02 closed 2026-08-31 at commit `4d22251`. Paul calls the final word on
 this handoff.*
+
+
+---
+
+# SESSION 03 UPDATE, CR-1
+
+Append-only. Nothing above is altered.
+
+## 10. CR-1, Mail redesign
+
+Both Mail views rebuilt against the supplied prototype. Complete at about 8
+hours, inside the 7 to 9 window. Held on branch `mail/redesign` at `1e761f3`.
+Not pushed, not merged. Merge GO is queued behind Tuesday's sequence and the
+rehearsal.
+
+Suite at hold: 251 unit and contract, 61 browser, 673 files typechecked with 0
+errors.
+
+Decisions D123 to D128 recorded and ratified.
+
+### F1: the page-scope miss, logged
+
+The thread detail page never passed account scope. Page load, body fetch and all
+five writes threw once a second account existed.
+
+E1's 13-case segregation suite did not catch it, because it tested API routes
+and this was a page loader calling them. With one account connected,
+`resolveAccount` returns the only account and the fault is invisible.
+
+Caught pre-merge by CR-1's guarantee tests, which were written first and run
+against the old views before any redesign work. No production exposure:
+production has one connected account. E1 is not reopened. The fix ships in CR-1.
+
+The rule is D127. Segregation guarantees cover page loaders and server load
+functions, not only the routes beneath them.
+
+**Two siblings found while recording that rule, logged and deliberately not
+fixed**, because nothing further was authorized before the reset:
+`src/routes/meetings/+page.ts` and `src/routes/settings/+page.ts` fetch
+account-scoped data without naming an account. Neither leaks and neither
+crashes. `resolveAccount` refuses rather than guessing once more than one
+account is connected, and both loaders treat a non-ok response as null, so they
+go silently blank. Settings matters most: it holds the calendar list and the
+mail ingest progress, and it is where somebody would go to find out why. Open,
+unowned, not scheduled.
+
+### Two defects found by rendering, not by reading
+
+- **The archived count reported the inbox total.** The list endpoint pins its
+  counts block to non-archived rows, correctly, because it feeds the severity
+  chips. Asking it with `archived=true` returned inbox numbers. The same fault
+  ran the other way: the chips counted the inbox while the reader was looking at
+  the archive. D124. Would have shown wrong numbers on every archive view.
+- **The remote-image hold was tested one layer from where it lives.** The parser
+  test covers which sources survive parsing; whether the browser is ever pointed
+  at one is a different question, answered by the template. Now asserted on the
+  rendered page against a real body seeded into R2, mutation checked both ways.
+  D125.
+
+Both are the argument for D128, rendered verification on every UI epic.
+
+### NEVER EXERCISED, added by CR-1
+
+Both are built, typechecked and tested against synthetic fixtures only. Neither
+has met real data. Their verdicts are rehearsal findings.
+
+- **Attachment download has never run on a real thread with real attachments.**
+  The route is new: bytes are fetched from Gmail on request, ownership asserted,
+  nothing stored. No real attachment has passed through it.
+- **Neither drafting mode has run on a real thread.** This compounds the
+  standing entry that the drafting pass has never produced a draft at all. CR-1
+  adds a second mode, drafting from Paul's own words, and it is equally
+  unexercised.
+
+The prototype's sample threads and message bodies were read for layout only.
+Nothing from them was seeded anywhere, and no mail content appears in this
+document.
+
+### Rehearsal scope, CR-1 additions
+
+Rehearsal runs on the `mail/redesign` preview, seed or preview bindings only.
+Production writes via preview bindings remain per-operation authorized and none
+is granted. Added to scope: attachment download on a real thread with real
+attachments, and both drafting modes on a real thread.
+
+### Order for Tuesday, unchanged
+
+The 08:00 PH four-step sequence runs first and takes absolute priority: verify
+the firing, let triage drain, the supervised E4 pass, first drafts, then STOP
+for Paul's verdicts. Production drafts in step 4 are judged where they appear.
+Rehearsal follows on the redesign preview when Paul calls start. Merge GO on
+`mail/redesign` issues after rehearsal findings, alongside E4 merge GO if the
+supervised pass reports clean.
+

@@ -3640,3 +3640,48 @@ The label is held for the visit and falls back to plain "Draft" on reload,
 rather than adding a column, a migration and a remote apply so a caption can
 survive a refresh. On reload the app does not know, and says the thing it does
 know instead of asserting an origin it cannot support.
+
+### D127: a segregation guarantee covers page loaders, not only routes
+
+From F1. E1 shipped a 13-case segregation suite and it passed throughout, while
+the thread detail page never passed the account through at all. The suite tested
+API routes. The defect was in the caller.
+
+A correctly scoped route reached by a page that never passes the scope is still
+a broken surface, and in the general case a leak: the route can only enforce
+what it is told. So the rule is that segregation guarantees are asserted at the
+layer the reader actually meets, page loaders and server load functions
+included, and never only at the routes beneath them.
+
+What makes this class hard to see is that a single connected account masks it
+completely. `resolveAccount` returns the only account when none is named, so
+every unscoped caller looks correct until the second account exists, which is
+the exact condition the feature was built for.
+
+Two more loaders are in this class today, found while recording this rule and
+deliberately not fixed, because nothing further was authorized before the reset:
+`src/routes/meetings/+page.ts` and `src/routes/settings/+page.ts` both fetch
+account-scoped data without naming an account. Neither leaks and neither
+crashes: `resolveAccount` refuses rather than guessing when more than one
+account is connected, and both loaders treat a non-ok response as null. They go
+silently blank instead. Settings is the worst place for that, because settings
+is where the calendar list and the mail ingest progress live, and where somebody
+would go to work out why the rest of the app had stopped showing them.
+
+Production has one account, so there is no exposure today. Logged, not fixed.
+
+### D128: rendered verification is mandatory on every UI epic
+
+D124 and D125 were both found by rendering the screens and looking at them.
+Neither was visible in the code: the archived count read as a plausible number,
+and the image hold read as correct because the guard was there, just tested one
+layer away from where it lives.
+
+So a UI epic is not complete on a green suite and a clean typecheck. Both
+screens get rendered, at the desktop width and at 412px, and looked at against
+the design. That check has now earned its place twice in one epic.
+
+It is also cheap, which is the argument for making it a rule rather than a
+practice. A scripted render with a synthetic fixture, at both widths, with a
+horizontal-overflow assertion and a page-error listener, is a few minutes and it
+caught a fault that would have shown wrong numbers on every archive view.
