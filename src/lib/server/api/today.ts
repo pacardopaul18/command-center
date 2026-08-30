@@ -20,6 +20,16 @@ import { daysAgoUtc, todayInWorkingZone, workingDayStartUtc } from '../dates';
  * time rendered as fact is exactly that.
  */
 
+/**
+ * How many rows any one dashboard card shows.
+ *
+ * The cockpit used to return every matching row: at volume that is 816 overdue
+ * items and 502 invoice alerts in a payload for a screen that can show a
+ * handful. A dashboard is a glance, not a list, and every card links to the
+ * screen that owns the full set.
+ */
+const CARD_LIMIT = 6;
+
 /** A waiting item nobody has touched in this many days counts as stalled. */
 const STALE_DAYS = 5;
 
@@ -151,15 +161,78 @@ today.get('/', async (c) => {
 		.bind(dayStart)
 		.first<Record<string, number | null>>();
 
+	// Due in the next week, so the shape of the week is visible rather than just
+	// what is already late.
+	const week = await db
+		.prepare(
+			`SELECT a.*, p.name AS project_name
+       FROM action_items a
+       LEFT JOIN projects p ON p.id = a.project_id
+       WHERE a.status != 'done' AND a.deadline > ?1 AND a.deadline <= ?2
+       ORDER BY a.deadline ASC
+       LIMIT ?3`
+		)
+		.bind(day, soon, CARD_LIMIT)
+		.all();
+
+	// What was closed today, which is the only positive number on the screen.
+	const finished = await db
+		.prepare(
+			`SELECT a.title, a.completed_at, p.name AS project_name
+       FROM action_items a
+       LEFT JOIN projects p ON p.id = a.project_id
+       WHERE a.status = 'done' AND a.completed_at >= ?1
+       ORDER BY a.completed_at DESC
+       LIMIT ?2`
+		)
+		.bind(dayStart, CARD_LIMIT)
+		.all();
+
+	const overdueAll = attentionRows.filter((r) => String(r.deadline) < day);
+	const dueTodayAll = attentionRows.filter((r) => String(r.deadline) === day);
+
+	// True sizes, counted before anything is sliced for display.
+	const sizes = await db
+		.prepare(
+			`SELECT
+         (SELECT COUNT(*) FROM action_items
+           WHERE status != 'done' AND deadline > ?1 AND deadline <= ?2) AS week,
+         (SELECT COUNT(*) FROM meetings WHERE meeting_date = ?1) AS meetings,
+         (SELECT COUNT(*) FROM invoices
+           WHERE amount_paid_cents < amount_cents AND julianday(?1) > julianday(due_date)) AS alerts,
+         (SELECT COUNT(*) FROM meeting_action_proposals WHERE status = 'pending') AS proposals,
+         (SELECT COUNT(*) FROM action_items WHERE status = 'ambiguous') AS ambiguous,
+         (SELECT COALESCE(SUM(amount_cents - amount_paid_cents), 0) FROM invoices
+           WHERE amount_paid_cents < amount_cents AND julianday(?1) > julianday(due_date)) AS past_due_cents`
+		)
+		.bind(day, soon)
+		.first<Record<string, number>>();
+
 	return c.json({
 		today: day,
 		stale_days: STALE_DAYS,
 		soon_days: SOON_DAYS,
-		overdue: attentionRows.filter((r) => String(r.deadline) < day),
-		due_today: attentionRows.filter((r) => String(r.deadline) === day),
-		slipping: slipping.results ?? [],
+		card_limit: CARD_LIMIT,
+		// Cards show a few rows and report the true count separately, so a number
+		// on a card never means "as many as would fit".
+		overdue: overdueAll.slice(0, CARD_LIMIT),
+		due_today: dueTodayAll.slice(0, CARD_LIMIT),
+		week: week.results ?? [],
+		finished: finished.results ?? [],
+		counts: {
+			overdue: overdueAll.length,
+			due_today: dueTodayAll.length,
+			week: Number(sizes?.week ?? 0),
+			meetings: Number(sizes?.meetings ?? 0),
+			invoice_alerts: Number(sizes?.alerts ?? 0),
+			// Everything waiting on a decision from Paul specifically, which is the
+			// number that decides whether the day starts with triage.
+			awaiting_decision: Number(sizes?.proposals ?? 0) + Number(sizes?.ambiguous ?? 0),
+			past_due_cents: Number(sizes?.past_due_cents ?? 0)
+		},
+		slipping: (slipping.results ?? []).slice(0, CARD_LIMIT),
 		meetings: meetings.results ?? [],
-		invoice_alerts: invoiceAlerts.results ?? [],
+		invoice_alerts: (invoiceAlerts.results ?? []).slice(0, CARD_LIMIT),
 		totals: {
 			open: totals?.open_count ?? 0,
 			done_today: totals?.done_today ?? 0
