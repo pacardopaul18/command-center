@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/tokens/fonts.css">
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/tokens/colors.css">
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/tokens/typography.css">
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/tokens/spacing.css">
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/tokens/effects.css">
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/tokens/base.css">
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/styles.css">
+  <script src="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/_ds_bundle.js"></script>
+  <style>
+    body{margin:0;background:var(--surface-page);}
+    a{color:var(--text-link);} a:hover{color:var(--navy);}
+  </style>
+</helmet>
+<div style="display:flex;min-height:100vh;font-family:var(--font-sans);color:var(--text-body)">
+  <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Sidebar" items="{{ navItems }}" active-id="mail" on-quick-add="{{ noop }}" hint-size="224px,100%" style="height:100vh;position:sticky;top:0"></x-import>
+  <main style="flex:1;height:100vh;overflow-y:auto;box-sizing:border-box">
+  <div style="padding:32px 48px 64px;box-sizing:border-box">
+
+  <sc-if value="{{ isList }}" hint-placeholder-val="{{ true }}">
+    <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap">
+      <div>
+        <h1 style="font-size:var(--text-2xl);font-weight:700;margin:0 0 6px">Mail</h1>
+        <div style="font-size:var(--text-sm);color:var(--text-secondary)">775 threads from 865 messages. Read only. Archiving here does not touch Gmail.</div>
+      </div>
+      <button onClick="{{ noop }}" style="display:inline-flex;align-items:center;gap:10px;padding:8px 12px;background:var(--surface-card);border:1px solid var(--border-strong);border-radius:var(--radius-sm);cursor:pointer;font-family:var(--font-sans);font-size:var(--text-base);color:var(--ink);transition:background-color var(--transition-fast)" style-hover="background:var(--surface-hover)">
+        <span style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary)">Mailbox</span>
+        <span>pacardopaul18@gmail.com</span>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"></path></svg>
+      </button>
+    </div>
+
+    <div style="display:inline-flex;gap:4px;margin-top:24px;padding:4px;background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-md);box-shadow:var(--shadow-card)">
+      <sc-for list="{{ tabs }}" as="tab" hint-placeholder-count="6">
+        <button onClick="{{ tab.pick }}" style="display:inline-flex;align-items:center;gap:8px;padding:7px 14px;border:none;border-radius:var(--radius-sm);cursor:pointer;white-space:nowrap;flex-shrink:0;font-family:var(--font-sans);font-size:var(--text-base);font-weight:500;background:{{ tab.bg }};color:{{ tab.fg }};transition:background-color var(--transition-fast)" style-hover="background:{{ tab.hoverBg }}">
+          {{ tab.label }}
+          <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:{{ tab.countFg }}">{{ tab.count }}</span>
+        </button>
+      </sc-for>
+    </div>
+
+    <div style="display:flex;gap:12px;margin-top:16px;align-items:center;flex-wrap:wrap">
+      <div style="flex:1;min-width:280px">
+        <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Input" placeholder="Search subjects, senders and gists" hint-size="100%,38px"></x-import>
+      </div>
+      <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="primary" on-click="{{ noop }}" hint-size="auto,38px">Search</x-import>
+      <div style="width:220px">
+        <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Select" options="{{ clientOptions }}" hint-size="220px,38px"></x-import>
+      </div>
+      <button onClick="{{ toggleArchived }}" style="display:inline-flex;align-items:center;gap:6px;padding:8px 12px;background:transparent;border:1px solid transparent;border-radius:var(--radius-sm);cursor:pointer;font-family:var(--font-sans);font-size:var(--text-base);font-weight:500;color:var(--navy-700);transition:background-color var(--transition-fast)" style-hover="background:var(--navy-50)">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="5" rx="1"></rect><path d="M4 9v9a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9"></path><path d="M10 13h4"></path></svg>
+        {{ archivedLabel }}
+      </button>
+    </div>
+
+    <div style="display:flex;align-items:center;gap:12px;margin-top:20px;padding:12px 16px;background:var(--surface-callout);border:1px solid var(--border-thin);border-radius:var(--radius-md)">
+      <span style="font-size:var(--text-sm);color:var(--text-body)">192 threads have no triage yet. Run Summarise from Settings to sort them.</span>
+      <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="secondary" size="sm" on-click="{{ noop }}" hint-size="auto,30px">Open settings</x-import>
+    </div>
+
+    <div style="margin-top:16px;background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-lg);box-shadow:var(--shadow-card);overflow:hidden">
+      <sc-for list="{{ rows }}" as="t" hint-placeholder-count="6">
+        <div style="border-bottom:1px solid var(--border-thin)">
+          <div onClick="{{ t.open }}" style="padding:14px 20px 4px;cursor:pointer;transition:background-color var(--transition-fast)" style-hover="background:var(--surface-hover)">
+            <div style="display:flex;align-items:baseline;gap:10px">
+              <span style="background:{{ t.chipBg }};color:{{ t.chipFg }};font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;padding:3px 10px;border-radius:var(--radius-pill);white-space:nowrap;align-self:center">{{ t.cat }}</span>
+              <sc-if value="{{ t.edited }}" hint-placeholder-val="{{ false }}">
+                <span style="font-family:var(--font-mono);font-size:var(--text-xs);font-style:italic;color:var(--text-secondary)">edited</span>
+              </sc-if>
+              <span style="flex:1;font-weight:600;font-size:var(--text-md);color:var(--text-link);text-decoration:underline;text-decoration-color:transparent;text-underline-offset:3px;transition:text-decoration-color var(--transition-fast)" style-hover="text-decoration-color:var(--navy-500)">{{ t.title }}</span>
+              <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary);white-space:nowrap">{{ t.date }}</span>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"></path></svg>
+            </div>
+            <div style="margin-top:4px;font-size:var(--text-sm);color:var(--text-secondary)">{{ t.sender }}</div>
+            <sc-if value="{{ showGists }}" hint-placeholder-val="{{ true }}">
+              <div style="margin-top:6px;font-size:var(--text-base);color:var(--text-body)">{{ t.gist }}</div>
+            </sc-if>
+          </div>
+          <sc-if value="{{ showTriage }}" hint-placeholder-val="{{ true }}">
+            <div style="display:flex;align-items:center;gap:8px;padding:10px 20px 14px">
+              <span style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary)">Not right?</span>
+              <sc-for list="{{ t.actions }}" as="a" hint-placeholder-count="4">
+                <button onClick="{{ a.pick }}" style="padding:4px 12px;background:var(--surface-card);border:1px solid var(--border-strong);border-radius:var(--radius-pill);cursor:pointer;font-family:var(--font-sans);font-size:var(--text-sm);font-weight:500;color:var(--navy-700);transition:background-color var(--transition-fast),border-color var(--transition-fast)" style-hover="background:var(--navy-50);border-color:var(--navy-500)">{{ a.label }}</button>
+              </sc-for>
+            </div>
+          </sc-if>
+        </div>
+      </sc-for>
+      <sc-if value="{{ rowsEmpty }}" hint-placeholder-val="{{ false }}">
+        <div style="padding:40px 20px;text-align:center;font-size:var(--text-base);color:var(--text-secondary)">No threads in this view. Pick another tab above.</div>
+      </sc-if>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ isThread }}" hint-placeholder-val="{{ false }}">
+    <button onClick="{{ back }}" style="display:inline-flex;align-items:center;gap:6px;padding:6px 10px;margin-left:-10px;background:transparent;border:none;border-radius:var(--radius-sm);cursor:pointer;font-family:var(--font-sans);font-size:var(--text-base);font-weight:500;color:var(--navy-700);transition:background-color var(--transition-fast)" style-hover="background:var(--navy-50)">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"></path><path d="M12 19l-7-7 7-7"></path></svg>
+      Back to mail
+    </button>
+    <div style="display:flex;gap:24px;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;margin-top:12px">
+    <div style="flex:1;min-width:420px">
+    <h1 style="font-size:var(--text-2xl);font-weight:700;margin:0 0 6px">{{ tTitle }}</h1>
+    <div style="font-size:var(--text-sm);color:var(--text-secondary)">{{ tMeta }}</div>
+
+    <div style="display:flex;align-items:center;gap:10px;margin-top:16px;flex-wrap:wrap">
+      <span style="background:{{ tChipBg }};color:{{ tChipFg }};font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;padding:4px 12px;border-radius:var(--radius-pill)">{{ tCat }}</span>
+      <span style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary)">Correspondence</span>
+      <span style="font-size:var(--text-sm);color:var(--text-secondary)">You set this. The model said urgent.</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;margin-top:12px">
+      <span style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary)">Change to</span>
+      <sc-for list="{{ tActions }}" as="a" hint-placeholder-count="4">
+        <button onClick="{{ a.pick }}" style="padding:4px 12px;background:var(--surface-card);border:1px solid var(--border-strong);border-radius:var(--radius-pill);cursor:pointer;font-family:var(--font-sans);font-size:var(--text-sm);font-weight:500;color:var(--navy-700);transition:background-color var(--transition-fast),border-color var(--transition-fast)" style-hover="background:var(--navy-50);border-color:var(--navy-500)">{{ a.label }}</button>
+      </sc-for>
+    </div>
+    <div style="margin-top:10px;font-size:var(--text-sm);color:var(--text-secondary)">Archiving files it here. Your Gmail is untouched, because this app has no permission to change it.</div>
+    </div>
+
+    <div style="width:380px;flex-shrink:0;background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-lg);box-shadow:var(--shadow-card);overflow:hidden">
+      <div onClick="{{ toggleAtt }}" style="display:flex;align-items:center;gap:10px;padding:12px 16px;cursor:pointer;transition:background-color var(--transition-fast)" style-hover="background:var(--surface-hover)">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--navy-700)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"></path></svg>
+        <span style="font-weight:600;font-size:var(--text-base);color:var(--text-link);text-decoration:underline;text-underline-offset:3px;text-decoration-color:transparent;transition:text-decoration-color var(--transition-fast)" style-hover="text-decoration-color:var(--navy-500)">{{ attCount }}</span>
+        <span style="flex:1"></span>
+        <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary)">{{ attTotal }}</span>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="transform:rotate({{ attChevDeg }}deg);transition:transform var(--transition-fast)"><path d="M6 9l6 6 6-6"></path></svg>
+      </div>
+      <sc-if value="{{ attOpen }}" hint-placeholder-val="{{ true }}">
+        <sc-for list="{{ attFiles }}" as="f" hint-placeholder-count="3">
+          <div onClick="{{ noop }}" style="display:flex;align-items:center;gap:10px;padding:9px 16px;border-top:1px solid var(--border-thin);cursor:pointer;transition:background-color var(--transition-fast)" style-hover="background:var(--surface-hover)">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6"></path></svg>
+            <span style="flex:1;font-size:var(--text-sm);font-weight:500;color:var(--text-link)">{{ f.name }}</span>
+            <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary)">{{ f.size }}</span>
+            <button onClick="{{ noop }}" title="Download" style="display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;background:var(--surface-card);border:1px solid var(--border-strong);border-radius:var(--radius-sm);cursor:pointer;color:var(--navy-700);transition:background-color var(--transition-fast)" style-hover="background:var(--navy-50)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><path d="M7 10l5 5 5-5"></path><path d="M12 15V3"></path></svg></button>
+          </div>
+        </sc-for>
+        <sc-if value="{{ attHasFiles }}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex;justify-content:flex-end;padding:8px 16px;border-top:1px solid var(--border-thin)">
+            <button onClick="{{ noop }}" style="display:inline-flex;align-items:center;gap:6px;padding:5px 10px;background:transparent;border:none;border-radius:var(--radius-sm);cursor:pointer;font-family:var(--font-sans);font-size:var(--text-sm);font-weight:500;color:var(--navy-700);transition:background-color var(--transition-fast)" style-hover="background:var(--navy-50)">Download all</button>
+          </div>
+        </sc-if>
+      </sc-if>
+      <div style="display:flex;gap:4px;padding:8px 12px;border-top:1px solid var(--border-thin)">
+        <button onClick="{{ noop }}" style="display:inline-flex;align-items:center;gap:6px;padding:6px 10px;background:transparent;border:none;border-radius:var(--radius-sm);cursor:pointer;font-family:var(--font-sans);font-size:var(--text-sm);font-weight:500;color:var(--navy-700);transition:background-color var(--transition-fast)" style-hover="background:var(--navy-50)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><path d="M15 3h6v6"></path><path d="M10 14L21 3"></path></svg>Open in Gmail</button>
+        <button onClick="{{ copySummary }}" style="display:inline-flex;align-items:center;gap:6px;padding:6px 10px;background:transparent;border:none;border-radius:var(--radius-sm);cursor:pointer;font-family:var(--font-sans);font-size:var(--text-sm);font-weight:500;color:var(--navy-700);transition:background-color var(--transition-fast)" style-hover="background:var(--navy-50)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>{{ copyLabel }}</button>
+        <span style="flex:1"></span>
+        <span style="align-self:center;font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary)">2 people</span>
+      </div>
+    </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:minmax(420px,1fr) 380px;gap:24px;align-items:start;margin-top:24px">
+    <div style="grid-column:2;display:flex;flex-direction:column;gap:16px">
+    <div style="padding:20px 24px;background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-lg);box-shadow:var(--shadow-card)">
+      <h2 style="font-size:var(--text-lg);font-weight:700;margin:0 0 8px">Summary</h2>
+      <div style="font-weight:600;font-size:var(--text-base);margin-bottom:12px">{{ tGist }}</div>
+      <p style="margin:0;font-size:var(--text-base);line-height:1.6;color:var(--text-body)">{{ tSummary }}</p>
+      <div style="margin-top:12px;font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary)">Written Aug 30, 5:00 AM by claude-sonnet-5.</div>
+    </div>
+
+    <div style="padding:20px 24px;background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-lg);box-shadow:var(--shadow-card)">
+      <h2 style="font-size:var(--text-lg);font-weight:700;margin:0">Reply</h2>
+      <p style="margin:10px 0 0;font-size:var(--text-sm);line-height:1.6;color:var(--text-secondary)">This app cannot send email and never will. A reply leaves here by being copied out and sent by you. The draft reads the whole thread, anything known about the client, and how you write in your own sent messages.</p>
+      <textarea ref="{{ guidanceRef }}" value="{{ guidance }}" onChange="{{ setGuidance }}" placeholder="Optional. Add a few words to steer the draft, or paste your full reply to rephrase." style="width:100%;box-sizing:border-box;margin-top:12px;min-height:72px;padding:12px;font-family:var(--font-sans);font-size:var(--text-base);color:var(--ink);background:var(--surface-card);border:1px solid var(--border-strong);border-radius:var(--radius-sm);resize:vertical"></textarea>
+      <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
+        <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="primary" size="sm" on-click="{{ draftAuto }}" hint-size="auto,32px">Draft automatically</x-import>
+        <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="secondary" size="sm" on-click="{{ draftFromWords }}" hint-size="auto,32px">Draft from my words</x-import>
+      </div>
+      <sc-if value="{{ draftOpen }}" hint-placeholder-val="{{ false }}">
+        <div style="margin-top:12px;padding:12px;background:var(--surface-callout);border:1px solid var(--border-thin);border-radius:var(--radius-sm)">
+          <div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:8px">{{ draftLabel }}</div>
+          <div style="font-size:var(--text-base);line-height:1.6;color:var(--text-body);white-space:pre-line">{{ draftText }}</div>
+          <div style="margin-top:10px;font-size:var(--text-sm);color:var(--text-secondary)">Copy it out and send from Gmail.</div>
+        </div>
+      </sc-if>
+    </div>
+
+    </div>
+
+    <div style="grid-column:1;grid-row:1;display:flex;flex-direction:column;gap:12px">
+      <sc-for list="{{ messages }}" as="m" hint-placeholder-count="3">
+        <div style="background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-lg);box-shadow:var(--shadow-card);overflow:hidden">
+          <div onClick="{{ m.toggle }}" style="display:flex;align-items:center;gap:12px;padding:14px 20px;cursor:pointer;transition:background-color var(--transition-fast)" style-hover="background:var(--surface-hover)">
+            <span style="display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:50%;background:{{ m.avBg }};color:{{ m.avFg }};font-size:var(--text-sm);font-weight:600;flex-shrink:0">{{ m.initials }}</span>
+            <span style="font-weight:600;font-size:var(--text-base)">{{ m.name }}</span>
+            <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary)">{{ m.email }}</span>
+            <span style="flex:1"></span>
+            <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary)">{{ m.time }}</span>
+            <button onClick="{{ m.replyTo }}" title="Reply" style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;background:transparent;border:none;border-radius:var(--radius-sm);cursor:pointer;color:var(--navy-700);transition:background-color var(--transition-fast)" style-hover="background:var(--navy-50)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 17l-5-5 5-5"></path><path d="M20 18v-2a4 4 0 0 0-4-4H4"></path></svg></button>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="transform:rotate({{ m.chevDeg }}deg);transition:transform var(--transition-fast)"><path d="M6 9l6 6 6-6"></path></svg>
+          </div>
+          <sc-if value="{{ m.closed }}" hint-placeholder-val="{{ false }}">
+            <div style="padding:0 20px 14px 64px;font-size:var(--text-sm);color:var(--text-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ m.preview }}</div>
+          </sc-if>
+          <sc-if value="{{ m.open }}" hint-placeholder-val="{{ true }}">
+            <div style="padding:4px 24px 20px 64px;border-top:1px solid var(--border-thin)">
+              <sc-if value="{{ m.hasImages }}" hint-placeholder-val="{{ false }}">
+                <div style="display:flex;align-items:center;gap:10px;margin-top:12px">
+                  <button onClick="{{ noop }}" style="padding:4px 12px;background:var(--surface-card);border:1px solid var(--border-strong);border-radius:var(--radius-pill);cursor:pointer;font-family:var(--font-sans);font-size:var(--text-sm);font-weight:500;color:var(--navy-700);transition:background-color var(--transition-fast)" style-hover="background:var(--navy-50)">Show 7 images</button>
+                  <span style="font-size:var(--text-sm);color:var(--text-secondary)">Not loaded yet. A remote image tells the sender you opened the mail, so they are held back until you ask.</span>
+                </div>
+              </sc-if>
+              <sc-for list="{{ m.paras }}" as="p" hint-placeholder-count="2">
+                <p style="margin:14px 0 0;font-size:var(--text-base);line-height:1.6;color:var(--text-body);white-space:pre-line">{{ p }}</p>
+              </sc-for>
+            </div>
+          </sc-if>
+        </div>
+      </sc-for>
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <button onClick="{{ focusReply }}" style="display:inline-flex;align-items:center;gap:8px;padding:9px 16px;background:var(--navy);color:var(--text-inverse);border:1px solid transparent;border-radius:var(--radius-sm);cursor:pointer;font-family:var(--font-sans);font-size:var(--text-base);font-weight:500;transition:background-color var(--transition-fast)" style-hover="background:var(--navy-700)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 17l-5-5 5-5"></path><path d="M20 18v-2a4 4 0 0 0-4-4H4"></path></svg>Reply</button>
+        <button onClick="{{ noop }}" style="display:inline-flex;align-items:center;gap:8px;padding:9px 16px;background:var(--surface-card);color:var(--ink);border:1px solid var(--border-strong);border-radius:var(--radius-sm);cursor:pointer;font-family:var(--font-sans);font-size:var(--text-base);font-weight:500;transition:background-color var(--transition-fast)" style-hover="background:var(--surface-hover)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 17l5-5-5-5"></path><path d="M4 18v-2a4 4 0 0 1 4-4h12"></path></svg>Forward</button>
+      </div>
+    </div>
+    </div>
+  </sc-if>
+
+  </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;showGists&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;List&quot;},&quot;showTriageButtons&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;List&quot;}}">
+class Component extends DCLogic {
+  state = { view: 'list', tab: 'needs', threadId: null, cats: {}, archived: {}, showArchived: false, expanded: { 0: true }, draft: null, draftLabel: '', guidance: '', attOpen: true, copied: false };
+  guidanceRef = React.createRef();
+  focusReply = (e) => { if (e && e.stopPropagation) e.stopPropagation(); const el = this.guidanceRef.current; if (el) el.focus(); };
+
+  CHIPS = {
+    URGENT: ['#F3E5C2', '#77590F'],
+    IMPORTANT: ['var(--gold-100)', 'var(--gold-600)'],
+    ROUTINE: ['var(--navy-50)', 'var(--navy-500)'],
+    NOISE: ['#F0EFEA', 'var(--muted)'],
+    ARCHIVED: ['var(--navy-100)', 'var(--navy)']
+  };
+
+  THREADS = [
+    { id: 1, cat: 'URGENT', edited: true, title: 'Welcome to Pearl Talent!', sender: 'Paul Pacardo · 3 messages', gist: 'Paul needs Renz to schedule intro call before Sept 2; only slot found is Sept 7', date: 'Aug 30, 12:13 AM' },
+    { id: 2, cat: 'URGENT', title: 'Penbrothers | Chat with our AI interviewer!', sender: 'Jared Paulo · 3 messages', gist: 'Penbrothers final deadline to complete AI interview within 24 hours or application rejected', date: 'Aug 26, 8:00 PM' },
+    { id: 3, cat: 'URGENT', title: 'Paul, your last step into Pearl AI+', sender: 'Paul Pacardo · 3 messages', gist: "Paul paid for Pearl AI+ but LMS access still pending 2+ hours, awaiting Isaac's fix", date: 'Aug 24, 9:47 AM' },
+    { id: 4, cat: 'IMPORTANT', title: 'Invitation from an unknown sender: Intro Call: Paul Pacardo @ Mon Sep 7, 2026 11pm', sender: 'Renz Ama', gist: 'Calendar invite for an intro call with Renz Ama on Sep 7. RSVP needed.', date: 'Aug 30, 12:11 AM' },
+    { id: 5, cat: 'IMPORTANT', title: 'Your BillEase loan is overdue, please send payment ASAP! [TICKETID: 3d1d1808]', sender: 'Billease', gist: 'BillEase loan payment is 6 days overdue since Aug 24; requires payment or contact.', date: 'Aug 29, 7:52 PM' },
+    { id: 6, cat: 'IMPORTANT', title: 'Your application with Pearl Talent', sender: 'Paul Pacardo · 10 messages', gist: "Job offer accepted; Paul signed agreement, awaiting recruiter's confirmation before Sept 2 start.", date: 'Aug 29, 7:22 PM' },
+    { id: 7, cat: 'IMPORTANT', title: 'Pearl Talent | Job Offer for Operations & Project Management Associate via PandaDoc', sender: 'Joshua Abanpar via PandaDoc', gist: "PandaDoc contract for Operations & Project Management Associate role awaits Paul's review and signature.", date: 'Aug 29, 7:03 PM' },
+    { id: 8, cat: 'IMPORTANT', title: 'Upcoming payment tips', sender: 'Skyro', gist: 'Skyro loan payment of P1653 due Sep 1; pay in advance to avoid late fee.', date: 'Aug 29, 7:48 PM' },
+    { id: 9, cat: 'IMPORTANT', title: 'Updated invitation: Pearl Talent: Verbal Offer @ Sat Aug 29, 2026 6pm', sender: 'Rap Andrada', gist: 'Verbal offer call with Pearl Talent rescheduled to Aug 29, 6 to 6:30pm PHT.', date: 'Aug 29, 3:36 PM' },
+    { id: 10, cat: 'IMPORTANT', title: 'Re: Pearl Talent | Another Opportunity', sender: 'Paul Pacardo · 14 messages', gist: "Recruiter offered $2000/mo vs Paul's agreed $2500; Paul countered and awaits client decision and start date.", date: 'Aug 26, 11:34 AM' },
+    { id: 11, cat: 'IMPORTANT', title: 'Paul, have you given up on your past-due balance?', sender: 'Cedars Business Services, International Resolution', gist: 'Collection agency claims $1,003.20 past-due balance owed to Deel; likely scam or spam, verify before acting.', date: 'Aug 27, 10:03 PM' },
+    { id: 12, cat: 'IMPORTANT', title: 'Notes: "MacGray x Paul Pacardo, Intro Call & Test Project" Aug 28, 2026', sender: 'Gemini', gist: 'Meeting notes: consultant hired at $2500; Paul must resolve IT and connectivity issues.', date: 'Aug 27, 10:54 AM' },
+    { id: 13, cat: 'ROUTINE', title: 'Your trial for YouTube Music will end on 22 Aug 2026', sender: 'Google Play', gist: 'YouTube Music trial ends Aug 22; will auto-charge P239/month unless cancelled.', date: 'Aug 19, 10:20 PM' },
+    { id: 14, cat: 'NOISE', title: 'Security alert: Failed login attempt', sender: 'Shopee', gist: 'Shopee flagged a failed login from a new device; verify account security if unrecognized.', date: 'Aug 19, 9:18 AM' }
+  ];
+
+  MESSAGES = [
+    { name: 'Renz Ama', email: 'renz@pearltalent.com', time: 'Aug 29, 8:15 PM',
+      preview: "Hi there, Welcome aboard! I'm Renz, your Talent Success Manager (TSM). I will serve as your primary guide throughout your onboarding phase and transition.",
+      paras: [
+        "Hi there,\nWelcome aboard!",
+        "I'm Renz, your Talent Success Manager (TSM). I will serve as your primary guide throughout your onboarding phase and transition. It is my ultimate goal to ensure you feel fully equipped, well-integrated, and self-assured as you settle into your new role.",
+        "Start here (before our first call):\n1. Book your intro call as soon as you can, ideally today. Here's the link in case you missed it: https://meetings-na2.hubspot.com/renz-ama/intro-call\n2. Sign up at learn.pearltalent.com and create your account.\n3. Join the Pearl talent community on Slack.",
+        "Please save my contact information: +63 (916) 224-7355 SMS/Calls, +63 (999) 424-0341 SMS/Calls/WhatsApp. My core working hours are generally 9:00 AM to 5:00 PM EST.",
+        "Best regards,\nRenz Ama\nTalent Success Manager"
+      ] },
+    { name: 'Paul Pacardo', email: 'pacardopaul18@gmail.com', time: 'Aug 29, 9:58 PM',
+      preview: 'Hi Renz, Thank you for the warm welcome, and great to meet you. I tried to book the intro call, but the scheduling link shows no available slots for September.',
+      paras: [
+        "Hi Renz,",
+        "Thank you for the warm welcome, and great to meet you. I tried to book the intro call, but the scheduling link shows no available slots for September on my end (it says there are no more available times with you). Rather than wait, could you send me a calendar invite directly? Today at 9:00 AM Eastern works well for me if that fits your schedule.",
+        "I have already signed up at learn.pearltalent.com (awaiting for approval) and connected my Slack account, so I am ready for the async orientation whenever you are.",
+        "Warm regards,\nPaul Prado Pacardo\nSenior EA · Operations · Project Manager\n(+63) 956 625-7051, Globe\nhttps://me.kabuhayan.app/"
+      ] },
+    { name: 'Paul Pacardo', email: 'pacardopaul18@gmail.com', time: 'Aug 30, 12:13 AM', hasImages: true,
+      preview: 'Hi Renz, I saw that new slots opened for September, but the earliest available was on September 7th.',
+      paras: [
+        "Hi Renz,",
+        "I saw that new slots opened for September, but the earliest available was on September 7th. I went ahead and booked a slot for 11:00 PM on that date just to hold it. However, I recall we need to connect before September 2nd. Could you let me know if we can squeeze in a quick call sooner, or if you can send a direct invite before then?",
+        "Warm regards,\nPaul Prado Pacardo\nSenior EA · Operations · Project Manager\n(+63) 956 625-7051, Globe\nhttps://me.kabuhayan.app/"
+      ] }
+  ];
+
+  catOf(t) { return this.state.cats[t.id] || t.cat; }
+
+  setCat(id, cat) {
+    if (cat === 'ARCHIVED') this.setState(s => ({ archived: { ...s.archived, [id]: true } }));
+    else this.setState(s => ({ cats: { ...s.cats, [id]: cat }, archived: { ...s.archived, [id]: false } }));
+  }
+
+  renderVals() {
+    const s = this.state;
+    const showGists = this.props.showGists ?? true;
+    const showTriage = this.props.showTriageButtons ?? true;
+    const navItems = ['Dashboard', 'Action items', 'Projects', 'Meetings', 'SOPs', 'Templates', 'Clients', 'Mail', 'Invoicing', 'Reports', 'Settings']
+      .map(l => ({ id: l.toLowerCase().replace(' ', '-'), label: l }));
+    const TAB_DEFS = [
+      ['needs', 'Needs you', 45], ['URGENT', 'Urgent', 3], ['IMPORTANT', 'Important', 42],
+      ['ROUTINE', 'Routine', 64], ['NOISE', 'Noise', 474], ['all', 'Everything', 775]
+    ];
+    const tabs = TAB_DEFS.map(([id, label, count]) => {
+      const active = s.tab === id;
+      return {
+        label, count: String(count),
+        bg: active ? 'var(--navy)' : 'transparent',
+        fg: active ? '#FFFFFF' : 'var(--ink)',
+        countFg: active ? 'var(--text-inverse-muted)' : 'var(--muted)',
+        hoverBg: active ? 'var(--navy)' : 'var(--navy-50)',
+        pick: () => this.setState({ tab: id })
+      };
+    });
+    const MONTHS = { Aug: 8, Sep: 9 };
+    const dateKey = d => { const m = d.match(/(\w+) (\d+), (\d+):(\d+) (AM|PM)/); let h = +m[3] % 12; if (m[5] === 'PM') h += 12; return MONTHS[m[1]] * 1e6 + m[2] * 1e4 + h * 100 + +m[4]; };
+    const visible = this.THREADS.slice().sort((a, b) => dateKey(b.date) - dateKey(a.date)).filter(t => {
+      if (s.archived[t.id] && !s.showArchived) return false;
+      const c = this.catOf(t);
+      if (s.tab === 'all' || s.tab === 'needs') return true;
+      return c === s.tab;
+    });
+    const rows = visible.map(t => {
+      const cat = s.archived[t.id] ? 'ARCHIVED' : this.catOf(t);
+      const [chipBg, chipFg] = this.CHIPS[cat];
+      const opts = ['URGENT', 'IMPORTANT', 'ROUTINE', 'NOISE'].filter(c => c !== cat);
+      const actions = opts.map(c => ({
+        label: c.charAt(0) + c.slice(1).toLowerCase(),
+        pick: (e) => { e.stopPropagation(); this.setCat(t.id, c); }
+      }));
+      actions.push({ label: 'Archive', pick: (e) => { e.stopPropagation(); this.setCat(t.id, 'ARCHIVED'); } });
+      return { ...t, cat, chipBg, chipFg, edited: !!t.edited, actions,
+        open: () => this.setState({ view: 'thread', threadId: t.id, draft: null, draftLabel: '', guidance: '', expanded: { 0: true } }) };
+    });
+    const nArch = Object.values(s.archived).filter(Boolean).length;
+    const vals = {
+      navItems, tabs, rows, showGists, showTriage,
+      isList: s.view === 'list', isThread: s.view === 'thread',
+      rowsEmpty: rows.length === 0,
+      clientOptions: ['Every client', 'Pearl Talent', 'Penbrothers', 'MacGray'],
+      archivedLabel: s.showArchived ? 'Hide archived (' + nArch + ')' : 'Show archived (' + nArch + ')',
+      toggleArchived: () => this.setState(x => ({ showArchived: !x.showArchived })),
+      noop: () => {}, back: () => this.setState({ view: 'list' })
+    };
+    if (s.view === 'thread') {
+      const t = this.THREADS.find(x => x.id === s.threadId) || this.THREADS[0];
+      const cat = s.archived[t.id] ? 'ARCHIVED' : this.catOf(t);
+      const [b, f] = this.CHIPS[cat];
+      const first = t.id === 1;
+      Object.assign(vals, {
+        tTitle: t.title, tCat: cat, tChipBg: b, tChipFg: f,
+        tMeta: first ? '3 messages · Aug 29, 8:15 PM to Aug 30, 12:13 AM' : t.sender + ' · ' + t.date,
+        tGist: t.gist,
+        tSummary: first
+          ? "This thread covers Paul's onboarding with Pearl Talent, coordinated by Renz Ama (Talent Success Manager), including booking an intro call, LMS signup, and Slack access. Paul has signed up for learn.pearltalent.com (pending approval), joined Slack, and saved Renz's contact details, but has had trouble booking the intro call due to no available September slots; he provisionally booked September 7th at 11:00 PM but flagged that they were supposed to connect before September 2nd. Outstanding: Renz needs to confirm whether an earlier call can be arranged (or send a direct invite) before September 2nd, and Paul is still awaiting LMS approval."
+          : t.gist,
+        tActions: ['URGENT', 'IMPORTANT', 'ROUTINE', 'NOISE'].filter(c => c !== cat)
+          .map(c => ({ label: c.charAt(0) + c.slice(1).toLowerCase(), pick: () => this.setCat(t.id, c) }))
+          .concat([{ label: 'Archive', pick: () => this.setCat(t.id, 'ARCHIVED') }]),
+        attOpen: s.attOpen && first, attChevDeg: s.attOpen && first ? 180 : 0,
+        toggleAtt: () => this.setState(x => ({ attOpen: !x.attOpen })),
+        attHasFiles: first,
+        attFiles: first ? [
+          { name: 'Pearl Talent offer letter.pdf', size: '214 KB' },
+          { name: 'Onboarding checklist.pdf', size: '96 KB' },
+          { name: 'Renz Ama contact.vcf', size: '2 KB' }
+        ] : [],
+        attCount: first ? '3 attachments' : 'No attachments',
+        attTotal: first ? '312 KB' : '',
+        copyLabel: s.copied ? 'Copied' : 'Copy summary',
+        copySummary: () => {
+          const el = document.createElement('textarea'); el.value = vals.tSummary || ''; document.body.appendChild(el); el.select();
+          try { document.execCommand('copy'); } catch (err) {}
+          document.body.removeChild(el);
+          this.setState({ copied: true }); setTimeout(() => this.setState({ copied: false }), 1500);
+        },
+        focusReply: this.focusReply, guidanceRef: this.guidanceRef,
+        draftOpen: !!s.draft, draftText: s.draft, draftLabel: s.draftLabel,
+        guidance: s.guidance,
+        setGuidance: (e) => this.setState({ guidance: e.target.value }),
+        draftAuto: () => this.setState({ draftLabel: 'Draft, written from the thread',
+          draft: "Hi Renz,\n\nThanks again for the warm welcome. I am holding September 7 at 11:00 PM, but we were meant to connect before September 2. Could you send a direct invite for any earlier slot this week? Any time works on my end.\n\nI am also still waiting on LMS approval for learn.pearltalent.com when you have a moment.\n\nWarm regards,\nPaul" }),
+        draftFromWords: () => this.setState(x => ({ draftLabel: x.guidance ? 'Draft, built on your words' : 'Draft, written from the thread',
+          draft: (x.guidance ? "Hi Renz,\n\n" + x.guidance.trim() + "\n\n(Expanded from your notes: the draft keeps your point, adds the Sept 2 deadline context from the thread, and matches how you sign off.)\n\nWarm regards,\nPaul"
+            : "Hi Renz,\n\nThanks again for the warm welcome. I am holding September 7 at 11:00 PM, but we were meant to connect before September 2. Could you send a direct invite for any earlier slot this week?\n\nWarm regards,\nPaul") })),
+        messages: (first ? this.MESSAGES.slice().reverse() : [{ name: t.sender.split(' · ')[0], email: '', time: t.date, preview: t.gist, paras: [t.gist] }])
+          .map((m, i) => {
+            const open = first ? !!s.expanded[i] : true;
+            const isPaul = m.name === 'Paul Pacardo';
+            return { ...m, open, closed: !open, chevDeg: open ? 180 : 0,
+              hasImages: !!m.hasImages,
+              initials: m.name.split(' ').map(w => w[0]).slice(0, 2).join(''),
+              avBg: isPaul ? 'var(--navy-100)' : 'var(--gold-100)',
+              avFg: isPaul ? 'var(--navy)' : 'var(--gold-600)',
+              replyTo: this.focusReply,
+              toggle: () => this.setState(x => ({ expanded: { ...x.expanded, [i]: !open } }))
+            };
+          })
+      });
+    }
+    return vals;
+  }
+}
+</script>
+</body>
+</html>
