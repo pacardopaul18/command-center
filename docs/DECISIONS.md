@@ -38,6 +38,7 @@ file records what was decided along the way that neither of them says, and why.
 | T-dup-cleanup | Four duplicate action items on production from the retry loop | DONE 2026-08-29 on PM go. Snapshot taken first and all five ids confirmed recoverable from it before any delete. Four rows written, count 8 to 4, keeper `944e4e5a` intact with the three originals |
 | T-backup-prod | Prove the backup write path against production before the first firing | DONE 2026-08-30, D58. Wrote 28,661 bytes to production R2 from real D1, pulled it back and restored it clean. 09:00Z now tests only the scheduled trigger |
 | T-ws1-tickets | Phase 2 workstream 1: tickets entity and the additive rate model | DONE 2026-08-30, D71 and D72. Migration 0008 applied local then remote, 8 of 8, snapshot `snapshot-2026-08-30-pre-0008.sql` taken first. All twelve constraints probed individually, conversion uniqueness and the computed actual proven live. Suite extended: layer 2 contract tests for tickets, conversion and rates, layer 3 flows, and a layer 1 leak guard because tickets have no seeded rows |
+| T-ws2-asana | Phase 2 workstream 2: two-way Asana sync by polling | BUILT 2026-08-30, D75 to D77, unverified against a real token. Migration 0009 applied local then remote, 9 of 9, snapshot `snapshot-2026-08-30-pre-0009.sql` taken first. All nine constraint cases probed. Reconciler tested as a pure function and mutation-checked; the run tested end to end against the real schema with Asana stubbed, including the D69 path. Run by hand from Settings; nothing wired to cron |
 | T-v2-baseline | Partner time baseline audit, running 15-minute-increment note | OPEN, DRI Paul, starting week of 2026-08-31. Prerequisite for the v2 partner-hours-saved dashboard, D52. Nothing blocks on it in v1 |
 
 ## Decisions
@@ -1696,8 +1697,14 @@ by default and an excluded one has to be argued for.
 
 Standing rules carry forward unchanged. Dual estimates before each build, suite
 green per push, production clean of test data, the cron surface untouched
-without an evidence window review, and Wednesday's dress rehearsal still pauses
+without an evidence window review, and the dress rehearsal still pauses
 everything.
+
+Corrected 2026-08-30: the rehearsal was scheduled onto Paul's first day of work.
+It moves to Tuesday 2026-09-01, with the engagement starting Wednesday
+2026-09-02. Strictly better than a fix, not merely a reschedule: rehearse
+Tuesday, same-day fixes land Tuesday night, and Wednesday morning starts with a
+warmed-up app rather than a test plan.
 
 ### D69: a deleted Asana task marks the item ambiguous and touches nothing else
 
@@ -1793,6 +1800,124 @@ Fulfillment status is hand-set for now, with linked invoices displayed
 alongside. The column is shaped so a computed mode can arrive later without a
 migration: a status plus an optional basis field, where the basis records what
 the status was derived from once anything derives it.
+
+### D73: the house timezone rule, in two deliberate cases
+
+D54 said to read how the existing modules solved it before writing date logic.
+This resolves that habit into a rule with two named cases, because the codebase
+was applying one vague instinct to two genuinely different kinds of value.
+
+A **bare date** is zoneless. A deadline of Sep 3 means Sep 3 wherever the reader
+is standing. It formats in UTC, and the UTC is not an approximation of anything
+true, it is a device to stop the browser shifting the day backwards for a reader
+west of the line. `formatDay` does this.
+
+A **stored instant** is a real moment. A `completed_at` happened at one point on
+the clock, and the only honest way to show it is in the timezone the person was
+working in. It formats in `America/Denver`, and Intl carries the DST rules so it
+needs no arithmetic of its own. `formatMoment` does this.
+
+Getting these the same way round is what the reports bug was: `date(completed_at)`
+took the UTC date of an instant, so anything finished after 6pm Mountain landed
+on the next day and fell out of the window. That was one symptom of not having
+this rule. Now the two helpers sit next to each other in `format.ts` with the
+distinction written between them, so the choice is made once rather than
+re-derived at each call site.
+
+### D74: mutual verification, and a test that passes once then skips is lying twice
+
+Two test infrastructure rules, promoted from the ticket work.
+
+**Mutual verification.** The layer 1 guard fails on any ticket row at all, since
+tickets have no seeded rows. The layer 3 cleanup can only satisfy that guard if
+`DELETE /api/tickets/:id` genuinely exists and works. Neither can pass while the
+other is broken, so neither can rot quietly. This is the same shape as the seed
+fingerprint, where the generator writes a value the suite reads back, and it is
+the strongest form test infrastructure takes: not one component checking a
+system, but two components that fail together.
+
+**A test that passes once and skips afterwards lies twice.** The first
+conversion test returned early on a 409, reasoning that an earlier run had
+already converted the item. It passed on the first run by testing the thing, and
+passed on every run after by testing nothing, reporting the same green either
+way. The fix was to make it self-cleaning: it deletes the ticket it created,
+which frees the item and makes the next run a real run. Not a tidiness measure.
+A test whose green means two different things is worse than no test, because the
+absence of a test is at least visible.
+
+### D75: a poll reports presence, never absence, so the sync has two passes
+
+Workstream 2, built. Migration `0009_asana_sync_state.sql`.
+
+The design turns on one property of `modified_since` that is easy to miss.
+It filters what Asana returns. It does not describe what exists. A task deleted
+in Asana does not appear in a changed-tasks list, and neither does a task that
+nobody touched, and from the list alone those two are identical. A poll can
+learn that something changed. It can never learn that something is gone.
+
+D69 is entirely about things being gone, so polling alone cannot implement it.
+Hence two passes. The poll reconciles what changed, one request, every run. The
+sweep fetches individual links directly, and only for links Asana has not
+confirmed in `STALE_DAYS`, because a direct fetch is the only thing that can
+tell a deleted task from an untouched one. Without the sweep a deleted task
+would stay silently linked forever, which is exactly the state D69 exists to
+surface.
+
+Two smaller rules fell out of building it.
+
+**Only completion crosses back.** Asana knows done and not-done. This app knows
+open, in progress and done. Mapping not-done onto open would reset Paul's own
+in-progress state on every single poll, and nobody would file that as a bug;
+they would just quietly stop trusting the status field. So a pull changes status
+only when the two genuinely disagree about completion.
+
+**A 404 is not a failure.** `fetchTask` returns null on a 404 and throws on
+everything else, and the distinction is load bearing. If an expired token or a
+rate limit were treated as "the task is gone", one dead credential would mark
+every linked item ambiguous. The error mapping had to be widened to carry the
+original HTTP status for this, because the UI-facing status deliberately
+flattens most Asana faults to 502.
+
+The sync is run by hand, not on a schedule. Twice deliberate: a pull changes
+Paul's records from a system he only partly controls, so he asks for it and sees
+what came back; and the cron surface does not change without an evidence-window
+review, which this has not had.
+
+### D76: D69 is enforced by the database, not by the code that agrees with it
+
+Migration 0009 does not merely record an ambiguous state. It makes the
+alternatives impossible.
+
+A trigger refuses any write that clears `asana_task_gid` while a sync state
+stands, and another refuses an ambiguous marker with no note. Nothing in the
+sync would do either of those things, and that is not the point. The point is
+that nothing added later can do them either, without first deleting a trigger
+and explaining why.
+
+This is the same move as D70: where a guarantee can be made structural, making
+it structural beats documenting it. D69 said never clear the gid. The honest
+implementation of never is a database that will not accept it.
+
+One thing was tried first and did not work, recorded so it is not retried. A
+unique index on a constant expression with a `WHERE` clause looks like it should
+forbid a class of row. It does not. It permits the first such row and rejects
+only the second, because every qualifying row has the same key. The probe went
+straight in. Triggers state the rule exactly and fire on every row.
+
+### D77: tests that set up their own state, because a sync writes the field it reads
+
+Caught in this build, and the same family as D74.
+
+Three sync tests shared one fixture. The first run wrote `asana_synced_at` on
+both links, which is exactly the field the sweep uses to decide what is stale.
+So by the third test nothing was stale, the sweep never ran, and an assertion
+about what the sweep does when the token is dead was passing without the sweep
+executing at all.
+
+It failed loudly rather than passing quietly, which is the only reason it was
+found in minutes. But the shape is worth naming: when the code under test writes
+the field that selects what the code under test looks at, shared setup stops
+meaning what it says after the first run. Each test now seeds its own links.
 
 ## Interpretation notes
 

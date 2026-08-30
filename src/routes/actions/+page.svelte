@@ -446,6 +446,14 @@
 						<td class="muted-cell">{SOURCE_LABELS[item.source]}</td>
 						<td class="nowrap">
 							{#if item.asana_task_gid}
+								{#if item.asana_sync_state === 'ambiguous'}
+									<span
+										class="asana-ambiguous"
+										title={item.asana_sync_note ?? 'Asana could not resolve this link.'}
+									>
+										Needs a look
+									</span>
+								{/if}
 								<a
 									class="asana-link"
 									href={asanaTaskUrl(item.asana_task_gid)}
@@ -542,6 +550,15 @@
 							{/if}
 							<li class="meta-text">{SOURCE_LABELS[item.source]}</li>
 							{#if item.asana_task_gid}
+								{#if item.asana_sync_state === 'ambiguous'}
+									<span
+										class="asana-ambiguous"
+										title={item.asana_sync_note ?? 'Asana could not resolve this link.'}
+									>
+										Needs a look
+									</span>
+								{/if}
+								
 								<li>
 									<a
 										class="asana-link"
@@ -1011,6 +1028,24 @@
 	}
 
 	/* Asana push and link. D4: the link is built from the stored gid. */
+	/**
+	 * D69's marker, where the item is rather than only in Settings.
+	 *
+	 * Deliberately not red. Ambiguous is not a failure, it is an accurate
+	 * report that the two systems disagree, and the item itself is untouched.
+	 * Never colour alone: the words carry the state.
+	 */
+	.asana-ambiguous {
+		display: inline-block;
+		font-size: var(--text-xs);
+		padding: 1px 6px;
+		margin-right: var(--space-2);
+		border-radius: 999px;
+		border: 1px solid var(--gold);
+		color: var(--text-primary);
+		white-space: nowrap;
+	}
+
 	.asana-link {
 		font-size: var(--text-sm);
 		color: var(--text-link);

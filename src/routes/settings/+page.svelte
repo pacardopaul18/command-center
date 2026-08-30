@@ -6,7 +6,9 @@
 	import FormField from '$lib/components/FormField.svelte';
 	import Input from '$lib/components/Input.svelte';
 	import Select from '$lib/components/Select.svelte';
-	import type { AsanaRef } from '$lib/types';
+	import { apiWrite } from '$lib/http';
+	import { formatMoment } from '$lib/format';
+	import type { AsanaRef, AsanaSyncOutcome } from '$lib/types';
 	import type { PageData } from './$types';
 
 	/**
@@ -20,6 +22,12 @@
 	 * of an Asana URL, the workspaces the token can see are listed on demand and
 	 * he picks from them. The project is optional, because a task can be created
 	 * in a workspace without one.
+	 *
+	 * The sync is two-way as of workstream 2, but it is run by hand, not on a
+	 * schedule. That is deliberate twice over: a pull changes Paul's own records
+	 * from a system he only partly controls, so he asks for it and sees what it
+	 * did; and the cron surface does not change without an evidence-window
+	 * review, which this has not had.
 	 */
 
 	let { data }: { data: PageData } = $props();
@@ -27,6 +35,50 @@
 	let busy = $state(false);
 	let notice = $state('');
 	let errorMessage = $state('');
+
+	let syncing = $state(false);
+	let lastRun = $state<AsanaSyncOutcome | null>(null);
+
+	/**
+	 * Runs a sync now and reports what it did.
+	 *
+	 * `changes` is shown as sentences rather than a count. "3 items updated" is
+	 * not something Paul can check; "Draft the scope note: marked done in Asana"
+	 * is. Seeing what came back is the entire point of pulling.
+	 */
+	async function runSync() {
+		syncing = true;
+		notice = '';
+		errorMessage = '';
+		lastRun = null;
+
+		const result = await apiWrite<{ outcome: AsanaSyncOutcome }>('/api/asana/sync', 'POST', {});
+		if (!result.ok || !result.data) {
+			errorMessage = result.error ?? 'The sync did not run.';
+		} else {
+			lastRun = result.data.outcome;
+			notice =
+				lastRun.updated === 0 && lastRun.ambiguous === 0
+					? 'Sync ran. Nothing had changed in Asana.'
+					: `Sync ran. ${lastRun.updated} updated, ${lastRun.ambiguous} needing a look.`;
+			await invalidateAll();
+		}
+		syncing = false;
+	}
+
+	/** Clears an ambiguous marker once Paul has looked at it. */
+	async function acknowledge(id: string) {
+		syncing = true;
+		errorMessage = '';
+		const result = await apiWrite(`/api/asana/sync/acknowledge/${id}`, 'POST', {});
+		if (!result.ok) {
+			errorMessage = result.error ?? 'Could not clear that marker.';
+		} else {
+			notice = 'Marked as reviewed. The Asana link is still recorded.';
+			await invalidateAll();
+		}
+		syncing = false;
+	}
 
 	let workspaces = $state<AsanaRef[]>([]);
 	let projects = $state<AsanaRef[]>([]);
@@ -132,7 +184,7 @@
 {#if notice}<p class="notice" role="status">{notice}</p>{/if}
 {#if errorMessage}<p class="error" role="alert">{errorMessage}</p>{/if}
 
-<Card title="Asana" subtitle="One-way push. Nothing is read back from Asana.">
+<Card title="Asana" subtitle="Push on demand, and pull changes back by running a sync.">
 	<dl class="state">
 		<div>
 			<dt>Token</dt>
@@ -227,6 +279,94 @@
 				<Button type="submit" disabled={busy || !workspaceGid}>Save Asana settings</Button>
 			</div>
 		</form>
+	{/if}
+</Card>
+
+<Card
+	title="Asana sync"
+	subtitle="Polling only. Run it when you want it; nothing runs on a schedule."
+>
+	{#if !data.sync}
+		<p class="empty">Could not read the sync state. The rest of this page still works.</p>
+	{:else}
+		<div class="actions">
+			<Button onclick={runSync} disabled={syncing || !data.asana.ready}>
+				{syncing ? 'Syncing...' : 'Sync now'}
+			</Button>
+		</div>
+
+		{#if !data.asana.ready}
+			<p class="hint">{data.asana.blocked_because}</p>
+		{/if}
+
+		<dl class="facts">
+			<div>
+				<dt>Linked items</dt>
+				<dd class="mono">{data.sync.linked}</dd>
+			</div>
+			<div>
+				<dt>Last sync</dt>
+				<dd class="mono">
+					{data.sync.last_sync ? formatMoment(data.sync.last_sync) : 'Never'}
+				</dd>
+			</div>
+			<div>
+				<dt>Never reconciled</dt>
+				<dd class="mono">{data.sync.never_synced}</dd>
+			</div>
+			<div>
+				<dt>Needing a look</dt>
+				<dd class="mono">{data.sync.ambiguous_count}</dd>
+			</div>
+		</dl>
+
+		<p class="hint">
+			A poll asks Asana what changed. It cannot report a task that is gone, so links
+			Asana has not confirmed in {data.sync.stale_days} days are checked one by one.
+		</p>
+
+		{#if lastRun}
+			<div class="run">
+				<p class="run-head mono">
+					{lastRun.polled} changed in Asana, {lastRun.matched} of them linked here,
+					{lastRun.swept} re-checked directly.
+				</p>
+				{#if lastRun.changes.length === 0}
+					<p class="hint">Nothing needed changing.</p>
+				{:else}
+					<ul class="changes">
+						{#each lastRun.changes as line (line)}
+							<li>{line}</li>
+						{/each}
+					</ul>
+				{/if}
+			</div>
+		{/if}
+
+		{#if data.sync.ambiguous.length > 0}
+			<h3 class="sub-head">Links needing a look</h3>
+			<p class="hint">
+				Their status and their Asana link were left exactly as they were. Nothing here
+				has been changed for you.
+			</p>
+			<ul class="ambiguous">
+				{#each data.sync.ambiguous as link (link.id)}
+					<li>
+						<div class="amb-main">
+							<a href="/actions?view=all&q={encodeURIComponent(link.title)}">{link.title}</a>
+							<p class="amb-note">{link.asana_sync_note}</p>
+							<p class="amb-meta mono">
+								gid {link.asana_task_gid}
+								{#if link.asana_synced_at} &middot; found {formatMoment(link.asana_synced_at)}{/if}
+							</p>
+						</div>
+						<Button variant="ghost" size="sm" disabled={syncing} onclick={() => acknowledge(link.id)}>
+							Reviewed
+						</Button>
+					</li>
+				{/each}
+			</ul>
+		{/if}
 	{/if}
 </Card>
 
@@ -341,6 +481,107 @@
 		.span-all {
 			grid-column: 1 / -1;
 		}
+	}
+
+	.facts {
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: var(--space-3);
+		margin: 0 0 var(--space-4);
+	}
+
+	@media (min-width: 720px) {
+		.facts {
+			grid-template-columns: repeat(4, minmax(0, 1fr));
+		}
+	}
+
+	.facts dt {
+		font-size: var(--text-xs);
+		text-transform: uppercase;
+		letter-spacing: 0.04em;
+		color: var(--text-secondary);
+		margin-bottom: 2px;
+	}
+
+	.facts dd {
+		margin: 0;
+		font-size: var(--text-lg);
+		color: var(--text-primary);
+	}
+
+	.hint {
+		font-size: var(--text-sm);
+		color: var(--text-secondary);
+		margin: 0 0 var(--space-3);
+	}
+
+	.empty {
+		font-size: var(--text-sm);
+		color: var(--text-secondary);
+		margin: 0;
+	}
+
+	.run {
+		border: 1px solid var(--border);
+		border-radius: var(--radius-md);
+		padding: var(--space-3);
+		margin-bottom: var(--space-4);
+	}
+
+	.run-head {
+		margin: 0 0 var(--space-2);
+		font-size: var(--text-xs);
+		color: var(--text-secondary);
+	}
+
+	.changes {
+		margin: 0;
+		padding-left: var(--space-4);
+		font-size: var(--text-sm);
+	}
+
+	.changes li {
+		margin-bottom: var(--space-1);
+	}
+
+	.sub-head {
+		font-size: var(--text-sm);
+		margin: var(--space-4) 0 var(--space-2);
+	}
+
+	.ambiguous {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+	}
+
+	.ambiguous li {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--space-3);
+		align-items: flex-start;
+		justify-content: space-between;
+		padding: var(--space-3) 0;
+		border-top: 1px solid var(--border);
+	}
+
+	.amb-main {
+		flex: 1 1 240px;
+		min-width: 0;
+	}
+
+	.amb-note {
+		margin: var(--space-1) 0 0;
+		font-size: var(--text-sm);
+		color: var(--text-primary);
+	}
+
+	.amb-meta {
+		margin: 2px 0 0;
+		font-size: var(--text-xs);
+		color: var(--text-secondary);
+		word-break: break-word;
 	}
 
 	.save {

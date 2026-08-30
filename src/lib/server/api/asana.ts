@@ -10,6 +10,7 @@ import {
 	writeSettings
 } from '../asana';
 import type { AsanaSettings } from '../asana';
+import { CURSOR_KEY, STALE_DAYS, syncFromAsana } from '../asana-sync';
 
 /**
  * Asana configuration.
@@ -119,4 +120,93 @@ asana.put('/', async (c) => {
 
 	await writeSettings(c.env.SESSIONS, settings);
 	return c.json({ settings });
+});
+
+/**
+ * Runs a sync now.
+ *
+ * Explicit rather than automatic, the same shape D4 gave the push. A sync
+ * changes Paul's own records from a system he does not fully control, so it
+ * happens when he asks for it and reports exactly what it did. `changes` is a
+ * list of sentences, not a count: "three items updated" is not something anyone
+ * can check, and the point of pulling from Asana is being able to see what came
+ * back.
+ *
+ * `sweep=false` skips the direct re-check of stale links. The poll alone is one
+ * request; the sweep is one request per unconfirmed link, so a caller that only
+ * wants recent edits can say so.
+ */
+asana.post('/sync', async (c) => {
+	const token = requireToken(c.env.ASANA_TOKEN);
+	const sweep = c.req.query('sweep') !== 'false';
+
+	try {
+		const outcome = await syncFromAsana(c.env.DB, c.env.SESSIONS, token, { sweep });
+		return c.json({ ok: true, outcome });
+	} catch (err) {
+		throw asApiError(err);
+	}
+});
+
+/**
+ * What the last sync knows, without running one.
+ *
+ * Separate from the sync itself so a screen can show the state of things
+ * without making a request to Asana as a side effect of being looked at.
+ */
+asana.get('/sync', async (c) => {
+	const cursor = await c.env.SESSIONS.get(CURSOR_KEY);
+
+	const counts = await c.env.DB.prepare(
+		`SELECT
+       COUNT(*) AS linked,
+       SUM(CASE WHEN asana_sync_state = 'ambiguous' THEN 1 ELSE 0 END) AS ambiguous,
+       SUM(CASE WHEN asana_sync_state IS NULL THEN 1 ELSE 0 END) AS never_synced,
+       MIN(asana_synced_at) AS oldest_confirmation
+     FROM action_items WHERE asana_task_gid IS NOT NULL`
+	).first<{
+		linked: number;
+		ambiguous: number | null;
+		never_synced: number | null;
+		oldest_confirmation: string | null;
+	}>();
+
+	const ambiguous = await c.env.DB.prepare(
+		`SELECT id, title, asana_task_gid, asana_sync_note, asana_synced_at
+     FROM action_items WHERE asana_sync_state = 'ambiguous' ORDER BY asana_synced_at DESC`
+	).all();
+
+	return c.json({
+		last_sync: cursor,
+		stale_days: STALE_DAYS,
+		linked: Number(counts?.linked ?? 0),
+		ambiguous_count: Number(counts?.ambiguous ?? 0),
+		never_synced: Number(counts?.never_synced ?? 0),
+		oldest_confirmation: counts?.oldest_confirmation ?? null,
+		ambiguous: ambiguous.results ?? []
+	});
+});
+
+/**
+ * Clears an ambiguous marker once Paul has looked at it.
+ *
+ * D69 says the sync never resolves ambiguity on its own, and this is the other
+ * half of that: a person decides. The gid is still not cleared here. If the
+ * task really is gone, the honest record is an item that was once pushed to a
+ * task that no longer exists, and erasing the gid would erase that fact.
+ */
+asana.post('/sync/acknowledge/:id', async (c) => {
+	const result = await c.env.DB.prepare(
+		`UPDATE action_items
+     SET asana_sync_state = 'ok',
+         asana_sync_note = 'Reviewed by Paul. ' || COALESCE(asana_sync_note, '')
+     WHERE id = ? AND asana_sync_state = 'ambiguous'`
+	)
+		.bind(c.req.param('id'))
+		.run();
+
+	if (!result.meta.changes) {
+		throw new ApiError(404, 'No ambiguous Asana link on that item.');
+	}
+	return c.json({ ok: true });
 });

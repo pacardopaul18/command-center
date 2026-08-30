@@ -33,6 +33,14 @@ export interface ActionItem {
 	meeting_id: string | null;
 	project_id: string | null;
 	asana_task_gid: string | null;
+	/**
+	 * How the Asana link stood at the last sync. Null means never reconciled.
+	 * 'ambiguous' is D69: Asana no longer resolves the gid, and the item's own
+	 * status and gid were deliberately left alone.
+	 */
+	asana_sync_state: 'ok' | 'ambiguous' | null;
+	asana_sync_note: string | null;
+	asana_synced_at: string | null;
 	created_at: string;
 	updated_at: string;
 	completed_at: string | null;
@@ -558,4 +566,35 @@ export function estimateVariance(
 	return diff > 0
 		? { over: true, hours: diff, text: `${diff}h over estimate` }
 		: { over: false, hours: -diff, text: `${-diff}h under estimate` };
+}
+
+/** One item the sync could not resolve, shown so a person can decide. */
+export interface AmbiguousLink {
+	id: string;
+	title: string;
+	asana_task_gid: string;
+	asana_sync_note: string | null;
+	asana_synced_at: string | null;
+}
+
+/** What `GET /api/asana/sync` reports without calling Asana. */
+export interface AsanaSyncStatus {
+	last_sync: string | null;
+	stale_days: number;
+	linked: number;
+	ambiguous_count: number;
+	never_synced: number;
+	oldest_confirmation: string | null;
+	ambiguous: AmbiguousLink[];
+}
+
+/** What one sync run did. Sentences, not just counts. */
+export interface AsanaSyncOutcome {
+	polled: number;
+	matched: number;
+	updated: number;
+	ambiguous: number;
+	swept: number;
+	changes: string[];
+	cursor: string;
 }

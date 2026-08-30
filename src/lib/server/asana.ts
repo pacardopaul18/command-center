@@ -33,11 +33,28 @@ export class AsanaError extends Error {
 	status: number;
 	/** Asana's own text, when it had something specific to say. */
 	detail: string | null;
+	/**
+	 * The status Asana actually returned, before it was remapped for the UI.
+	 *
+	 * `status` is what the API should answer with, so most Asana faults become
+	 * 502: they are not the caller's mistake. That is right for a screen and
+	 * useless for the sync, which has to tell "this one task is gone" (404, and
+	 * D69 applies) apart from "the token is dead" (401, and nothing should be
+	 * marked at all). Losing that distinction would let one expired token mark
+	 * every linked item ambiguous.
+	 */
+	httpStatus: number | null;
 
-	constructor(status: number, message: string, detail: string | null = null) {
+	constructor(
+		status: number,
+		message: string,
+		detail: string | null = null,
+		httpStatus: number | null = null
+	) {
 		super(message);
 		this.status = status;
 		this.detail = detail;
+		this.httpStatus = httpStatus;
 	}
 }
 
@@ -121,24 +138,27 @@ async function toError(res: Response): Promise<AsanaError> {
 
 	switch (res.status) {
 		case 400:
-			return new AsanaError(400, detail ?? 'Asana rejected the task as malformed.', detail);
+			return new AsanaError(400, detail ?? 'Asana rejected the task as malformed.', detail, 400);
 		case 401:
 			return new AsanaError(
 				502,
 				'Asana rejected the token. Set a current personal access token with `wrangler secret put ASANA_TOKEN`.',
-				detail
+				detail,
+				401
 			);
 		case 403:
 			return new AsanaError(
 				502,
 				'The Asana token is valid but not allowed to do that. Check it can create tasks in the chosen workspace and project.',
-				detail
+				detail,
+				403
 			);
 		case 404:
 			return new AsanaError(
 				502,
 				'Asana could not find that workspace, project or assignee. It may have been deleted or renamed.',
-				detail
+				detail,
+				404
 			);
 		case 429: {
 			const retry = res.headers.get('retry-after');
@@ -147,11 +167,12 @@ async function toError(res: Response): Promise<AsanaError> {
 				retry
 					? `Asana is rate limiting. Try again in ${retry} seconds.`
 					: 'Asana is rate limiting. Try again shortly.',
-				detail
+				detail,
+				429
 			);
 		}
 		default:
-			return new AsanaError(502, `Asana returned an error (${res.status}).`, detail);
+			return new AsanaError(502, `Asana returned an error (${res.status}).`, detail, res.status);
 	}
 }
 
@@ -268,4 +289,89 @@ export async function createTask(token: string, input: TaskInput): Promise<Creat
  */
 export function taskUrl(gid: string): string {
 	return `https://app.asana.com/0/0/${gid}`;
+}
+
+/**
+ * The fields the sync reads back. Requested explicitly, because Asana returns
+ * only gid and name unless asked, and a silently missing field would look like
+ * a cleared value.
+ */
+const SYNC_FIELDS = 'gid,name,completed,completed_at,due_on,modified_at,assignee.name,permalink_url';
+
+export interface AsanaTask {
+	gid: string;
+	name: string;
+	completed: boolean;
+	completed_at: string | null;
+	due_on: string | null;
+	modified_at: string | null;
+	assignee_name: string | null;
+	permalink_url: string | null;
+}
+
+function toTask(raw: Record<string, unknown>): AsanaTask {
+	const assignee = raw.assignee as { name?: string } | null | undefined;
+	return {
+		gid: String(raw.gid),
+		name: typeof raw.name === 'string' ? raw.name : '',
+		completed: raw.completed === true,
+		completed_at: typeof raw.completed_at === 'string' ? raw.completed_at : null,
+		due_on: typeof raw.due_on === 'string' ? raw.due_on : null,
+		modified_at: typeof raw.modified_at === 'string' ? raw.modified_at : null,
+		assignee_name: typeof assignee?.name === 'string' ? assignee.name : null,
+		permalink_url: typeof raw.permalink_url === 'string' ? raw.permalink_url : null
+	};
+}
+
+/**
+ * Tasks changed since a moment, which is the whole polling mechanism.
+ *
+ * Asana will not list tasks by workspace alone. It insists on a project, a
+ * section, a tag, or a workspace paired with an assignee. So the query shape
+ * follows the settings: a configured project scopes it directly, and without
+ * one it falls back to the workspace plus the assignee pushes already use. That
+ * is not a lesser path, it is the same set of tasks a push can create.
+ *
+ * `modified_since` is a filter on what is returned, never a guarantee of what
+ * exists. A task deleted in Asana does not appear in this list at all, which is
+ * indistinguishable from a task that simply did not change. Absence here means
+ * nothing, and that is precisely why `fetchTask` exists.
+ */
+export async function listChangedTasks(
+	token: string,
+	settings: AsanaSettings,
+	modifiedSince: string
+): Promise<AsanaTask[]> {
+	const since = encodeURIComponent(modifiedSince);
+	const path = settings.project_gid
+		? `/tasks?project=${encodeURIComponent(settings.project_gid)}&modified_since=${since}` +
+			`&opt_fields=${SYNC_FIELDS}&limit=100`
+		: `/tasks?workspace=${encodeURIComponent(settings.workspace_gid ?? '')}` +
+			`&assignee=${encodeURIComponent(effectiveAssignee(settings))}` +
+			`&modified_since=${since}&opt_fields=${SYNC_FIELDS}&limit=100`;
+
+	const body = await request<{ data?: Record<string, unknown>[] }>(token, path);
+	return (body.data ?? []).map(toTask);
+}
+
+/**
+ * One task by gid, or null when Asana says it is not there.
+ *
+ * Null is reserved for exactly one case: Asana answered, and answered 404. Any
+ * other failure throws, because it means the sync learned nothing about this
+ * task. Treating an expired token or a rate limit as "the task is gone" would
+ * mark every linked item ambiguous over a problem that has nothing to do with
+ * the tasks at all.
+ */
+export async function fetchTask(token: string, gid: string): Promise<AsanaTask | null> {
+	try {
+		const body = await request<{ data?: Record<string, unknown> }>(
+			token,
+			`/tasks/${encodeURIComponent(gid)}?opt_fields=${SYNC_FIELDS}`
+		);
+		return body.data ? toTask(body.data) : null;
+	} catch (err) {
+		if (err instanceof AsanaError && err.httpStatus === 404) return null;
+		throw err;
+	}
 }
