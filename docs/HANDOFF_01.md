@@ -35,10 +35,10 @@ Access.
 | Deploy model | Git-connected Workers Builds. Push to `main`, Cloudflare builds and deploys. Not Pages, D29 |
 | Worker | `command-center`, account `09d30ac2fb14b703740140910d92b108` |
 | Database | D1 `command-center-db`, id `00922b27-9b84-4097-ba4e-568a8f06c6ee`, primary region APAC |
-| Migration level | **7 of 7**, latest `0007_templates.sql`. Verified with `npm run schema:check` |
-| KV | `SESSIONS`, id `9671c77ef65242ebb96b4e7d771cb530`. Holds digest idempotency markers and Asana settings |
-| R2 | `command-center-files`. Holds meeting transcripts |
-| Cron | `0 0,13,14,23 * * *`, registered and confirmed live via the Cloudflare API |
+| Migration level | **7 of 7**, latest `0007_templates.sql`. Verified with `npm run schema:check` &middot; **SUPERSEDED, session 02, `4d22251`: now 16 of 16, latest `0016_calendars.sql`. See section 8** |
+| KV | `SESSIONS`, id `9671c77ef65242ebb96b4e7d771cb530`. Holds digest idempotency markers and Asana settings &middot; **EXTENDED, session 02: also the Asana sync cursor and the Google OAuth tokens. Tokens are deliberately NOT in D1, because the nightly backup copies every D1 table to R2, D81** |
+| R2 | `command-center-files`. Holds meeting transcripts &middot; **EXTENDED, session 02: also nightly D1 dumps, email bodies and, on demand, attachments** |
+| Cron | `0 0,13,14,23 * * *`, registered and confirmed live via the Cloudflare API &middot; **SUPERSEDED, session 02, `ab5c786`: now `0 0,9,10,13,14,23 * * *`, the added hour being the nightly backup. See section 8** |
 | Observability | Enabled, `head_sampling_rate = 1`, `invocation_logs: true`. Free plan: 200k events a day, **3 day retention** |
 | Plan | Workers Free. No spend control exists on Free; it hard-stops at its limits rather than billing, T6 |
 
@@ -48,6 +48,10 @@ were never read and must never be printed:
 - `ANTHROPIC_API_KEY`
 - `ASANA_TOKEN`
 - `RESEND_API_KEY`
+- `GOOGLE_CLIENT_ID` **added session 02.** Not a secret by nature: an OAuth
+  client id appears in the consent URL every user sees. Stored as one anyway,
+  which resolves identically at runtime
+- `GOOGLE_CLIENT_SECRET` **added session 02**
 
 **Digest configuration**, plain vars in `wrangler.toml`, not secrets:
 `DIGEST_FROM = digest@kabuhayan.app`, `DIGEST_TO = pacardopaul18@gmail.com`,
@@ -59,7 +63,7 @@ were never read and must never be printed:
 | --- | --- |
 | Stage 1, foundation | **CLOSED** 2026-08-29, re-closed the same day on corrected evidence after a false claim about the login method |
 | MVP | **CLOSED** 2026-08-29. Today cockpit, Projects, SOPs, Invoicing, digests |
-| v1 | **PENDING**. Built in full; five verifications outstanding with Paul. Gate table written out in `docs/DECISIONS.md` |
+| v1 | **PENDING**. Built in full; five verifications outstanding with Paul. Gate table written out in `docs/DECISIONS.md` &middot; **UPDATED, session 02: four of the five verifications closed. Row c closed by a real Asana push, gid `1217972687132070`. The `/api/backups` glance remains the one unverified box. The gate table in DECISIONS.md remains the record; no separate audit file exists** |
 | v2 | Not started. See section 6, which is unscoped |
 
 ### Modules live
@@ -77,6 +81,12 @@ Nothing here is blocked on code unless it says so.
 
 ### R7: digest deliverability, OPEN. DRI Paul
 
+> **REDEFINED, session 02.** Closure is now absence-based rather than
+> observation-based: R7 closes when several consecutive days pass with no
+> digest found in spam, not when one is seen in an inbox. A single sighting
+> proves one delivery and nothing about the pattern. The multi-day clock is
+> running from 2026-08-29.
+
 The mitigation is live: `DIGEST_FROM` moved from the shared `onboarding@resend.dev`
 to `digest@kabuhayan.app`, a domain verified in Resend with DKIM and SPF.
 
@@ -88,6 +98,9 @@ product exists to prevent.
 Closes when Paul confirms where digests land over several days, not one.
 
 ### O3: partner time baseline not captured, OPEN. DRI Paul
+
+> **STILL NOT STARTED as at session 02 close, 2026-08-31.** First line not
+> yet written. The week it was scheduled for begins 2026-08-31.
 
 Prerequisite for the v2 partner-hours-saved dashboard. Starting the week of
 2026-08-31 as a running 15-minute-increment note.
@@ -329,3 +342,233 @@ two-way Asana sync, nightly D1 to R2 backups.
    table already written there, then pull the 13:00Z invocation record while it
    is still inside the 3-day log retention window.
 4. **Not before a scoping session:** anything in section 6.
+
+
+---
+
+# SESSION 02 UPDATE
+
+Appended 2026-08-31 at session close, commit `4d22251`. Nothing above this line
+was removed. Rows that no longer hold carry an inline SUPERSEDED note with the
+session and the commit that changed them, and the superseded value is left
+visible beside the new one, per D60.
+
+Every figure below was read from the live database or the live config at the
+time of writing, not from memory or from earlier in the session. Where the
+number differs from what was believed during the session, the verified one is
+used and the difference is named.
+
+---
+
+## 8. State summary, verified 2026-08-31
+
+| Thing | Verified value |
+| --- | --- |
+| Remote migrations | **16 of 16**, latest `0016_calendars.sql`. Read from `d1_migrations` |
+| Suite | **213 unit and contract tests, 55 browser tests, green.** Ten test files |
+| Cron | `0 0,9,10,13,14,23 * * *`, read from `wrangler.toml`. Six firings; three do nothing but the backup, the two digests and mail work now ride them |
+| Nightly backups | Restore-proven, D58. A dump was written to production R2, pulled back and restored into an empty database with identical rows, links, indexes and triggers |
+| Production seed data | **None.** `clients WHERE id LIKE 'v-%'` returns 0 |
+| Mail: messages | **865** |
+| Mail: HTML bodies | **863.** The other two are genuinely plain-text messages |
+| Mail: threads | **775** |
+| Mail: triaged | **583** |
+| Mail: awaiting triage | **192** |
+| Calendars discovered | **3.** Two owned, one with an access role of `reader`, which is somebody else's calendar already shared with Paul |
+| Calendars syncing | **3, all on.** See the correction below: this is not the design default |
+| Asana | Two-way polling live via `modified_since`. Webhooks excluded from lean entirely, D68, not deferred within it |
+| Tickets and rate model | In schema and live, D71 and D72 |
+| Client 360 | Live. Contacts and contracts exist; both tables are currently empty |
+| Google connection | `pacardopaul18@gmail.com`, status `connected` since 2026-08-30T08:44:26Z. Paul's own account only |
+| Google scopes | `gmail.readonly` **RESTRICTED**, `calendar.readonly` **SENSITIVE**, read off the consent screen, D78 |
+| Token expiry | Testing mode expires the refresh token every 7 days. Connected 2026-08-30, so **first re-auth due about 2026-09-06** |
+| Attachments | 30 rows of metadata. No files pulled into R2 yet; they are fetched on demand |
+
+### Three corrections to figures quoted during the session
+
+Named rather than silently replaced, because the difference is the point of
+verifying.
+
+1. **Threads are 775, not 773. Triaged is 583, not 586. Awaiting triage is 192,
+   not 187.** The session's figures were read before the last ingest steps
+   added threads. The queue for the reset is 192.
+2. **All three calendars are currently syncing, and Paul did not choose them.**
+   The session enabled them to verify the per-calendar read path. The design
+   default is off, and the code default is off; the live state is on because of
+   a test. Paul should turn off any he does not want before the rehearsal, or
+   leave them, but he should know they were not his choice.
+3. **`ai_usage` holds 0 rows.** The spend meter has therefore recorded nothing.
+   Every triage so far ran before the meter existed, so the meter itself is
+   also unexercised and its first data arrives at the reset.
+
+### NEVER EXERCISED
+
+Two things are built, typechecked, wired and pushed, and have never run. They
+are not done and must not be reported as done.
+
+- **The drafting pass has never produced a draft.** `email_drafts` holds 0 rows.
+  It has been exercised on no thread, real or otherwise. Paul reading a draft is
+  the test, and nobody may call it tested before that.
+- **The two-tier triage path has never run under a real cron firing.** No firing
+  has executed it, and `ai_usage` confirms no call of any kind has been recorded
+  through the new code. Both first run at the **2026-09-01 00:00 UTC** Anthropic
+  usage reset, which is 18:00 Mountain on 2026-08-31.
+
+---
+
+## 9. Open items registry
+
+The entries in section 3 above stand as written and are not repeated here. This
+section adds what is open as at session 02 close.
+
+| Item | DRI | State |
+| --- | --- | --- |
+| R7, digest deliverability | Paul | **OPEN, REDEFINED.** Closure is absence-based: several consecutive days with no digest in spam. A single inbox sighting proves one delivery and nothing about the pattern. Multi-day clock running from 2026-08-29 |
+| T-obs-token | Paul | **OPEN, WIDENED.** Now needs **Workers Observability Read plus Workers Builds Read**. Builds Read was added because the branch-build question hit the same 403 and had to be deferred, D64. Delivered by `wrangler secret put`, never in chat |
+| O3, partner-hours baseline | Paul | **OPEN, NOT YET STARTED.** Week of 2026-08-31. First line unwritten |
+| Partner-permission conversation | Paul | **OPEN. Opener email DRAFTED, NOT YET SENT.** Gates section 6 in full and every firm-account connection. Nothing in the vision register may be built before it |
+| Google restricted-scope verification | Paul | **OPEN, long lead.** Publishing a `gmail.readonly` app needs Google verification plus a CASA assessment. Twin to the partner conversation: both take calendar time, both gate partner accounts, neither gates Paul's own use, D78 |
+| T-silent-writes | Next session | **PARTIAL.** 24 call sites still to route through `apiWrite`. Each to be verified by intercepting a response, not by reading the code, D66 |
+| 192 queued triages | Machine | **QUEUED for the reset.** Drains under the two-tier regime |
+| First two-tier firing | Machine | **NEVER EXERCISED.** First run at the reset |
+| First draft generation | Machine, then Paul | **NEVER EXERCISED.** First run at the reset; Paul's judgment is the test |
+| Reset-time dispatcher check, D107 | Next session | **OPEN.** Confirm the ingest takes a share and triage gets the remainder, and that the log says which ran. The failure this guards against is invisible: a firing that did nothing and a firing that was busy look identical unless the log distinguishes them |
+| Workstream 3 residual | none | **NONE.** Migration 0010 applied; Client 360 complete |
+| Rehearsal | Paul | **Tuesday 2026-09-01.** Seed reload first, because the volume seed is Mountain-anchored and expires nightly. Then H1 and H2 verdicts, the backup glance, chip corrections on triage misses, and draft judgment |
+| MacGray engagement | Paul | **Starts Wednesday 2026-09-02** |
+
+---
+
+## 10. Paul's concerns register
+
+What Paul asked for in his own terms, tagged by what actually happened. Kept
+because a request satisfied by accident is indistinguishable from one satisfied
+on purpose unless it is written down.
+
+| Concern | State |
+| --- | --- |
+| Progress must be visible, never inferred | **SHIPPED.** Stored readouts with honest counters. No percentage is drawn from an estimate the run has already exceeded, D85 and D90 |
+| Long jobs must never depend on a tab staying open | **SHIPPED.** Jobs run as passengers on the existing cron firings, D95 |
+| Estimated time remaining on long runs | **SHIPPED.** Measured from the run's own rate, and withheld when the estimate is known to be wrong |
+| Automatic sync, no manual driving | **SHIPPED.** Manual buttons remain, but nothing depends on them |
+| Automatic triage labels, human corrections as signal only | **SHIPPED.** Two-tier regime **QUEUED** for the reset. Corrections stored beside the model's answer, never over it, D92 |
+| Mail must render like real email | **SHIPPED, RENDER-2.** HTML preferred, links stay links, hard-wrap compression removed, quote trails collapsed, signatures dimmed, D91 and D99 |
+| Attachments, logos, inline images, full visual fidelity | **Metadata SHIPPED.** Inline images **opt-in by design**, because a remote image is a tracking pixel as often as a picture. Full visual fidelity is **INTAKE**, not promised |
+| The drafts folder is private, never ingest unsent drafts | **SHIPPED.** Double exclusion: the Gmail query and a label check on the way in. Three stored drafts purged and verified gone, D98 |
+| One-click thread open, no click per message | **SHIPPED.** Latest message open on arrival, its body sent with the page |
+| Severity filtering, Gmail style, with counts | **SHIPPED** |
+| Pagination user-controllable | **SHIPPED,** 10 to 500 |
+| Headers distinct, active-nav pill, click-to-filter cards, dropdowns not free text | **SHIPPED,** Bucket A |
+| API cost must be visible and controlled in-app | **SHIPPED.** Two-tier models, per-run budgets and a token meter. The meter itself has recorded nothing yet, see section 8 |
+| The app must be fast at volume | **SHIPPED.** Server-side pagination, profiled first: load 4747ms to 1047ms, DOM 130,225 nodes to 2,870. Sidebar sticky |
+
+---
+
+## 11. Vision register
+
+**Pointer only. The content is not reproduced here and must not be.** F1 to F18
+and section 6 live in Paul's PM-side `VISION_SCOPING_INTAKE` document. All of it
+is **UNSCOPED, CHANGE-CONTROLLED and NOT APPROVED FOR BUILD**, pending the
+partner conversation and a scoping session. The freeze is structural: keeping
+the content out of the repo is what stops it being treated as a backlog.
+
+| F | One line |
+| --- | --- |
+| F1 | Universal intake and living memory |
+| F2 | Schedule intelligence |
+| F3 | Capability-aware assignment |
+| F4 | Transcript to execution |
+| F5 | Org charts |
+| F6 | Company-health accounting |
+| F7 | PTO |
+| F8 | Phase checklists with nudges |
+| F9 | Time analytics |
+| F10 | Workflows |
+| F11 | SOP evolution |
+| F12 | QuickBooks-grade invoicing |
+| F13 | Jira parity with Tempo-style time |
+| F14 | Calendar sync and context-aware meeting AI, deduplicated against history |
+| F15 | Report library |
+| F16 | Today to Dashboard. **Done lean.** Full version INTAKE |
+| F17 | SOP shelves |
+| F18 | Client 360. **Done lean.** Full version INTAKE |
+
+Note on F14: the "subscribe to whoever" half arrived by scope design rather than
+by building anything. `calendar.readonly` already lists every calendar shared
+with the account, so a colleague sharing a calendar in Google is all that is
+required, D105. Their **mail** remains governed by the partner conversation, and
+that boundary has not moved.
+
+---
+
+## 12. Standing rules added across sessions 01 and 02
+
+Numbers are ledger ids in `docs/DECISIONS.md`, where the reasoning lives.
+
+| Rule | Meaning in one line |
+| --- | --- |
+| D63 | Density and spacing judged against volume renders, not against empty screens |
+| D64 | Held work parks on a side branch; local `main` tracks `origin/main` |
+| D65 | Never offer an option whose selection produces a broken record |
+| D67 | Evidence over memory, whoever holds the belief |
+| D68 | Phase 2 sequencing; Asana lean is polling only, webhooks excluded rather than deferred |
+| D69 | A deleted Asana task marks the item ambiguous, never touching status, never clearing the gid |
+| D70 | A scope never granted cannot be reached by a later bug |
+| D71 | Tickets and action items are two entities; actual hours are never stored |
+| D72 | The rate model is additive: copied on write, never looked up at read |
+| D74 | Mutual verification; a test that passes once then skips is lying twice |
+| D77 | Tests set up their own state when the code under test writes the field it reads |
+| D78 | `gmail.readonly` is RESTRICTED; the cost lands on partner accounts, not on the build |
+| D79 | Client 360 reads like a UI job and is not |
+| D80 | An error matcher is verified only by causing the error, never by reading it |
+| D81 | Credentials do not go in D1, because the backup would spread them |
+| D82 | The scope list is the safety mechanism, and the suite guards it |
+| D84 | Ingestion is batched and resumable, and its progress is a stored record |
+| D85 | A per-page estimate shown as a total reads as a bug |
+| D86 | Mail bodies do not go in D1, for the same reason credentials do not |
+| D87 | Parsing is where a mail reader actually breaks |
+| D88 | A summary reports what the thread says, including that nothing happened |
+| D89 | Verify mail by counts, never by content |
+| D90 | A status field recording intent rather than activity will eventually lie |
+| D107 | A job making no progress must not hold the whole budget |
+
+Additional standing rules, stated as practice rather than as a single numbered
+decision:
+
+- **Held work parks on a side branch.** Never on `main`, D64.
+- **Evidence-window freezes are enforced structurally**, not by remembering.
+- **Irreversible production deletes require a verified snapshot first**, and the
+  rows must be confirmed recoverable from it before anything is removed.
+- **Production writes through a preview binding need per-operation
+  authorization.** A remote-bound preview writes to the real database.
+- **Paul-verification tasks are non-transferable.** A box only he can check does
+  not get closed by inference.
+- **Identity, not recency, for re-work keys.** Tonight's body re-read moved every
+  thread's `last_at` while changing nothing anybody wrote; under a timestamp key
+  that would have queued a full re-summarise of 865 threads on the expensive
+  model, D103.
+- **A mitigation that reduces frequency is not a fix**, and is dangerous because
+  it looks like one. The test is whether the change removes the cause, D106.
+- **Recovery must distinguish transient from permanent.** Writing a row off over
+  a network blip is a second failure mode wearing recovery's clothes, D97.
+- **Verbatim state travels with a quote.** A gate row or open item carries its
+  state wherever it is repeated, D60.
+
+---
+
+## 13. Next session, first business, in order
+
+1. **Reset-time verification.** The D107 dispatcher check: confirm the ingest
+   takes a share, triage gets the remainder, and the log says which ran. Then
+   the first two-tier firing logs, then the 192 drain.
+2. **First draft generation, and Paul's judgment of it.** Voice: does it sound
+   like him. Hard rule: did it commit to anything not already agreed in the
+   thread, and are there bracketed blanks where decisions belong. Nobody calls
+   the drafting pass tested before this.
+3. **Tuesday rehearsal findings into same-day fixes.** No new features that day.
+4. **Nothing lands Wednesday.** Paul's first day at MacGray.
+
+---
+
+*Session 02 closed 2026-08-31 at commit `4d22251`. Paul calls the final word on
+this handoff.*
