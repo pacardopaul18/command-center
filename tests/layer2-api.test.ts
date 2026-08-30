@@ -488,6 +488,157 @@ describe('layer 2: the rate model is additive', () => {
 	});
 });
 
+describe('layer 2: contacts', () => {
+	let clientId = '';
+	const made: string[] = [];
+
+	beforeAll(async () => {
+		const { json } = await api('/api/clients');
+		clientId = json.clients[0].id;
+	});
+
+	afterAll(async () => {
+		for (const id of made) await api(`/api/contacts/${id}`, { method: 'DELETE' }).catch(() => {});
+	});
+
+	async function make(over: Record<string, unknown> = {}) {
+		const res = await api('/api/contacts', body({ client_id: clientId, name: 'SUITE contact', ...over }));
+		if (res.res.status === 201) made.push(res.json.contact.id);
+		return res;
+	}
+
+	it('creates a contact against a client', async () => {
+		const { res, json } = await make({ email: 'a@b.test', role: 'Ops' });
+		expect(res.status).toBe(201);
+		expect(json.contact.email).toBe('a@b.test');
+		expect(json.contact.is_primary).toBe(0);
+	});
+
+	it('refuses an address with nothing before or after the at sign', async () => {
+		const { res, json } = await make({ email: '@nope' });
+		expect(res.status).toBe(400);
+		expect(json.error).toMatch(/does not look like an address/i);
+	});
+
+	it('allows a client only one primary contact, and says so', async () => {
+		const first = await make({ is_primary: true });
+		expect(first.res.status).toBe(201);
+
+		const second = await make({ name: 'SUITE second', is_primary: true });
+		// 409, not 500. SQLite reports a partial unique index violation by column
+		// rather than by index name, so a matcher keyed on the index name is dead
+		// code and the caller gets a server error for their own mistake.
+		expect(second.res.status).toBe(409);
+		expect(second.json.error).toMatch(/already has a primary contact/i);
+	});
+
+	it('allows any number of non-primary contacts', async () => {
+		expect((await make({ name: 'SUITE a' })).res.status).toBe(201);
+		expect((await make({ name: 'SUITE b' })).res.status).toBe(201);
+	});
+
+	it('requires a client, because a contact belongs to one', async () => {
+		const { res } = await api('/api/contacts', body({ name: 'No client' }));
+		expect(res.status).toBe(400);
+	});
+
+	it('404s a contact that does not exist', async () => {
+		const { res } = await api('/api/contacts/nope', { method: 'DELETE' });
+		expect(res.status).toBe(404);
+	});
+});
+
+describe('layer 2: contracts', () => {
+	let clientId = '';
+	const made: string[] = [];
+
+	beforeAll(async () => {
+		const { json } = await api('/api/clients');
+		clientId = json.clients[0].id;
+	});
+
+	afterAll(async () => {
+		for (const id of made) await api(`/api/contracts/${id}`, { method: 'DELETE' }).catch(() => {});
+	});
+
+	async function make(over: Record<string, unknown> = {}) {
+		const res = await api('/api/contracts', body({ client_id: clientId, title: 'SUITE contract', ...over }));
+		if (res.res.status === 201) made.push(res.json.contract.id);
+		return res;
+	}
+
+	it('stores a value as integer cents and defaults to hand-set', async () => {
+		const { res, json } = await make({ value: '50000' });
+		expect(res.status).toBe(201);
+		expect(json.contract.value_cents).toBe(5000000);
+		// Every row is hand-set today. The basis column exists so a computed mode
+		// can arrive later without a migration, not so callers can claim one now.
+		expect(json.contract.fulfillment_basis).toBe('manual');
+		expect(json.contract.fulfillment_status).toBe('not_started');
+	});
+
+	it('refuses an end before a start', async () => {
+		const { res, json } = await make({ start_date: '2026-10-01', end_date: '2026-09-01' });
+		expect(res.status).toBe(400);
+		expect(json.error).toMatch(/end date cannot be before/i);
+	});
+
+	it('refuses a value that is not an amount', async () => {
+		expect((await make({ value: 'abc' })).res.status).toBe(400);
+		expect((await make({ value: -5 })).res.status).toBe(400);
+	});
+
+	it('refuses a fulfillment status it does not have', async () => {
+		const { res, json } = await make({ fulfillment_status: 'done' });
+		expect(res.status).toBe(400);
+		expect(json.error).toMatch(/fulfillment status must be one of/i);
+	});
+});
+
+describe('layer 2: the client overview', () => {
+	let clientId = '';
+
+	beforeAll(async () => {
+		const { json } = await api('/api/clients');
+		clientId = json.clients[0].id;
+	});
+
+	it('returns every section the page needs in one request', async () => {
+		const { res, json } = await api(`/api/clients/${clientId}/overview`);
+		expect(res.status).toBe(200);
+		for (const key of ['client', 'contacts', 'contracts', 'projects', 'invoices', 'meetings', 'tickets', 'money']) {
+			expect(json, `overview is missing ${key}`).toHaveProperty(key);
+		}
+	});
+
+	it('agrees with the Invoicing screen about what this client owes', async () => {
+		// The claim the page makes is that it cannot disagree with Invoicing,
+		// because both read the same INVOICE_SELECT. This is that claim, tested.
+		// If someone later writes a second outstanding-amount expression here,
+		// this is what fails.
+		const overview = await api(`/api/clients/${clientId}/overview`);
+
+		let rows: { client_id: string; outstanding_cents: number; is_overdue: number }[] = [];
+		for (let page = 1; ; page++) {
+			const { json } = await api(`/api/invoicing?page_size=500&page=${page}`);
+			rows = rows.concat(json.invoices);
+			if (rows.length >= json.paging.total) break;
+		}
+		const mine = rows.filter((r) => r.client_id === clientId);
+
+		expect(overview.json.invoices).toHaveLength(mine.length);
+		expect(overview.json.money.outstanding_cents).toBe(
+			mine.reduce((n, r) => n + Number(r.outstanding_cents), 0)
+		);
+		expect(overview.json.money.overdue_count).toBe(mine.filter((r) => r.is_overdue === 1).length);
+	});
+
+	it('404s a client that does not exist', async () => {
+		const { res } = await api('/api/clients/nope/overview');
+		expect(res.status).toBe(404);
+	});
+});
+
 describe('layer 2: reports', () => {
 	it('billing totals reconcile four independent ways', async () => {
 		const { json } = await api('/api/reports/billing');

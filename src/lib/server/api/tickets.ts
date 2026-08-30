@@ -72,7 +72,12 @@ function asClientError(err: unknown): unknown {
 	if (text.includes('FOREIGN KEY constraint failed')) {
 		return new ApiError(400, 'That project, user or action item does not exist.');
 	}
-	if (text.includes('idx_tickets_converted_from')) {
+	// By column, not by index name: SQLite never names a partial unique index in
+	// the violation message, so the obvious matcher is silently dead code. The
+	// convert route checks first and returns its own 409, so this is only the
+	// backstop for two conversions racing each other. It was worth fixing anyway,
+	// because a backstop that cannot fire is not a backstop.
+	if (text.includes('UNIQUE constraint failed: tickets.converted_from_action_item_id')) {
 		return new ApiError(409, 'That action item has already been converted to a ticket.');
 	}
 	return err;

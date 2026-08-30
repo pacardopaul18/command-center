@@ -182,7 +182,7 @@
 				{:else}
 					<div class="line">
 						<div class="body">
-							<p class="name">{client.name}</p>
+							<p class="name"><a href="/clients/{client.id}">{client.name}</a></p>
 							<p class="meta mono">
 								{client.billing_terms || 'No terms set'}
 								<span class="sep">·</span>{client.project_count ?? 0}

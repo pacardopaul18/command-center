@@ -598,3 +598,62 @@ export interface AsanaSyncOutcome {
 	changes: string[];
 	cursor: string;
 }
+
+export const CONTRACT_STATUSES = ['not_started', 'in_progress', 'fulfilled', 'cancelled'] as const;
+export type ContractStatus = (typeof CONTRACT_STATUSES)[number];
+
+export const CONTRACT_STATUS_LABELS: Record<ContractStatus, string> = {
+	not_started: 'Not started',
+	in_progress: 'In progress',
+	fulfilled: 'Fulfilled',
+	cancelled: 'Cancelled'
+};
+
+/** Chip tones, from the set StatusChip already understands. */
+export const CONTRACT_STATUS_TONE: Record<ContractStatus, 'waiting' | 'open' | 'done' | 'blocked'> =
+	{
+		not_started: 'waiting',
+		in_progress: 'open',
+		fulfilled: 'done',
+		cancelled: 'blocked'
+	};
+
+/**
+ * What a fulfillment status was derived from.
+ *
+ * Every row is 'manual' today. This exists so that computing fulfillment later
+ * from invoices, hours or deliverables is a code change rather than a
+ * migration, and so the two modes stay distinguishable after the fact instead
+ * of one column quietly changing meaning on a date nobody recorded.
+ */
+export const CONTRACT_BASES = ['manual', 'invoiced', 'hours', 'deliverables'] as const;
+export type ContractBasis = (typeof CONTRACT_BASES)[number];
+
+export interface Contact {
+	id: string;
+	client_id: string;
+	client_name?: string;
+	name: string;
+	email: string | null;
+	phone: string | null;
+	role: string | null;
+	is_primary: number;
+	notes: string | null;
+	created_at: string;
+	updated_at: string;
+}
+
+export interface Contract {
+	id: string;
+	client_id: string;
+	client_name?: string;
+	title: string;
+	start_date: string | null;
+	end_date: string | null;
+	value_cents: number | null;
+	fulfillment_status: ContractStatus;
+	fulfillment_basis: ContractBasis;
+	notes: string | null;
+	created_at: string;
+	updated_at: string;
+}

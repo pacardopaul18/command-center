@@ -493,3 +493,75 @@ test.describe('tickets: the worked unit under a project', () => {
 		await request.delete(`/api/tickets/${made.id}`);
 	});
 });
+
+test.describe('the client page', () => {
+	const CONTACT = 'E2E contact probe';
+
+	async function clientId(request: import('@playwright/test').APIRequestContext) {
+		const res = await request.get('/api/clients');
+		return (await res.json()).clients[0].id as string;
+	}
+
+	test.afterEach(async ({ request }) => {
+		const res = await request.get('/api/contacts');
+		for (const c of (await res.json()).contacts) {
+			if (c.name === CONTACT) await request.delete(`/api/contacts/${c.id}`);
+		}
+	});
+
+	test('shows one client with their money, projects and invoices together', async ({
+		page,
+		request
+	}) => {
+		await page.goto(`/clients/${await clientId(request)}`);
+		await ready(page);
+
+		for (const section of ['Contacts', 'Contracts', 'Projects', 'Invoices']) {
+			await expect(page.getByRole('heading', { name: section })).toBeVisible();
+		}
+		await expect(page.locator('.money')).toContainText('Outstanding');
+		// Zero past due reads as a word, not as 0.00 dressed up as a figure.
+		await expect(page.locator('.money')).toContainText(/Past due/);
+	});
+
+	test('adds a contact, and refuses a second primary in words', async ({ page, request }) => {
+		await page.goto(`/clients/${await clientId(request)}`);
+		await ready(page);
+
+		await page.getByRole('button', { name: 'Add contact' }).click();
+		const form = page
+			.locator('form')
+			.filter({ has: page.getByRole('button', { name: 'Add contact', exact: true }) });
+		await form.getByLabel('Name').fill(CONTACT);
+		await form.getByLabel('Email').fill('probe@example.test');
+		await form.getByRole('checkbox', { name: 'Primary contact' }).check();
+		await form.getByRole('button', { name: 'Add contact', exact: true }).click();
+
+		await expect(page.getByText(CONTACT).first()).toBeVisible();
+
+		// A second primary is refused by the database. What matters here is that
+		// the refusal reaches the screen as a sentence rather than as nothing,
+		// which is the whole point of routing writes through apiWrite (D66).
+		await page.getByRole('button', { name: 'Add contact' }).first().click();
+		const again = page
+			.locator('form')
+			.filter({ has: page.getByRole('button', { name: 'Add contact', exact: true }) });
+		await again.getByLabel('Name').fill(CONTACT);
+		await again.getByRole('checkbox', { name: 'Primary contact' }).check();
+		await again.getByRole('button', { name: 'Add contact', exact: true }).click();
+
+		await expect(page.getByRole('alert')).toContainText(/already has a primary contact/i);
+	});
+
+	test('says fulfillment is set by hand rather than implying it is computed', async ({
+		page,
+		request
+	}) => {
+		// The page must not suggest a number it cannot support. Nothing links an
+		// invoice to a contract, so no percentage is shown and the screen says why.
+		await page.goto(`/clients/${await clientId(request)}`);
+		await ready(page);
+		await page.getByRole('button', { name: 'Add contract' }).click();
+		await expect(page.locator('main')).toContainText(/set by hand/i);
+	});
+});

@@ -40,7 +40,7 @@ const PERIOD_SELECT = `
  * days_overdue is negative while an invoice is still within terms; the 0 to 30
  * bucket deliberately catches that case as well as the first month past due.
  */
-const INVOICE_SELECT = `
+export const INVOICE_SELECT = `
   SELECT i.*,
     cl.name AS client_name,
     (i.amount_cents - i.amount_paid_cents) AS outstanding_cents,

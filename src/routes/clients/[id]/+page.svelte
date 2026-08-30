@@ -1,0 +1,669 @@
+<script lang="ts">
+	import { invalidateAll } from '$app/navigation';
+	import { apiWrite } from '$lib/http';
+	import { formatDay } from '$lib/format';
+	import {
+		CONTRACT_STATUSES,
+		CONTRACT_STATUS_LABELS,
+		CONTRACT_STATUS_TONE,
+		INVOICE_STATUS_LABELS,
+		PROJECT_STATUS_LABELS,
+		TICKET_STATUS_LABELS,
+		formatMoney
+	} from '$lib/types';
+	import type { Contact, Contract } from '$lib/types';
+	import Button from '$lib/components/Button.svelte';
+	import Card from '$lib/components/Card.svelte';
+	import FormField from '$lib/components/FormField.svelte';
+	import Input from '$lib/components/Input.svelte';
+	import Select from '$lib/components/Select.svelte';
+	import StatusChip from '$lib/components/StatusChip.svelte';
+	import Textarea from '$lib/components/Textarea.svelte';
+	import type { PageData } from './$types';
+
+	/**
+	 * One client, everything about them.
+	 *
+	 * Most of this page is existing lists filtered by client. The money is not
+	 * recomputed here: the server reads it through the same expression the
+	 * Invoicing screen uses, so the two cannot disagree about what is owed.
+	 *
+	 * Contracts and invoices sit side by side and are deliberately not added
+	 * together. Nothing in the schema links an invoice to a contract, so any
+	 * "percent fulfilled" figure would be invented. Showing both lets Paul make
+	 * the comparison himself, which is the honest version until there is a real
+	 * link to compute from.
+	 */
+
+	let { data }: { data: PageData } = $props();
+
+	let busy = $state(false);
+	let notice = $state('');
+	let errorMessage = $state('');
+
+	let showContact = $state(false);
+	let editingContact = $state<string | null>(null);
+	let contactDraft = $state({ name: '', email: '', phone: '', role: '', is_primary: false });
+
+	let showContract = $state(false);
+	let editingContract = $state<string | null>(null);
+	let contractDraft = $state({
+		title: '',
+		start_date: '',
+		end_date: '',
+		value: '',
+		fulfillment_status: 'not_started',
+		notes: ''
+	});
+
+	const openInvoices = $derived(
+		data.invoices.filter((i) => (i.outstanding_cents ?? 0) > 0)
+	);
+
+	function resetContact() {
+		contactDraft = { name: '', email: '', phone: '', role: '', is_primary: false };
+		editingContact = null;
+		showContact = false;
+	}
+
+	function startContact(contact: Contact) {
+		contactDraft = {
+			name: contact.name,
+			email: contact.email ?? '',
+			phone: contact.phone ?? '',
+			role: contact.role ?? '',
+			is_primary: contact.is_primary === 1
+		};
+		editingContact = contact.id;
+		showContact = true;
+	}
+
+	async function saveContact(event: SubmitEvent) {
+		event.preventDefault();
+		busy = true;
+		notice = '';
+		errorMessage = '';
+
+		const result = editingContact
+			? await apiWrite(`/api/contacts/${editingContact}`, 'PATCH', contactDraft)
+			: await apiWrite('/api/contacts', 'POST', { ...contactDraft, client_id: data.client.id });
+
+		if (!result.ok) {
+			errorMessage = result.error ?? 'Could not save that contact.';
+		} else {
+			notice = editingContact ? 'Contact updated.' : 'Contact added.';
+			resetContact();
+			await invalidateAll();
+		}
+		busy = false;
+	}
+
+	async function removeContact(contact: Contact) {
+		if (!confirm(`Remove ${contact.name}?`)) return;
+		busy = true;
+		errorMessage = '';
+		const result = await apiWrite(`/api/contacts/${contact.id}`, 'DELETE', {});
+		if (!result.ok) errorMessage = result.error ?? 'Could not remove that contact.';
+		else {
+			notice = 'Contact removed.';
+			await invalidateAll();
+		}
+		busy = false;
+	}
+
+	function resetContract() {
+		contractDraft = {
+			title: '',
+			start_date: '',
+			end_date: '',
+			value: '',
+			fulfillment_status: 'not_started',
+			notes: ''
+		};
+		editingContract = null;
+		showContract = false;
+	}
+
+	function startContract(contract: Contract) {
+		contractDraft = {
+			title: contract.title,
+			start_date: contract.start_date ?? '',
+			end_date: contract.end_date ?? '',
+			value: contract.value_cents === null ? '' : String(contract.value_cents / 100),
+			fulfillment_status: contract.fulfillment_status,
+			notes: contract.notes ?? ''
+		};
+		editingContract = contract.id;
+		showContract = true;
+	}
+
+	async function saveContract(event: SubmitEvent) {
+		event.preventDefault();
+		busy = true;
+		notice = '';
+		errorMessage = '';
+
+		const result = editingContract
+			? await apiWrite(`/api/contracts/${editingContract}`, 'PATCH', contractDraft)
+			: await apiWrite('/api/contracts', 'POST', { ...contractDraft, client_id: data.client.id });
+
+		if (!result.ok) {
+			errorMessage = result.error ?? 'Could not save that contract.';
+		} else {
+			notice = editingContract ? 'Contract updated.' : 'Contract added.';
+			resetContract();
+			await invalidateAll();
+		}
+		busy = false;
+	}
+</script>
+
+<svelte:head><title>{data.client.name}</title></svelte:head>
+
+<nav class="crumbs mono" aria-label="Breadcrumb">
+	<a href="/clients">Clients</a> <span aria-hidden="true">/</span>
+	<span>{data.client.name}</span>
+</nav>
+
+<header class="head">
+	<h1>{data.client.name}</h1>
+	<div class="head-meta">
+		<StatusChip
+			tone={data.client.status === 'active' ? 'open' : 'blocked'}
+			label={data.client.status === 'active' ? 'Active' : 'Archived'}
+		/>
+		{#if data.client.billing_terms}
+			<span class="muted">{data.client.billing_terms}</span>
+		{/if}
+		{#if data.client.default_rate_cents !== null}
+			<span class="muted mono">{formatMoney(data.client.default_rate_cents)}/h default</span>
+		{/if}
+	</div>
+</header>
+
+{#if notice}<p class="notice" role="status">{notice}</p>{/if}
+{#if errorMessage}<p class="error" role="alert">{errorMessage}</p>{/if}
+
+<dl class="money">
+	<div>
+		<dt>Invoiced</dt>
+		<dd class="mono">{formatMoney(data.money.invoiced_cents)}</dd>
+	</div>
+	<div>
+		<dt>Outstanding</dt>
+		<dd class="mono">{formatMoney(data.money.outstanding_cents)}</dd>
+	</div>
+	<div class:alarm={data.money.overdue_cents > 0}>
+		<dt>Past due</dt>
+		<dd class="mono">
+			{data.money.overdue_cents > 0 ? formatMoney(data.money.overdue_cents) : 'None'}
+		</dd>
+	</div>
+	<div>
+		<dt>Overdue invoices</dt>
+		<dd class="mono">{data.money.overdue_count}</dd>
+	</div>
+</dl>
+
+<div class="cols">
+	<Card title="Contacts" subtitle="{data.contacts.length} on file">
+		{#snippet actions()}
+			<Button
+				variant="secondary"
+				size="sm"
+				onclick={() => (showContact ? resetContact() : (showContact = true))}
+			>
+				{showContact ? 'Cancel' : 'Add contact'}
+			</Button>
+		{/snippet}
+
+		{#if showContact}
+			<form onsubmit={saveContact}>
+				<FormField label="Name">
+					<Input bind:value={contactDraft.name} maxlength={200} required />
+				</FormField>
+				<FormField label="Email">
+					<Input type="email" bind:value={contactDraft.email} maxlength={320} />
+				</FormField>
+				<FormField label="Phone">
+					<Input bind:value={contactDraft.phone} maxlength={60} />
+				</FormField>
+				<FormField label="Role">
+					<Input bind:value={contactDraft.role} maxlength={120} />
+				</FormField>
+				<label class="check">
+					<input type="checkbox" bind:checked={contactDraft.is_primary} />
+					<span>Primary contact</span>
+				</label>
+				<div class="form-actions">
+					<Button type="submit" disabled={busy}>
+						{editingContact ? 'Save contact' : 'Add contact'}
+					</Button>
+				</div>
+			</form>
+		{/if}
+
+		{#if data.contacts.length === 0}
+			<p class="empty">No contacts yet.</p>
+		{:else}
+			<ul class="rows">
+				{#each data.contacts as contact (contact.id)}
+					<li>
+						<div class="row-main">
+							<p class="row-title">
+								{contact.name}
+								{#if contact.is_primary === 1}<span class="primary">Primary</span>{/if}
+							</p>
+							<p class="row-meta">
+								{contact.role ?? 'No role recorded'}
+								{#if contact.email}
+									&middot; <a href="mailto:{contact.email}">{contact.email}</a>
+								{/if}
+								{#if contact.phone} &middot; <span class="mono">{contact.phone}</span>{/if}
+							</p>
+						</div>
+						<div class="row-actions">
+							<Button variant="ghost" size="sm" onclick={() => startContact(contact)}>
+								Edit<span class="visually-hidden"> {contact.name}</span>
+							</Button>
+							<Button variant="ghost" size="sm" onclick={() => removeContact(contact)}>
+								Remove<span class="visually-hidden"> {contact.name}</span>
+							</Button>
+						</div>
+					</li>
+				{/each}
+			</ul>
+		{/if}
+	</Card>
+
+	<Card title="Contracts" subtitle="{data.contracts.length} on file">
+		{#snippet actions()}
+			<Button
+				variant="secondary"
+				size="sm"
+				onclick={() => (showContract ? resetContract() : (showContract = true))}
+			>
+				{showContract ? 'Cancel' : 'Add contract'}
+			</Button>
+		{/snippet}
+
+		{#if showContract}
+			<form onsubmit={saveContract}>
+				<FormField label="Title">
+					<Input bind:value={contractDraft.title} maxlength={300} required />
+				</FormField>
+				<div class="pair">
+					<FormField label="Start">
+						<Input type="date" bind:value={contractDraft.start_date} mono />
+					</FormField>
+					<FormField label="End">
+						<Input type="date" bind:value={contractDraft.end_date} mono />
+					</FormField>
+				</div>
+				<FormField label="Value" hint="An amount such as 50000 or 50000.00.">
+					<Input bind:value={contractDraft.value} mono />
+				</FormField>
+				<FormField
+					label="Fulfillment"
+					hint="Set by hand. Nothing computes this from invoices or hours."
+				>
+					<Select bind:value={contractDraft.fulfillment_status}>
+						{#each CONTRACT_STATUSES as status (status)}
+							<option value={status}>{CONTRACT_STATUS_LABELS[status]}</option>
+						{/each}
+					</Select>
+				</FormField>
+				<FormField label="Notes">
+					<Textarea bind:value={contractDraft.notes} rows={3} maxlength={4000} />
+				</FormField>
+				<div class="form-actions">
+					<Button type="submit" disabled={busy}>
+						{editingContract ? 'Save contract' : 'Add contract'}
+					</Button>
+				</div>
+			</form>
+		{/if}
+
+		{#if data.contracts.length === 0}
+			<p class="empty">No contracts recorded.</p>
+		{:else}
+			<ul class="rows">
+				{#each data.contracts as contract (contract.id)}
+					<li>
+						<div class="row-main">
+							<p class="row-title">{contract.title}</p>
+							<p class="row-meta">
+								{#if contract.value_cents !== null}
+									<span class="mono">{formatMoney(contract.value_cents)}</span> &middot;
+								{/if}
+								{contract.start_date ? formatDay(contract.start_date) : 'No start'} to
+								{contract.end_date ? formatDay(contract.end_date) : 'no end'}
+							</p>
+						</div>
+						<div class="row-actions">
+							<StatusChip
+								tone={CONTRACT_STATUS_TONE[contract.fulfillment_status]}
+								label={CONTRACT_STATUS_LABELS[contract.fulfillment_status]}
+								size="sm"
+							/>
+							<Button variant="ghost" size="sm" onclick={() => startContract(contract)}>
+								Edit<span class="visually-hidden"> {contract.title}</span>
+							</Button>
+						</div>
+					</li>
+				{/each}
+			</ul>
+			<p class="footnote">
+				Fulfillment is set by hand. Invoices for this client are listed below so the two can be
+				compared; nothing adds them together, because no invoice is recorded against a contract.
+			</p>
+		{/if}
+	</Card>
+</div>
+
+<Card title="Projects" subtitle="{data.projects.length} for this client" padded={false}>
+	{#if data.projects.length === 0}
+		<p class="empty pad">No projects yet.</p>
+	{:else}
+		<ul class="rows pad">
+			{#each data.projects as project (project.id)}
+				<li>
+					<div class="row-main">
+						<p class="row-title"><a href="/projects/{project.id}">{project.name}</a></p>
+						<p class="row-meta">
+							{PROJECT_STATUS_LABELS[project.status]}
+							&middot; {project.open_items} open item{project.open_items === 1 ? '' : 's'}
+							&middot; {project.open_tickets} open ticket{project.open_tickets === 1 ? '' : 's'}
+						</p>
+					</div>
+				</li>
+			{/each}
+		</ul>
+	{/if}
+</Card>
+
+{#if data.tickets.length > 0}
+	<Card title="Open tickets" subtitle="Soonest due first" padded={false}>
+		<ul class="rows pad">
+			{#each data.tickets as ticket (ticket.id)}
+				<li>
+					<div class="row-main">
+						<p class="row-title"><a href="/tickets/{ticket.id}">{ticket.title}</a></p>
+						<p class="row-meta">
+							{ticket.project_name} &middot; {TICKET_STATUS_LABELS[ticket.status]}
+							{#if ticket.due_date} &middot; due {formatDay(ticket.due_date)}{/if}
+						</p>
+					</div>
+				</li>
+			{/each}
+		</ul>
+	</Card>
+{/if}
+
+<Card
+	title="Invoices"
+	subtitle="{openInvoices.length} unpaid of {data.invoices.length}"
+	padded={false}
+>
+	{#if data.invoices.length === 0}
+		<p class="empty pad">No invoices for this client.</p>
+	{:else}
+		<div class="table-scroll">
+			<table>
+				<thead>
+					<tr>
+						<th scope="col">Invoice</th>
+						<th scope="col">Due</th>
+						<th scope="col" class="right">Amount</th>
+						<th scope="col" class="right">Outstanding</th>
+						<th scope="col">Status</th>
+					</tr>
+				</thead>
+				<tbody>
+					{#each data.invoices as invoice (invoice.id)}
+						<tr>
+							<td class="mono">{invoice.invoice_number}</td>
+							<td class="mono nowrap">
+								{formatDay(invoice.due_date)}
+								{#if invoice.is_overdue === 1}
+									<span class="overdue">{invoice.days_overdue}d past due</span>
+								{/if}
+							</td>
+							<td class="right mono">{formatMoney(invoice.amount_cents)}</td>
+							<td class="right mono">{formatMoney(invoice.outstanding_cents ?? 0)}</td>
+							<td>{INVOICE_STATUS_LABELS[invoice.status]}</td>
+						</tr>
+					{/each}
+				</tbody>
+			</table>
+		</div>
+	{/if}
+</Card>
+
+{#if data.meetings.length > 0}
+	<Card title="Recent meetings" subtitle="Last five" padded={false}>
+		<ul class="rows pad">
+			{#each data.meetings as meeting (meeting.id)}
+				<li>
+					<div class="row-main">
+						<p class="row-title"><a href="/meetings/{meeting.id}">{meeting.title}</a></p>
+						<p class="row-meta mono">{formatDay(meeting.meeting_date)}</p>
+					</div>
+				</li>
+			{/each}
+		</ul>
+	</Card>
+{/if}
+
+<style>
+	.crumbs {
+		font-size: var(--text-xs);
+		margin-bottom: var(--space-3);
+		color: var(--text-secondary);
+	}
+
+	.head {
+		margin-bottom: var(--space-4);
+	}
+
+	h1 {
+		margin: 0 0 var(--space-2);
+		/* Long client names wrap rather than push the page sideways at 412px. */
+		overflow-wrap: anywhere;
+	}
+
+	.head-meta {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: var(--space-2);
+		font-size: var(--text-sm);
+	}
+
+	.muted {
+		color: var(--text-secondary);
+	}
+
+	.money {
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: var(--space-3);
+		margin: 0 0 var(--space-5);
+	}
+
+	@media (min-width: 720px) {
+		.money {
+			grid-template-columns: repeat(4, minmax(0, 1fr));
+		}
+	}
+
+	.money div {
+		border: 1px solid var(--border);
+		border-radius: var(--radius-md);
+		padding: var(--space-3);
+		background: var(--surface);
+	}
+
+	.money div.alarm {
+		border-color: var(--gold);
+	}
+
+	.money dt {
+		font-size: var(--text-xs);
+		text-transform: uppercase;
+		letter-spacing: 0.04em;
+		color: var(--text-secondary);
+		margin-bottom: 2px;
+	}
+
+	.money dd {
+		margin: 0;
+		font-size: var(--text-lg);
+	}
+
+	.cols {
+		display: grid;
+		grid-template-columns: 1fr;
+		gap: var(--space-4);
+		margin-bottom: var(--space-4);
+	}
+
+	@media (min-width: 900px) {
+		.cols {
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+		}
+	}
+
+	.pair {
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: var(--space-3);
+	}
+
+	.rows {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+	}
+
+	.rows.pad {
+		padding: 0 var(--space-4) var(--space-3);
+	}
+
+	.rows li {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--space-3);
+		align-items: flex-start;
+		justify-content: space-between;
+		padding: var(--space-3) 0;
+		border-top: 1px solid var(--border);
+	}
+
+	.row-main {
+		flex: 1 1 200px;
+		min-width: 0;
+	}
+
+	.row-title {
+		margin: 0;
+		font-weight: 600;
+		overflow-wrap: anywhere;
+	}
+
+	.row-meta {
+		margin: 2px 0 0;
+		font-size: var(--text-sm);
+		color: var(--text-secondary);
+		overflow-wrap: anywhere;
+	}
+
+	.row-actions {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: var(--space-2);
+	}
+
+	.primary {
+		display: inline-block;
+		margin-left: var(--space-2);
+		font-size: var(--text-xs);
+		padding: 1px 6px;
+		border-radius: 999px;
+		border: 1px solid var(--gold);
+	}
+
+	.check {
+		display: flex;
+		align-items: center;
+		gap: var(--space-2);
+		font-size: var(--text-sm);
+		margin-bottom: var(--space-3);
+	}
+
+	.form-actions {
+		margin: var(--space-3) 0 var(--space-4);
+	}
+
+	.empty {
+		font-size: var(--text-sm);
+		color: var(--text-secondary);
+		margin: 0;
+	}
+
+	.empty.pad {
+		padding: 0 var(--space-4) var(--space-4);
+	}
+
+	.footnote {
+		margin: var(--space-3) 0 0;
+		font-size: var(--text-xs);
+		color: var(--text-secondary);
+	}
+
+	.table-scroll {
+		overflow-x: auto;
+	}
+
+	table {
+		width: 100%;
+		border-collapse: collapse;
+		font-size: var(--text-sm);
+	}
+
+	th {
+		text-align: left;
+		font-weight: 700;
+		font-size: var(--text-xs);
+		text-transform: uppercase;
+		letter-spacing: 0.04em;
+		color: var(--text-secondary);
+		border-bottom: 1px solid var(--border);
+		padding: var(--space-2) var(--space-3);
+		white-space: nowrap;
+	}
+
+	td {
+		padding: var(--space-2) var(--space-3);
+		border-bottom: 1px solid var(--border);
+	}
+
+	.right {
+		text-align: right;
+	}
+
+	.nowrap {
+		white-space: nowrap;
+	}
+
+	.overdue {
+		display: inline-block;
+		margin-left: var(--space-2);
+		font-size: var(--text-xs);
+		color: var(--text-primary);
+		border: 1px solid var(--gold);
+		border-radius: 999px;
+		padding: 0 6px;
+	}
+</style>

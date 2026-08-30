@@ -39,6 +39,8 @@ file records what was decided along the way that neither of them says, and why.
 | T-backup-prod | Prove the backup write path against production before the first firing | DONE 2026-08-30, D58. Wrote 28,661 bytes to production R2 from real D1, pulled it back and restored it clean. 09:00Z now tests only the scheduled trigger |
 | T-ws1-tickets | Phase 2 workstream 1: tickets entity and the additive rate model | DONE 2026-08-30, D71 and D72. Migration 0008 applied local then remote, 8 of 8, snapshot `snapshot-2026-08-30-pre-0008.sql` taken first. All twelve constraints probed individually, conversion uniqueness and the computed actual proven live. Suite extended: layer 2 contract tests for tickets, conversion and rates, layer 3 flows, and a layer 1 leak guard because tickets have no seeded rows |
 | T-ws2-asana | Phase 2 workstream 2: two-way Asana sync by polling | BUILT 2026-08-30, D75 to D77, unverified against a real token. Migration 0009 applied local then remote, 9 of 9, snapshot `snapshot-2026-08-30-pre-0009.sql` taken first. All nine constraint cases probed. Reconciler tested as a pure function and mutation-checked; the run tested end to end against the real schema with Asana stubbed, including the D69 path. Run by hand from Settings; nothing wired to cron |
+| T-ws3-client360 | Phase 2 workstream 3: Client 360, contacts and contracts | DONE 2026-08-30, D79 and D80. Migration 0010 applied local then remote, 10 of 10, snapshot `snapshot-2026-08-30-pre-0010.sql` taken first. All 13 constraint cases probed. Money proven identical to the Invoicing screen on 22 invoices before the page was built, and asserted in the suite. Defect found live and fixed: partial unique index matchers named the index rather than the column, in contacts and in tickets |
+| T-ws4-google | Google Cloud OAuth client, Paul's own account | DONE 2026-08-30, D78. Client created, redirect URIs registered, `GOOGLE_CLIENT_SECRET` on the Worker (confirmed by name only). Client ID still to land as a plain var. Google restricted-scope verification and CASA logged as a long-lead gate on partner accounts, not on the build |
 | T-v2-baseline | Partner time baseline audit, running 15-minute-increment note | OPEN, DRI Paul, starting week of 2026-08-31. Prerequisite for the v2 partner-hours-saved dashboard, D52. Nothing blocks on it in v1 |
 
 ## Decisions
@@ -1918,6 +1920,84 @@ It failed loudly rather than passing quietly, which is the only reason it was
 found in minutes. But the shape is worth naming: when the code under test writes
 the field that selects what the code under test looks at, shared setup stops
 meaning what it says after the first run. Each test now seeds its own links.
+
+### D78: gmail.readonly is RESTRICTED, and that lands on partner accounts
+
+Read off the console, not inferred. `gmail.readonly` sits under "Your restricted
+scopes"; `calendar.readonly` is Sensitive.
+
+Restricted is the harder of the two answers, and the important part is where the
+cost falls. Testing mode against Paul's own account is unaffected and proceeds
+now. The seven-day refresh token expiry that Testing mode imposes is accepted as
+known friction rather than worked around, because working around it means
+publishing, and publishing a Restricted-scope app means Google's verification
+plus a CASA security assessment.
+
+So the gate is logged as long-lead and it lands on partner and firm accounts,
+never on the build. It is the twin of the partner conversation: both are
+prerequisites for the same step, both take calendar time rather than build time,
+and neither blocks anything before that step.
+
+The Cloud Console work was Paul's personally, by ruling. The OAuth client lives
+in his own Google account and was not created through any session credential,
+because an OAuth client made by a session is a production identity owned by the
+wrong party. `GOOGLE_CLIENT_SECRET` is set on the Worker, confirmed by name
+only; the client ID is a plain var and not a secret.
+
+Redirect URIs registered, and the build will match them:
+`https://work.kabuhayan.app/api/connections/google/callback` and
+`http://localhost:5173/api/connections/google/callback`. Access does not break
+the callback, because the redirect happens in a browser that already carries the
+Access cookie; a server-to-server callback would have been blocked.
+
+### D79: Client 360 reads like a UI job and is not
+
+Workstream 3, built. Migration `0010_contacts_and_contracts.sql`.
+
+Projects, invoices, meetings and tickets already existed and needed only
+filtering by client. Contacts and contracts did not exist at all, and no amount
+of page work conjures them. That is the whole reason this was estimated as a day
+and a half rather than an afternoon.
+
+**The money is imported, not reimplemented.** `INVOICE_SELECT` was made an
+export and the client page uses the same expression the Invoicing screen uses.
+A second outstanding-amount calculation would be a second thing to keep correct,
+and the first time the two disagreed the client page is the one nobody would
+believe. The suite asserts the agreement directly: it sums the Invoicing
+endpoint for one client and compares all four figures. Verified live before the
+page was built, on 22 invoices: outstanding, overdue and overdue count identical
+to the cent.
+
+**Contracts and invoices sit side by side and are never added together.** Nothing
+in the schema records an invoice against a contract, so any "percent fulfilled"
+figure would be invented. The page says fulfillment is set by hand, and an E2E
+test asserts that sentence is on the screen, because the failure mode here is
+not a wrong number but a number that looks computed.
+
+`fulfillment_basis` ships now, always `'manual'`. It exists so a computed mode
+is a code change rather than a migration, and so the two modes stay
+distinguishable afterwards instead of one column quietly changing meaning on a
+date nobody wrote down.
+
+### D80: SQLite names the column, never the partial index, and both matchers were dead
+
+Found by hitting the endpoint. A second primary contact returned 500 "Something
+went wrong on the server" instead of the 409 the code plainly intended.
+
+The matcher tested for `idx_contacts_one_primary`. SQLite's message is
+`UNIQUE constraint failed: contacts.client_id`. It reports the indexed column,
+never the index name, so a matcher keyed on the name reads correctly, reviews
+correctly, and can never once fire.
+
+The audit that followed found the same bug in `tickets.ts`, keyed on
+`idx_tickets_converted_from`. That one is masked: the convert route checks first
+and returns its own 409, so the constraint only fires if two conversions race.
+Both are fixed to match by column. A backstop that cannot fire is not a backstop,
+and the fact that one of them was invisible for a whole workstream is the
+argument for fixing the visible one properly rather than locally.
+
+Worth stating as a rule: an error matcher is not verified by reading it. It is
+verified by causing the error.
 
 ## Interpretation notes
 

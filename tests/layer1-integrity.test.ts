@@ -285,6 +285,17 @@ describe('layer 1: referential integrity', () => {
 		}
 	});
 
+	it('no test contacts or contracts are left behind', () => {
+		// Same guard as tickets, same reasoning: the seed creates none, so any row
+		// is a leak from a test or a probe. The layer 3 cleanup can only satisfy
+		// this if DELETE /api/contacts/:id really works, so the two check each
+		// other rather than each trusting the other.
+		const contacts = one<{ c: number }>('SELECT COUNT(*) AS c FROM contacts');
+		const contracts = one<{ c: number }>('SELECT COUNT(*) AS c FROM contracts');
+		expect(Number(contacts.c), 'Contacts exist that the seed did not create.').toBe(0);
+		expect(Number(contracts.c), 'Contracts exist that the seed did not create.').toBe(0);
+	});
+
 	it('no test tickets are left behind', () => {
 		// Tickets have no seeded rows at all, so any row here is a leak from a
 		// test or a probe. The suite has caught stray action items three times;
