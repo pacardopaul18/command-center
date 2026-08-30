@@ -1057,8 +1057,30 @@ the `permalink_url` question in the notice rather than in a JSON body nobody
 reads. That question is still open: the first push predates this, and its
 `url_from_asana` value was not captured.
 
-Row c is not closed. The mechanism is proven; closure waits on one re-push after
-this fix.
+#### Row c closed 2026-08-29, and the one datum still missing
+
+The post-fix push worked. The task appears in Asana My Tasks, assigned to Paul
+Pacardo, due Monday, which is the same run confirming D-asana-1 fixed: before
+the fix the task existed and was invisible, after it the task is where a person
+looks.
+
+**The permalink question is still open, and it is not recoverable from stored
+data.** `url_from_asana` is computed in `createTask`, returned in the push
+response, and rendered in the notice. It is never persisted, because D4 stores
+the gid and nothing else. So the answer existed once, on screen, and nothing
+wrote it down.
+
+Two ways it can still be answered. Paul read the notice and can report the
+wording. Or the next push reports it: `console.log` now records the gid, the
+`url_from_asana` flag, the assignee and the project on every push, which lands
+in Workers Logs and stays readable for three days. That line exists because this
+question demonstrated the gap: an outcome visible only in a transient notice is
+an outcome nobody can check later, which is the same lesson the digest incident
+taught about firings that leave no trace.
+
+Deliberately not solved by storing the flag on the action item. It is metadata
+about one push, not a property of the item, and D4's decision to store only the
+gid holds.
 
 A create-push-then-delete sequence would leave the same trace and cannot be
 excluded from the database alone. It does not need to be: PM ruling is that a
@@ -1147,6 +1169,24 @@ the invocation to the message and makes this an incident close rather than a
 coincidence. Outcome evidence alone would have shown a marker, a Resend entry
 and an inbox, and proved only that something sent a mail. The 2.2 seconds
 between the two lines is the send.
+
+Both digests ran on 2026-08-29, the first full day of scheduled operation in the
+app's history. KV markers, which are written only after Resend accepts:
+
+| Marker | Written |
+| --- | --- |
+| `digest:2026-08-29:morning` | 2026-08-29T13:00:02.015Z |
+| `digest:2026-08-29:evening` | 2026-08-29T23:00:53.636Z |
+
+The morning marker sits between the two dashboard log lines Paul read, at
+13:00:00.532Z and 13:00:02.763Z, which is the ordering the code requires: the
+marker is written after Resend accepts and before the completion is logged.
+Three independent records agreeing on the same two seconds.
+
+The evening firing matters for a second reason. It happened at 23:00Z, after the
+backup cron deployed at 15:10:51Z, so it is the first digest to run under the
+six-hour expression and it confirms the schedule change did not disturb the
+digests it shares a handler with.
 
 The 14:00Z capture matters as much as the 13:00Z one. It is the first direct
 observation of a firing that correctly does nothing, which was previously
@@ -2207,7 +2247,7 @@ Paul is verifying are visible as gaps rather than as blanks nobody counted.
 | Templates with AI drafting | Module live, drafting endpoint returns and stores nothing, D49. House style enforced on every AI output path from the start rather than patched in | PENDING, Paul retesting the voice register with a real exemplar |
 | Clients | Shipped in the Invoicing pass, D37. Client created through the UI, project assigned, foreign key verified to reject a bogus id on both INSERT and UPDATE | EVIDENCED |
 | Reports with PDF export | Four of the five in section D. Aging cross-checked against the Invoicing screen: identical in all four buckets, totals reconciling four ways. Screen and print verified to render identical figures across all four reports. Partner time saved deliberately absent, D52 | PENDING, Paul checking the live screens |
-| One-way Asana push | Built per D4 and D55. Explicit per item, 409 on a second push, and verified to write nothing on failure: with an invalid token the item kept its title, status, deadline and null gid and could still be marked done and reopened. Live 401 from Asana mapped legibly | PENDING. First production push done 2026-08-29, GID `1217967895665406`, link opened the correct task, so the mechanism is proven. Defect D-asana-1 found and fixed: tasks arrived with no assignee and were invisible in My Tasks. Closure waits on one re-push. T-asana-repush |
+| One-way Asana push | Built per D4 and D55. Explicit per item, 409 on a second push, and verified to write nothing on failure: with an invalid token the item kept its title, status, deadline and null gid and could still be marked done and reopened. Live 401 from Asana mapped legibly | **EVIDENCED 2026-08-29.** Post-fix push succeeded: the task is visible in Asana My Tasks, assignee Paul Pacardo, due Monday. D-asana-1 confirmed fixed by the same run. One datum still owed for D55, whether the returned link was Asana's permalink or built from the gid |
 | Markdown rendering, D36 | One renderer across SOPs, meeting summaries and drafts. Safe by construction rather than by filtering, D44. No `{@html}` anywhere in the app | EVIDENCED |
 | Schema through migrations only | Remote at 7 of 7, `0007_templates.sql`. One incident where code shipped ahead of its migration, root-caused and fixed by an ordering rule plus a drift detector, D50 | EVIDENCED |
 | Digests actually arriving | Cron trigger registered and correct. Observability enabled. Handler awaits its send and logs every firing. Cron path exercised across all four hour cases and the failure case | PENDING, the 13:00Z firing is the first eligible one in the app's history |

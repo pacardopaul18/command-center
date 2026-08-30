@@ -380,6 +380,18 @@ actionItems.post('/:id/asana', async (c) => {
 
 	const updated = await c.env.DB.prepare(`${SELECT} WHERE a.id = ?`).bind(id).first();
 
+	// Logged because the response is the only place this has ever existed. D4
+	// stores the gid and nothing else, so whether Asana returned its own
+	// permalink was visible once, in a notice on screen, and then gone. Workers
+	// Logs is enabled now, so the next push records it where it can be read back
+	// three days later instead of depending on somebody having noticed.
+	console.log(
+		`asana push: item=${id} gid=${created.gid} ` +
+			`url_from_asana=${created.url_from_asana} ` +
+			`assignee=${effectiveAssignee(settings)} ` +
+			`project=${settings.project_gid ?? 'none'}`
+	);
+
 	return c.json({
 		item: updated,
 		asana: {
