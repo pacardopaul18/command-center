@@ -633,6 +633,16 @@ export interface DraftInput {
 	gist: string | null;
 	/** Client and project context, when the thread is linked to one. */
 	context: string | null;
+	/**
+	 * Paul's own words, when he supplied them.
+	 *
+	 * Two modes share one function because they share every guard. Absent, the
+	 * draft is written from the thread. Present, his text is the substance and
+	 * the thread is only context: the model is rephrasing him, not deciding what
+	 * he thinks. Splitting these into two functions would have meant keeping two
+	 * copies of the commit-to-nothing rule honest.
+	 */
+	guidance?: string | null;
 }
 
 export async function draftReply(

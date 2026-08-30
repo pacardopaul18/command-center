@@ -3,7 +3,7 @@ import { Hono } from 'hono';
 import type { ApiEnv } from './env';
 import { nowUtc } from '../dates';
 import { ApiError } from './validate';
-import { GoogleError } from '../google';
+import { GoogleError, accessToken, getAttachment } from '../google';
 import { BATCH_SIZE, ingestStep, triageBatch } from '../mail-jobs';
 import {
 	assertOwned,
@@ -237,6 +237,27 @@ email.get('/threads', async (c) => {
 	const effective = 'COALESCE(t.severity_override, t.severity)';
 	const effectiveCategory = 'COALESCE(t.category_override, t.category)';
 
+	/**
+	 * "Needs you": urgent or important, where the last message is not Paul's.
+	 *
+	 * A thread he already answered is not waiting on him however urgent it
+	 * looked when it arrived, and a queue that keeps showing answered mail is a
+	 * queue people stop reading. E4's commitments ledger sharpens this later;
+	 * the reply signal is the honest approximation available now.
+	 */
+	if (c.req.query('needs_you') === 'true') {
+		where.push(
+			`COALESCE(t.severity_override, t.severity) IN ('urgent','important')
+       AND NOT EXISTS (
+         SELECT 1 FROM email_messages m
+         JOIN connections conn2 ON conn2.id = m.connection_id
+         WHERE m.thread_id = t.id
+           AND LOWER(m.from_email) = LOWER(conn2.account_email)
+           AND m.sent_at = (SELECT MAX(m2.sent_at) FROM email_messages m2 WHERE m2.thread_id = t.id)
+       )`
+		);
+	}
+
 	const severity = c.req.query('severity');
 	if (severity && severity !== 'all') {
 		const wanted = severity.split(',').filter(Boolean);
@@ -301,20 +322,54 @@ email.get('/threads', async (c) => {
 		.bind(...binds, limit)
 		.all();
 
+	// The needs-you count, computed the same way the filter is, so the tab and
+	// the list can never disagree about how many are waiting.
+	const needsYou = await c.env.DB.prepare(
+		`SELECT COUNT(*) AS n FROM email_threads t
+     WHERE t.connection_id IN (${scopePlaceholders(scope)})
+       AND t.archived_at IS NULL
+       AND COALESCE(t.severity_override, t.severity) IN ('urgent','important')
+       AND NOT EXISTS (
+         SELECT 1 FROM email_messages m
+         JOIN connections conn2 ON conn2.id = m.connection_id
+         WHERE m.thread_id = t.id
+           AND LOWER(m.from_email) = LOWER(conn2.account_email)
+           AND m.sent_at = (SELECT MAX(m2.sent_at) FROM email_messages m2 WHERE m2.thread_id = t.id)
+       )`
+	)
+		.bind(...scope.ids)
+		.first<{ n: number }>();
+
 	// Counts for the filter bar, over the same set minus the severity filter, so
-	// the numbers beside each chip say how many that chip would show.
+	// the numbers beside each chip say how many that chip would show. That set
+	// follows the archived toggle: pinned to the inbox, these reported inbox
+	// numbers while the reader was looking at the archive.
+	const archivedOnly = c.req.query('archived') === 'true';
 	const counts = await c.env.DB.prepare(
 		`SELECT ${effective} AS severity, COUNT(*) AS n
      FROM email_threads t
      WHERE t.connection_id IN (${scopePlaceholders(scope)})
-       AND t.archived_at IS NULL
+       AND t.archived_at IS ${archivedOnly ? 'NOT NULL' : 'NULL'}
      GROUP BY ${effective}`
 	)
 		.bind(...scope.ids)
 		.all<{ severity: string | null; n: number }>();
 
+	// How many sit in the archive, which the toggle reports in both directions.
+	// It is its own question and cannot be read off `counts`, which describes
+	// whichever side is currently on screen.
+	const archivedCount = await c.env.DB.prepare(
+		`SELECT COUNT(*) AS n FROM email_threads t
+     WHERE t.connection_id IN (${scopePlaceholders(scope)})
+       AND t.archived_at IS NOT NULL`
+	)
+		.bind(...scope.ids)
+		.first<{ n: number }>();
+
 	return c.json({
+		archived_count: archivedCount?.n ?? 0,
 		scope: scope.kind,
+		needs_you: Number(needsYou?.n ?? 0),
 		accounts:
 			scope.kind === 'all'
 				? scope.accounts.map((a) => ({ id: a.id, account_email: a.account_email }))
@@ -331,6 +386,10 @@ email.get('/threads/:id', async (c) => {
 	await assertThreadOwned(c.env.DB, c.req.param('id'), account.id);
 
 	const id = c.req.param('id');
+	const guidanceBody = (await c.req.json().catch(() => ({}))) as { guidance?: unknown };
+	const guidance =
+		typeof guidanceBody.guidance === 'string' ? guidanceBody.guidance.slice(0, 4000) : null;
+
 	const thread = await c.env.DB.prepare(
 		`SELECT t.*, cl.name AS client_name FROM email_threads t
      LEFT JOIN clients cl ON cl.id = t.client_id WHERE t.id = ?`
@@ -380,6 +439,9 @@ email.get('/threads/:id', async (c) => {
 
 	return c.json({
 		thread,
+		// Which mailbox this thread lives in, so a link out to Gmail opens in the
+		// right account rather than whichever one Google saw last.
+		account_email: account.account_email,
 		messages: rows,
 		bodies,
 		open_ids: openIds,
@@ -703,6 +765,20 @@ email.post('/threads/:id/draft', async (c) => {
 	const account = await resolveAccount(c.env.DB, c.req.query('account'));
 	await assertThreadOwned(c.env.DB, c.req.param('id'), account.id);
 
+	/**
+	 * Paul's own words, when he supplied them.
+	 *
+	 * Present means "rephrase what I wrote"; absent means "write from the
+	 * thread". One route and one set of guards rather than two, because the
+	 * rule that matters, commit to nothing not already agreed, has to hold
+	 * identically in both modes.
+	 */
+	const body = (await c.req.json().catch(() => ({}))) as { guidance?: unknown };
+	const guidance =
+		typeof body.guidance === 'string' && body.guidance.trim()
+			? body.guidance.slice(0, 4000)
+			: null;
+
 	const apiKey = c.env.ANTHROPIC_API_KEY;
 	if (!apiKey) {
 		throw new ApiError(503, 'No AI key is configured.');
@@ -770,7 +846,8 @@ email.post('/threads/:id/draft', async (c) => {
 			messages: withBodies,
 			voice,
 			gist: thread.gist,
-			context
+			context,
+			guidance
 		});
 	} catch (err) {
 		throw asApiError(err);
@@ -810,7 +887,10 @@ email.post('/threads/:id/draft', async (c) => {
 	return c.json({
 		draft,
 		voice_samples: voice.length,
-		had_client_context: Boolean(context)
+		had_client_context: Boolean(context),
+		// Which mode produced it, so the screen's label reports what happened
+		// rather than what the button said.
+		mode: guidance ? 'from_your_words' : 'from_thread'
 	});
 });
 
@@ -978,4 +1058,79 @@ email.get('/context/spend', async (c) => {
 			'hardcoded rate goes stale quietly and a meter that is confidently wrong about ' +
 			'money is worse than one that reports tokens.'
 	});
+});
+
+/* -------------------------------------------------------------------------
+ * Attachments
+ * ---------------------------------------------------------------------- */
+
+/**
+ * Streams one attachment out of Gmail.
+ *
+ * Fetched on request rather than cached, per the ruling. The account is
+ * resolved and ownership asserted first: an attachment id is a handle to
+ * somebody's file, and serving one because the id was guessable would be the
+ * segregation failure with a document attached rather than a subject line.
+ */
+email.get('/attachments/:id/download', async (c) => {
+	const { clientId, clientSecret } = (() => {
+		if (!c.env.GOOGLE_CLIENT_ID || !c.env.GOOGLE_CLIENT_SECRET) {
+			throw new ApiError(503, 'Google is not configured on this Worker.');
+		}
+		return { clientId: c.env.GOOGLE_CLIENT_ID, clientSecret: c.env.GOOGLE_CLIENT_SECRET };
+	})();
+
+	const account = await resolveAccount(c.env.DB, c.req.query('account'));
+
+	const row = await c.env.DB.prepare(
+		`SELECT a.provider_attachment_id, a.filename, a.mime_type, a.size_bytes,
+            m.provider_message_id, m.connection_id
+     FROM email_attachments a
+     JOIN email_messages m ON m.id = a.message_id
+     WHERE a.id = ?`
+	)
+		.bind(c.req.param('id'))
+		.first<{
+			provider_attachment_id: string | null;
+			filename: string | null;
+			mime_type: string | null;
+			size_bytes: number | null;
+			provider_message_id: string;
+			connection_id: string;
+		}>();
+
+	// 404 rather than 403 for the wrong account, same as everywhere else:
+	// confirming a file exists but belongs to another mailbox is itself a leak.
+	if (!row || row.connection_id !== account.id) {
+		throw new ApiError(404, 'Not found in this account.');
+	}
+	if (!row.provider_attachment_id) {
+		throw new ApiError(404, 'Gmail did not give this attachment a handle, so it cannot be fetched.');
+	}
+
+	try {
+		const tokens = await accessToken(c.env.SESSIONS, account.id, clientId, clientSecret);
+		const bytes = await getAttachment(
+			tokens.access_token,
+			row.provider_message_id,
+			row.provider_attachment_id
+		);
+
+		// The filename is quoted and stripped of anything that would break the
+		// header or escape the download directory.
+		const safe = (row.filename ?? 'attachment').replace(/["\r\n\\]/g, '').slice(0, 200);
+		// The buffer rather than the view: workers-types narrows BodyInit and a
+		// Uint8Array view is not assignable, though the runtime accepts both.
+		return new Response(bytes.buffer as ArrayBuffer, {
+			headers: {
+				'content-type': row.mime_type ?? 'application/octet-stream',
+				'content-disposition': `attachment; filename="${safe}"`,
+				'content-length': String(bytes.byteLength),
+				// Never cached by a shared cache: this is somebody's private file.
+				'cache-control': 'private, no-store'
+			}
+		});
+	} catch (err) {
+		throw asApiError(err);
+	}
 });

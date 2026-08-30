@@ -795,3 +795,32 @@ export async function getMessage(
 		attachments: withBody ? collectAttachments(raw.payload) : []
 	};
 }
+
+/**
+ * One attachment's bytes, fetched when somebody asks for it.
+ *
+ * Deliberately not cached into R2. Most attachments are never opened, and
+ * pre-caching every one would spend storage and ingest budget on files nobody
+ * wants; caching them on first open is a reasonable idea that needs its own
+ * ruling before it exists, because it changes what a backup contains.
+ *
+ * `gmail.readonly` covers this. It is still a read: nothing about fetching an
+ * attachment can alter the mailbox.
+ */
+export async function getAttachment(
+	token: string,
+	messageId: string,
+	attachmentId: string
+): Promise<Uint8Array> {
+	const body = await apiGet<{ data?: string; size?: number }>(
+		token,
+		`${GMAIL_ENDPOINT}/messages/${encodeURIComponent(messageId)}/attachments/${encodeURIComponent(attachmentId)}`
+	);
+	if (!body.data) throw new GoogleError(502, 'Google returned no attachment data.');
+
+	// Gmail base64url again, and the same cap: an attachment is arbitrary size
+	// and the worker has a fixed budget.
+	const normalised = body.data.replace(/-/g, '+').replace(/_/g, '/');
+	const binary = atob(normalised);
+	return Uint8Array.from(binary, (ch) => ch.charCodeAt(0));
+}
