@@ -8,20 +8,20 @@
 	import Card from '$lib/components/Card.svelte';
 	import Input from '$lib/components/Input.svelte';
 	import Select from '$lib/components/Select.svelte';
-	import AccountSwitcher from '$lib/components/AccountSwitcher.svelte';
+	import MailboxPicker from '$lib/components/MailboxPicker.svelte';
 	import type { PageData } from './$types';
 
 	/**
-	 * Mail, as a list you can scan.
+	 * Mail, rebuilt per CR-1.
 	 *
-	 * The first version put the full summary in every row, which Paul correctly
-	 * called unreadable. A list needs a label and one line; the paragraph belongs
-	 * inside the thread. So a row is a severity chip, a sender, a subject and the
-	 * one line gist, and nothing else.
+	 * The design's organising idea is that everything you can do is visible: a
+	 * row is a link, a chip is a state, a pill is a correction, and none of them
+	 * need to be discovered by hovering. The previous version had the same
+	 * capabilities and hid most of them.
 	 *
-	 * Urgent and Important are the default view. Routine and Noise are one click
-	 * away and never gone, because a filter that hides mail permanently is one
-	 * nobody trusts.
+	 * What has not changed is the boundary. Archiving is a local flag, no control
+	 * on this screen can reach Gmail, and the copy says so where somebody would
+	 * otherwise assume otherwise.
 	 */
 
 	let { data }: { data: PageData } = $props();
@@ -34,24 +34,13 @@
 		q = data.q;
 	});
 
-	/**
-	 * Changing mailbox is remembered, so the next visit opens where this one
-	 * left off rather than on whichever account sorts first.
-	 */
-	async function switchAccount(account: string) {
-		busy = true;
-		await apiWrite('/api/connections/active-account', 'PUT', { account });
-		busy = false;
-		goto(urlFor({ account }), { keepFocus: true });
-	}
-
 	function urlFor(next: Record<string, string | null>) {
 		const params = new URLSearchParams();
 		const merged: Record<string, string | null> = {
 			q,
 			account: data.account,
 			client_id: data.clientId,
-			severity: data.severity,
+			tab: data.tab,
 			archived: data.archived ? 'true' : null,
 			...next
 		};
@@ -65,15 +54,21 @@
 		goto(urlFor(next), { keepFocus: true });
 	}
 
-	function search(event: SubmitEvent) {
-		event.preventDefault();
-		apply({ q });
+	async function switchAccount(account: string) {
+		busy = true;
+		await apiWrite('/api/connections/active-account', 'PUT', { account });
+		busy = false;
+		goto(urlFor({ account }), { keepFocus: true });
 	}
 
 	async function correct(thread: ThreadRow, severity: Severity) {
 		busy = true;
 		errorMessage = '';
-		const result = await apiWrite(`/api/email/threads/${thread.id}/correct`, 'POST', { severity });
+		const result = await apiWrite(
+			`/api/email/threads/${thread.id}/correct?account=${thread.account_id ?? data.account}`,
+			'POST',
+			{ severity }
+		);
 		if (!result.ok) errorMessage = result.error ?? 'Could not save that correction.';
 		else await invalidateAll();
 		busy = false;
@@ -82,15 +77,20 @@
 	async function archive(thread: ThreadRow) {
 		busy = true;
 		errorMessage = '';
-		const undo = thread.archived_at ? '?undo=true' : '';
-		const result = await apiWrite(`/api/email/threads/${thread.id}/archive${undo}`, 'POST', {});
+		const undo = thread.archived_at ? '&undo=true' : '';
+		const result = await apiWrite(
+			`/api/email/threads/${thread.id}/archive?account=${thread.account_id ?? data.account}${undo}`,
+			'POST',
+			{}
+		);
 		if (!result.ok) errorMessage = result.error ?? 'Could not archive that.';
 		else await invalidateAll();
 		busy = false;
 	}
 
-	const chips: { key: string; label: string }[] = [
-		{ key: 'urgent,important', label: 'Needs you' },
+	/** The tabs, in the order the design fixes them. */
+	const TABS: { key: string; label: string }[] = [
+		{ key: 'needs', label: 'Needs you' },
 		{ key: 'urgent', label: 'Urgent' },
 		{ key: 'important', label: 'Important' },
 		{ key: 'routine', label: 'Routine' },
@@ -98,116 +98,127 @@
 		{ key: 'all', label: 'Everything' }
 	];
 
-	const current = $derived(data.severity ?? 'urgent,important');
-
 	function countFor(key: string): number {
+		if (key === 'needs') return data.needsYou;
 		if (key === 'all') return Object.values(data.counts).reduce((n, v) => n + v, 0);
-		return key.split(',').reduce((n, part) => n + (data.counts[part] ?? 0), 0);
+		return data.counts[key] ?? 0;
+	}
+
+	const CHIP: Record<string, string> = {
+		urgent: 'chip-urgent',
+		important: 'chip-important',
+		routine: 'chip-routine',
+		noise: 'chip-noise'
+	};
+
+	function chipClass(thread: ThreadRow): string {
+		if (thread.archived_at) return 'chip-archived';
+		return CHIP[thread.effective_severity ?? ''] ?? 'chip-none';
+	}
+
+	function chipLabel(thread: ThreadRow): string {
+		if (thread.archived_at) return 'Archived';
+		return thread.effective_severity ? SEVERITY_LABELS[thread.effective_severity] : 'Untriaged';
 	}
 </script>
 
 <svelte:head><title>Mail</title></svelte:head>
-
-<header class="head">
-	<h1>Mail</h1>
-	<p class="sub">
-		{#if data.ingest}
-			{data.ingest.stored.threads} threads from {data.ingest.stored.messages} messages
-			{#if data.ingest.account} in {data.ingest.account}{/if}.
-		{/if}
-		Read only. Archiving here does not touch Gmail.
-	</p>
-</header>
-
-{#if errorMessage}<p class="error" role="alert">{errorMessage}</p>{/if}
 
 {#if data.noAccount}
 	<Card title="No account connected">
 		<p class="empty">Connect a Google account in Settings to read mail here.</p>
 	</Card>
 {:else}
-<AccountSwitcher
-	accounts={data.roster}
-	active={data.scope === 'all' ? 'all' : data.account}
-	{busy}
-	onChange={switchAccount}
-/>
+	<header class="head">
+		<div>
+			<h1>Mail</h1>
+			<p class="sub">
+				{Object.values(data.counts).reduce((n, v) => n + v, 0)} threads. Read only. Archiving
+				here does not touch Gmail.
+			</p>
+		</div>
+		<MailboxPicker
+			accounts={data.roster}
+			active={data.scope === 'all' ? 'all' : data.account}
+			{busy}
+			onChange={switchAccount}
+		/>
+	</header>
 
-<nav class="chips" aria-label="Filter by what it needs from you">
-	{#each chips as chip (chip.key)}
-		<a
-			href={urlFor({ severity: chip.key === 'all' ? 'all' : chip.key })}
-			class="chip"
-			class:on={current === chip.key}
-			aria-current={current === chip.key ? 'page' : undefined}
-		>
-			{chip.label}
-			<span class="n mono">{countFor(chip.key)}</span>
-		</a>
-	{/each}
-</nav>
+	{#if errorMessage}<p class="error" role="alert">{errorMessage}</p>{/if}
 
-<form class="filters" onsubmit={search}>
-	<div class="search">
-		<Input bind:value={q} placeholder="Search subjects, senders and gists" />
-		<Button type="submit" size="sm">Search</Button>
-	</div>
-
-	<Select
-		value={data.clientId}
-		onchange={(e) => apply({ client_id: (e.currentTarget as HTMLSelectElement).value })}
-	>
-		<option value="">Every client</option>
-		{#each data.clients as client (client.id)}
-			<option value={client.id}>{client.name}</option>
+	<nav class="tabs" aria-label="Filter mail by what it needs from you">
+		{#each TABS as tab (tab.key)}
+			<a
+				href={urlFor({ tab: tab.key })}
+				class="tab"
+				class:on={data.tab === tab.key}
+				aria-current={data.tab === tab.key ? 'page' : undefined}
+			>
+				{tab.label}
+				<span class="tab-n mono">{countFor(tab.key)}</span>
+			</a>
 		{/each}
-	</Select>
+	</nav>
 
-	<a class="plain-link" href={urlFor({ archived: data.archived ? null : 'true' })}>
-		{data.archived ? 'Hide archived' : 'Show archived'}
-	</a>
-</form>
+	<form
+		class="filters"
+		onsubmit={(e) => {
+			e.preventDefault();
+			apply({ q });
+		}}
+	>
+		<div class="search">
+			<Input bind:value={q} placeholder="Search subjects, senders and gists" />
+		</div>
+		<Button type="submit">Search</Button>
+		<div class="client">
+			<Select
+				value={data.clientId}
+				onchange={(e) => apply({ client_id: (e.currentTarget as HTMLSelectElement).value })}
+			>
+				<option value="">Every client</option>
+				{#each data.clients as client (client.id)}
+					<option value={client.id}>{client.name}</option>
+				{/each}
+			</Select>
+		</div>
+		<a class="ghost" href={urlFor({ archived: data.archived ? null : 'true' })}>
+			<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+				<rect x="2" y="4" width="20" height="5" rx="1" />
+				<path d="M4 9v9a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9" />
+				<path d="M10 13h4" />
+			</svg>
+			{data.archived ? 'Hide archived' : 'Show archived'} ({data.archivedCount})
+		</a>
+	</form>
 
-{#if data.untriaged > 0}
-	<p class="notice" role="status">
-		{data.untriaged} thread{data.untriaged === 1 ? ' has' : 's have'} no triage yet. Run
-		Summarise from Settings to sort them.
-	</p>
-{/if}
+	{#if (data.counts.untriaged ?? 0) > 0}
+		<div class="callout">
+			<span
+				>{data.counts.untriaged} threads have no triage yet. Run Summarise from Settings to sort
+				them.</span
+			>
+			<Button variant="secondary" size="sm" onclick={() => goto('/settings')}>Open settings</Button>
+		</div>
+	{/if}
 
-{#if data.threads.length === 0}
-	<Card title="Nothing here">
-		<p class="empty">
-			{#if data.ingest && data.ingest.stored.messages === 0}
-				No mail has been read yet. Start from Settings.
-			{:else}
-				Nothing matches this filter. Try Everything.
-			{/if}
-		</p>
-	</Card>
-{:else}
-	<ul class="threads">
+	<div class="threads">
 		{#each data.threads as thread (thread.id)}
-			<li class:unread={!thread.read_at}>
-				<div class="row">
-					<span
-						class="sev sev-{thread.effective_severity ?? 'none'}"
-						title={thread.severity_override
-							? `You set this. The model said ${thread.severity}.`
-							: undefined}
-					>
-						{thread.effective_severity ? SEVERITY_LABELS[thread.effective_severity] : 'Untriaged'}
-						{#if thread.severity_override}<span class="mine">edited</span>{/if}
-					</span>
-
-					<a class="subject" href="/mail/{thread.id}">{thread.subject ?? '(no subject)'}</a>
-
+			<div class="thread">
+				<a class="row" href="/mail/{thread.id}?account={thread.account_id ?? data.account}">
+					<span class="chip {chipClass(thread)}">{chipLabel(thread)}</span>
+					{#if thread.severity_override}<span class="edited mono">edited</span>{/if}
+					<span class="subject">{thread.subject ?? '(no subject)'}</span>
 					<span class="when mono">{thread.last_at ? formatMoment(thread.last_at) : ''}</span>
-				</div>
+					<svg class="go" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+						<path d="M9 18l6-6-6-6" />
+					</svg>
+				</a>
 
 				<p class="meta">
 					{#if data.scope === 'all' && thread.account_email}
-						<span class="acct">{thread.account_email}</span>
+						<span class="acct mono">{thread.account_email}</span>
 					{/if}
 					{thread.latest_from_name ?? thread.latest_from ?? 'Unknown sender'}
 					{#if thread.actual_count > 1}&middot; {thread.actual_count} messages{/if}
@@ -220,32 +231,46 @@
 					<p class="gist faint">{thread.latest_snippet}</p>
 				{/if}
 
-				<div class="actions">
-					<span class="tiny">Not right?</span>
+				<div class="fixes">
+					<span class="fixes-label mono">Not right?</span>
 					{#each SEVERITIES as severity (severity)}
 						{#if severity !== thread.effective_severity}
-							<button type="button" class="fix" disabled={busy} onclick={() => correct(thread, severity)}>
+							<button
+								type="button"
+								class="pill"
+								disabled={busy}
+								onclick={() => correct(thread, severity)}
+							>
 								{SEVERITY_LABELS[severity]}
 							</button>
 						{/if}
 					{/each}
-					<button type="button" class="fix" disabled={busy} onclick={() => archive(thread)}>
+					<button type="button" class="pill" disabled={busy} onclick={() => archive(thread)}>
 						{thread.archived_at ? 'Unarchive' : 'Archive'}
 					</button>
 				</div>
-			</li>
+			</div>
 		{/each}
-	</ul>
-{/if}
+
+		{#if data.threads.length === 0}
+			<p class="none">No threads in this view. Pick another tab above.</p>
+		{/if}
+	</div>
 {/if}
 
 <style>
 	.head {
-		margin-bottom: var(--space-3);
+		display: flex;
+		align-items: flex-end;
+		justify-content: space-between;
+		gap: var(--space-4);
+		flex-wrap: wrap;
 	}
 
 	h1 {
-		margin: 0 0 var(--space-1);
+		font-size: var(--text-2xl);
+		font-weight: 700;
+		margin: 0 0 6px;
 	}
 
 	.sub {
@@ -254,129 +279,192 @@
 		color: var(--text-secondary);
 	}
 
-	.chips {
-		display: flex;
-		flex-wrap: wrap;
-		gap: var(--space-2);
-		margin-bottom: var(--space-3);
-	}
-
-	.chip {
+	/* Segmented control. The container carries the border and shadow; the tabs
+	   inside carry only their own state, so the group reads as one thing. */
+	.tabs {
 		display: inline-flex;
-		align-items: baseline;
+		gap: 4px;
+		margin-top: var(--space-5);
+		padding: 4px;
+		background: var(--surface-card);
+		border: 1px solid var(--border-thin);
+		border-radius: var(--radius-md);
+		box-shadow: var(--shadow-card);
+		max-width: 100%;
+		overflow-x: auto;
+	}
+
+	.tab {
+		display: inline-flex;
+		align-items: center;
 		gap: var(--space-2);
-		font-size: var(--text-sm);
-		padding: 4px 10px;
-		border: 1px solid var(--border);
-		border-radius: 999px;
+		padding: 7px 14px;
+		border-radius: var(--radius-sm);
+		white-space: nowrap;
+		flex-shrink: 0;
+		font-size: var(--text-base);
+		font-weight: 500;
 		text-decoration: none;
-		color: inherit;
-		background: var(--surface);
+		color: var(--ink);
+		transition: background-color var(--transition-fast);
 	}
 
-	.chip.on {
-		border-color: var(--navy, #102a4c);
-		font-weight: 600;
+	.tab:hover {
+		background: var(--navy-50);
 	}
 
-	.chip .n {
+	.tab.on {
+		background: var(--navy);
+		color: var(--text-inverse);
+	}
+
+	.tab.on:hover {
+		background: var(--navy);
+	}
+
+	.tab-n {
 		font-size: var(--text-xs);
-		color: var(--text-secondary);
+		color: var(--muted);
+	}
+
+	.tab.on .tab-n {
+		color: var(--text-inverse-muted);
 	}
 
 	.filters {
 		display: flex;
-		flex-wrap: wrap;
-		align-items: center;
 		gap: var(--space-3);
-		margin-bottom: var(--space-4);
+		margin-top: var(--space-4);
+		align-items: center;
+		flex-wrap: wrap;
 	}
 
 	.search {
-		display: flex;
-		align-items: center;
-		gap: var(--space-2);
-		flex: 1 1 240px;
+		flex: 1;
+		min-width: 280px;
 	}
 
-	.plain-link {
+	.client {
+		width: 220px;
+	}
+
+	.ghost {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		padding: 8px 12px;
+		border-radius: var(--radius-sm);
+		text-decoration: none;
+		font-size: var(--text-base);
+		font-weight: 500;
+		color: var(--navy-700);
+		transition: background-color var(--transition-fast);
+	}
+
+	.ghost:hover {
+		background: var(--navy-50);
+	}
+
+	.callout {
+		display: flex;
+		align-items: center;
+		gap: var(--space-3);
+		margin-top: var(--space-4);
+		padding: 12px 16px;
+		background: var(--surface-callout);
+		border: 1px solid var(--border-thin);
+		border-radius: var(--radius-md);
 		font-size: var(--text-sm);
+		flex-wrap: wrap;
 	}
 
 	.threads {
-		list-style: none;
-		margin: 0;
-		padding: 0;
-		border: 1px solid var(--border);
-		border-radius: var(--radius-md);
-		background: var(--surface);
+		margin-top: var(--space-4);
+		background: var(--surface-card);
+		border: 1px solid var(--border-thin);
+		border-radius: var(--radius-lg);
+		box-shadow: var(--shadow-card);
 		overflow: hidden;
 	}
 
-	.threads li {
-		padding: var(--space-3) var(--space-4);
+	.thread + .thread {
+		border-top: 1px solid var(--border-thin);
 	}
 
-	.threads li + li {
-		border-top: 1px solid var(--border);
-	}
-
-	.threads li.unread .subject {
-		font-weight: 700;
-	}
-
+	/* The whole row is the link, so the target is the size of the row rather
+	   than the size of the words. */
 	.row {
 		display: flex;
-		flex-wrap: wrap;
 		align-items: baseline;
 		gap: var(--space-2);
+		padding: 14px 20px 4px;
+		text-decoration: none;
+		color: inherit;
+		transition: background-color var(--transition-fast);
+	}
+
+	.row:hover {
+		background: var(--surface-hover);
 	}
 
 	.subject {
-		flex: 1 1 240px;
+		flex: 1;
 		min-width: 0;
 		font-weight: 600;
-		text-decoration: none;
-		color: inherit;
+		font-size: var(--text-md);
+		color: var(--text-link);
 		overflow-wrap: anywhere;
-	}
-
-	.subject:hover {
 		text-decoration: underline;
+		text-decoration-color: transparent;
+		text-underline-offset: 3px;
+		transition: text-decoration-color var(--transition-fast);
 	}
 
-	/* The chip carries the state in words. Colour is a second signal and never
-	   the only one, per the accessibility baseline. */
-	.sev {
+	.row:hover .subject {
+		text-decoration-color: var(--navy-500);
+	}
+
+	.chip {
+		align-self: center;
+		font-family: var(--font-mono);
 		font-size: var(--text-xs);
+		letter-spacing: var(--tracking-label);
 		text-transform: uppercase;
-		letter-spacing: 0.04em;
-		padding: 1px 8px;
-		border-radius: 999px;
-		border: 1px solid var(--border);
+		padding: 3px 10px;
+		border-radius: var(--radius-pill);
 		white-space: nowrap;
 	}
 
-	.sev-urgent {
-		border-color: var(--gold);
-		font-weight: 700;
+	/* Colour is a second signal. The word in the chip carries the state. */
+	.chip-urgent {
+		background: #f3e5c2;
+		color: #77590f;
+	}
+	.chip-important {
+		background: var(--gold-100);
+		color: var(--gold-600);
+	}
+	.chip-routine {
+		background: var(--navy-50);
+		color: var(--navy-500);
+	}
+	.chip-noise {
+		background: #f0efea;
+		color: var(--muted);
+	}
+	.chip-archived {
+		background: var(--navy-100);
+		color: var(--navy);
+	}
+	.chip-none {
+		background: #f0efea;
+		color: var(--muted);
 	}
 
-	.sev-important {
-		border-color: var(--navy, #102a4c);
-		font-weight: 600;
-	}
-
-	.sev-noise,
-	.sev-none {
-		color: var(--text-secondary);
-	}
-
-	.mine {
-		margin-left: 4px;
-		text-transform: none;
-		letter-spacing: 0;
+	.edited {
+		font-size: var(--text-xs);
 		font-style: italic;
+		color: var(--text-secondary);
 	}
 
 	.when {
@@ -385,16 +473,35 @@
 		white-space: nowrap;
 	}
 
+	.go {
+		color: var(--muted);
+		flex-shrink: 0;
+		align-self: center;
+	}
+
 	.meta {
-		margin: 2px 0 0;
-		font-size: var(--text-xs);
+		margin: 4px 0 0;
+		padding: 0 20px;
+		font-size: var(--text-sm);
 		color: var(--text-secondary);
 		overflow-wrap: anywhere;
 	}
 
+	.acct {
+		display: inline-block;
+		margin-right: 6px;
+		padding: 1px 8px;
+		border: 1px solid var(--navy-100);
+		border-radius: var(--radius-pill);
+		font-size: var(--text-xs);
+		color: var(--navy);
+	}
+
 	.gist {
-		margin: var(--space-1) 0 0;
-		font-size: var(--text-sm);
+		margin: 6px 0 0;
+		padding: 0 20px;
+		font-size: var(--text-base);
+		color: var(--text-body);
 		overflow-wrap: anywhere;
 	}
 
@@ -402,38 +509,52 @@
 		color: var(--text-secondary);
 	}
 
-	.actions {
+	.fixes {
 		display: flex;
-		flex-wrap: wrap;
 		align-items: center;
 		gap: var(--space-2);
-		margin-top: var(--space-2);
+		padding: 10px 20px 14px;
+		flex-wrap: wrap;
 	}
 
-	.tiny {
+	.fixes-label {
 		font-size: var(--text-xs);
+		letter-spacing: var(--tracking-label);
+		text-transform: uppercase;
 		color: var(--text-secondary);
 	}
 
-	.fix {
-		font: inherit;
-		font-size: var(--text-xs);
-		background: none;
-		border: 1px solid var(--border);
-		border-radius: 999px;
-		padding: 1px 8px;
+	.pill {
+		padding: 4px 12px;
+		background: var(--surface-card);
+		border: 1px solid var(--border-strong);
+		border-radius: var(--radius-pill);
 		cursor: pointer;
-		color: var(--text-secondary);
+		font-family: var(--font-sans);
+		font-size: var(--text-sm);
+		font-weight: 500;
+		color: var(--navy-700);
+		transition:
+			background-color var(--transition-fast),
+			border-color var(--transition-fast);
 	}
 
-	.fix:hover {
-		color: var(--text-primary);
-		border-color: var(--navy, #102a4c);
+	.pill:hover:not(:disabled) {
+		background: var(--navy-50);
+		border-color: var(--navy-500);
 	}
 
+	.pill:disabled {
+		opacity: 0.6;
+		cursor: default;
+	}
+
+	.none,
 	.empty {
 		margin: 0;
-		font-size: var(--text-sm);
+		padding: 40px 20px;
+		text-align: center;
+		font-size: var(--text-base);
 		color: var(--text-secondary);
 	}
 </style>

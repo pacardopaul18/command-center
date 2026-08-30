@@ -38,6 +38,7 @@ export interface Attachment {
 
 export interface ThreadDetail {
 	id: string;
+	provider_thread_id: string;
 	subject: string | null;
 	client_id: string | null;
 	client_name: string | null;
@@ -56,8 +57,20 @@ export interface ThreadDetail {
 	read_at: string | null;
 }
 
-export const load: PageLoad = async ({ fetch, params }) => {
-	const res = await fetch(`/api/email/threads/${params.id}`);
+export const load: PageLoad = async ({ fetch, params, url }) => {
+	/**
+	 * The account travels with every request from this page.
+	 *
+	 * It did not before, and that was a real defect rather than an omission of
+	 * style: with one account `resolveAccount` defaults and everything works,
+	 * and the moment a second is connected the page load, the body fetch and
+	 * all five writes throw. Multi-account shipped without this screen ever
+	 * being opened against two accounts, and the guarantee tests caught it.
+	 */
+	const account = url.searchParams.get('account') ?? '';
+	const q = account ? `?account=${encodeURIComponent(account)}` : '';
+
+	const res = await fetch(`/api/email/threads/${params.id}${q}`);
 
 	if (res.status === 404) error(404, 'Thread not found.');
 	if (!res.ok) {
@@ -65,13 +78,15 @@ export const load: PageLoad = async ({ fetch, params }) => {
 		throw new Error(body.error ?? 'Could not load the thread.');
 	}
 
-	return (await res.json()) as {
+	const data = (await res.json()) as {
 		thread: ThreadDetail;
+		account_email: string | null;
 		messages: ThreadMessage[];
-		/** Bodies for the messages open on arrival, so nothing needs clicking. */
 		bodies: Record<string, { body: string; format: 'text' | 'html' | null }>;
 		open_ids: string[];
 		draft: Draft | null;
 		attachments: Attachment[];
 	};
+
+	return { ...data, account };
 };

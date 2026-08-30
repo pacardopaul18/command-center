@@ -4,71 +4,118 @@
 	import { formatMoment } from '$lib/format';
 	import { SEVERITIES, SEVERITY_HELP, SEVERITY_LABELS, CATEGORY_LABELS } from '$lib/types-mail';
 	import type { Severity } from '$lib/types-mail';
-	import Card from '$lib/components/Card.svelte';
 	import EmailBody from '$lib/components/EmailBody.svelte';
 	import type { PageData } from './$types';
 	import type { ThreadMessage } from './+page';
 
 	/**
-	 * One thread, opened the way a mail client opens one.
+	 * One thread, rebuilt per CR-1.
 	 *
-	 * A single message thread is fully open. A longer one opens its latest and
-	 * collapses the rest. Paul had to click every message to see anything, which
-	 * was work the page could have done and now does: the bodies that will be
-	 * open arrive with the page.
+	 * Messages newest first, the latest open on arrival with its body already on
+	 * the page. Everything that can be done has a visible control: expand, reply,
+	 * forward, correct, archive, download.
 	 *
-	 * Bodies are rendered, not dumped. See EmailBody: the source is parsed into a
-	 * validated tree and drawn as elements, so a marketing email reads as mail
-	 * rather than as a wall of tracking URLs, and nothing it contains can run.
-	 *
-	 * There is no reply, forward or draft button, because there is no permission
-	 * for any of it.
+	 * None of those controls can send anything. Reply and Forward look exactly
+	 * like a send surface and are not one: Reply focuses the drafting box, and
+	 * Forward composes a block and puts it on the clipboard. There is no scope
+	 * that would allow otherwise, and the copy says so where somebody would
+	 * reasonably assume there is.
 	 */
 
 	let { data }: { data: PageData } = $props();
 
-	/**
-	 * Bodies the server sent, merged with any fetched here since.
-	 *
-	 * A derived merge rather than state seeded from the load. Effects do not run
-	 * during server rendering, so seeding through one left the first paint with
-	 * no body at all and the message appeared only after hydration; and seeding
-	 * at declaration would go stale when navigating between threads, which reuses
-	 * this component. Merging is correct in both cases and needs no lifecycle.
-	 */
+	/** Every request from this page carries the account. See the load. */
+	const acct = $derived(data.account ? `?account=${encodeURIComponent(data.account)}` : '');
+	const acctAmp = $derived(data.account ? `&account=${encodeURIComponent(data.account)}` : '');
+
 	let fetched = $state<Record<string, { body: string; format: 'text' | 'html' | null }>>({});
 	let toggled = $state<Record<string, boolean>>({});
 	let loading = $state<string | null>(null);
 	let busy = $state(false);
 	let errorMessage = $state('');
+	let guidance = $state('');
+	let copied = $state('');
+	let attachmentsOpen = $state(true);
+
+	let guidanceBox: HTMLTextAreaElement | null = $state(null);
 
 	const bodies = $derived({ ...data.bodies, ...fetched });
 
-	/** Open by default per the server, minus anything collapsed here. */
 	const openIds = $derived(
 		data.messages
 			.map((m) => m.id)
 			.filter((id) => (id in toggled ? toggled[id] : data.open_ids.includes(id)))
 	);
 
-	// Reading it marks it read. Not a button: opening a thread is the act.
+	/** Newest first, which is the order a person reads a thread they know. */
+	const ordered = $derived([...data.messages].reverse());
+
+	const effective = $derived(data.thread.severity_override ?? data.thread.severity);
+	const effectiveCategory = $derived(data.thread.category_override ?? data.thread.category);
+
+	const attachmentBytes = $derived(
+		data.attachments.reduce((n, a) => n + (a.size_bytes ?? 0), 0)
+	);
+
+	/** How many people are in the thread, counted by address rather than name. */
+	const people = $derived(
+		new Set(
+			data.messages
+				.map((m) => (m.from_email ?? '').trim().toLowerCase())
+				.filter(Boolean)
+		).size
+	);
+
+	/**
+	 * The same thread in Gmail, for everything this app deliberately cannot do.
+	 * `authuser` pins the mailbox, so a two-account reader does not land in
+	 * whichever account Google saw most recently.
+	 */
+	const gmailUrl = $derived(
+		data.account_email
+			? `https://mail.google.com/mail/u/?authuser=${encodeURIComponent(data.account_email)}#all/${encodeURIComponent(data.thread.provider_thread_id)}`
+			: `https://mail.google.com/mail/u/0/#all/${encodeURIComponent(data.thread.provider_thread_id)}`
+	);
+
+	/**
+	 * Which way the draft on screen was written.
+	 *
+	 * Held for this visit only. The drafts table has no column for it, and
+	 * adding one is a schema change for a label, so on reload the draft is
+	 * honestly just "Draft" rather than claiming an origin it cannot know.
+	 */
+	let draftMode = $state<'from_your_words' | 'from_thread' | null>(null);
+
+	const draftText = $derived(data.draft?.edited_body ?? data.draft?.body ?? '');
+
+	const draftStale = $derived(
+		Boolean(
+			data.draft?.based_on_last_at &&
+				data.thread.last_at &&
+				data.draft.based_on_last_at < data.thread.last_at
+		)
+	);
+
+	// Opening a thread is the act of reading it. Not a button.
 	$effect(() => {
-		const id = data.thread.id;
 		if (data.thread.read_at) return;
-		apiWrite(`/api/email/threads/${id}/read`, 'POST', {});
+		apiWrite(`/api/email/threads/${data.thread.id}/read${acct}`, 'POST', {});
 	});
+
+	function focusGuidance() {
+		guidanceBox?.focus();
+		guidanceBox?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+	}
 
 	async function toggle(message: ThreadMessage) {
 		const isOpen = openIds.includes(message.id);
 		toggled = { ...toggled, [message.id]: !isOpen };
-		if (isOpen) return;
-
-		if (bodies[message.id] || !message.body_key) return;
+		if (isOpen || bodies[message.id] || !message.body_key) return;
 
 		loading = message.id;
 		errorMessage = '';
 		try {
-			const res = await fetch(`/api/email/messages/${message.id}/body`);
+			const res = await fetch(`/api/email/messages/${message.id}/body${acct}`);
 			if (!res.ok) {
 				const body = (await res.json().catch(() => ({}))) as { error?: string };
 				errorMessage = body.error ?? 'Could not read that message.';
@@ -82,7 +129,7 @@
 				}
 			}
 		} catch {
-			errorMessage = 'Could not read that message.';
+			errorMessage = 'Could not reach the server.';
 		}
 		loading = null;
 	}
@@ -90,9 +137,11 @@
 	async function correct(severity: Severity) {
 		busy = true;
 		errorMessage = '';
-		const result = await apiWrite(`/api/email/threads/${data.thread.id}/correct`, 'POST', {
-			severity
-		});
+		const result = await apiWrite(
+			`/api/email/threads/${data.thread.id}/correct${acct}`,
+			'POST',
+			{ severity }
+		);
 		if (!result.ok) errorMessage = result.error ?? 'Could not save that.';
 		else await invalidateAll();
 		busy = false;
@@ -100,265 +149,425 @@
 
 	async function archive() {
 		busy = true;
-		const undo = data.thread.archived_at ? '?undo=true' : '';
-		const result = await apiWrite(`/api/email/threads/${data.thread.id}/archive${undo}`, 'POST', {});
+		const undo = data.thread.archived_at ? '&undo=true' : '';
+		const result = await apiWrite(
+			`/api/email/threads/${data.thread.id}/archive${acct}${acct ? undo : undo.replace('&', '?')}`,
+			'POST',
+			{}
+		);
 		if (!result.ok) errorMessage = result.error ?? 'Could not archive that.';
 		else await invalidateAll();
 		busy = false;
 	}
 
-	function who(message: ThreadMessage): string {
-		if (message.from_name && message.from_email) return `${message.from_name} <${message.from_email}>`;
-		return message.from_email ?? 'Unknown sender';
-	}
-
-	let drafting = $state(false);
-	let draftEdit = $state<string | null>(null);
-	let copied = $state(false);
-
-	/** The edit if there is one, otherwise what the model wrote. */
-	const draftText = $derived(
-		draftEdit ?? data.draft?.edited_body ?? data.draft?.body ?? ''
-	);
-
-	/** True when the thread has moved on since the draft was written. */
-	const draftStale = $derived(
-		Boolean(
-			data.draft?.based_on_last_at &&
-				data.thread.last_at &&
-				data.draft.based_on_last_at < data.thread.last_at
-		)
-	);
-
-	async function writeDraft() {
-		drafting = true;
+	async function draft(useMyWords: boolean) {
+		busy = true;
 		errorMessage = '';
-		draftEdit = null;
-		const result = await apiWrite(`/api/email/threads/${data.thread.id}/draft`, 'POST', {});
-		if (!result.ok) errorMessage = result.error ?? 'Could not write a draft.';
-		else await invalidateAll();
-		drafting = false;
-	}
-
-	async function saveEdit() {
-		if (draftEdit === null) return;
-		drafting = true;
-		const result = await apiWrite(`/api/email/threads/${data.thread.id}/draft`, 'PATCH', {
-			body: draftEdit
+		const result = await apiWrite(`/api/email/threads/${data.thread.id}/draft${acct}`, 'POST', {
+			guidance: useMyWords ? guidance : null
 		});
-		if (!result.ok) errorMessage = result.error ?? 'Could not save that edit.';
+		if (!result.ok) errorMessage = result.error ?? 'Could not write a draft.';
 		else {
-			draftEdit = null;
+			const mode = (result.data as { mode?: string } | undefined)?.mode;
+			draftMode = mode === 'from_your_words' || mode === 'from_thread' ? mode : null;
 			await invalidateAll();
 		}
-		drafting = false;
+		busy = false;
 	}
 
 	/**
-	 * Copies the draft out. This is as far as the app goes, by design: there is
-	 * no send scope and no compose scope, so a reply leaves here as text on a
-	 * clipboard and a person sends it.
+	 * Every attachment, one request each.
+	 *
+	 * Deliberately not a bulk endpoint: each file goes through the same
+	 * ownership-checked route as its own row, so there is one download path to
+	 * reason about rather than two. Staggered because browsers drop downloads
+	 * fired in the same tick.
 	 */
-	async function copyDraft() {
+	function downloadAll() {
+		data.attachments.forEach((file, i) => {
+			setTimeout(() => {
+				const a = document.createElement('a');
+				a.href = `/api/email/attachments/${file.id}/download${acct}`;
+				a.download = file.filename ?? 'attachment';
+				document.body.appendChild(a);
+				a.click();
+				a.remove();
+			}, i * 400);
+		});
+	}
+
+	/**
+	 * Copies text out.
+	 *
+	 * Every "copy" on this screen is the same shape and the same boundary: the
+	 * text is composed here from what is already on the page, goes to the
+	 * clipboard, and is never persisted, never sent, and never printed anywhere.
+	 * That is the whole export path, and it is deliberately the only one.
+	 */
+	async function copy(what: string, label: string) {
 		try {
-			await navigator.clipboard.writeText(draftText);
-			copied = true;
-			setTimeout(() => (copied = false), 4000);
-			await apiWrite(`/api/email/threads/${data.thread.id}/draft/copied`, 'POST', {});
+			await navigator.clipboard.writeText(what);
+			copied = label;
+			setTimeout(() => (copied = ''), 1500);
 		} catch {
 			errorMessage = 'Could not reach the clipboard. Select the text and copy it.';
 		}
 	}
 
+	function forwardBlock(): string {
+		const lines = [`---------- Forwarded message ----------`];
+		for (const m of data.messages) {
+			lines.push(
+				`From: ${m.from_name ? `${m.from_name} <${m.from_email ?? ''}>` : (m.from_email ?? 'unknown')}`,
+				`Date: ${formatMoment(m.sent_at)}`,
+				`Subject: ${m.subject ?? data.thread.subject ?? ''}`,
+				m.to_emails ? `To: ${m.to_emails}` : '',
+				'',
+				bodies[m.id]?.body ?? m.snippet ?? '',
+				''
+			);
+		}
+		return lines.filter((l) => l !== undefined).join('\n');
+	}
+
+	function who(message: ThreadMessage): string {
+		return message.from_name ?? message.from_email ?? 'Unknown sender';
+	}
+
+	function initials(message: ThreadMessage): string {
+		const name = message.from_name ?? message.from_email ?? '?';
+		return name
+			.split(/[\s@.]+/)
+			.filter(Boolean)
+			.slice(0, 2)
+			.map((w) => w[0].toUpperCase())
+			.join('');
+	}
+
 	function fileSize(bytes: number | null): string {
-		if (bytes === null) return 'unknown size';
+		if (bytes === null) return 'unknown';
 		if (bytes < 1024) return `${bytes} B`;
 		if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
 		return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 	}
 
-	const effective = $derived(data.thread.severity_override ?? data.thread.severity);
-	const effectiveCategory = $derived(data.thread.category_override ?? data.thread.category);
+	const CHIP: Record<string, string> = {
+		urgent: 'chip-urgent',
+		important: 'chip-important',
+		routine: 'chip-routine',
+		noise: 'chip-noise'
+	};
 </script>
 
 <svelte:head><title>{data.thread.subject ?? 'Thread'}</title></svelte:head>
 
-<nav class="crumbs mono" aria-label="Breadcrumb">
-	<a href="/mail">Mail</a> <span aria-hidden="true">/</span> <span>Thread</span>
-</nav>
-
-<header class="head">
-	<h1>{data.thread.subject ?? '(no subject)'}</h1>
-	<p class="meta">
-		{data.messages.length} message{data.messages.length === 1 ? '' : 's'}
-		{#if data.thread.first_at}&middot; {formatMoment(data.thread.first_at)}{/if}
-		{#if data.thread.last_at && data.thread.last_at !== data.thread.first_at}
-			to {formatMoment(data.thread.last_at)}
-		{/if}
-		{#if data.thread.client_name}
-			&middot; <a href="/clients/{data.thread.client_id}">{data.thread.client_name}</a>
-		{/if}
-	</p>
-</header>
+<a class="back" href="/mail{acct}">
+	<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+		<path d="M19 12H5" /><path d="M12 19l-7-7 7-7" />
+	</svg>
+	Back to mail
+</a>
 
 {#if errorMessage}<p class="error" role="alert">{errorMessage}</p>{/if}
 
-<div class="triage">
-	<div class="chips">
-		<span class="sev sev-{effective ?? 'none'}">
-			{effective ? SEVERITY_LABELS[effective] : 'Untriaged'}
-		</span>
-		{#if effectiveCategory}
-			<span class="cat">{CATEGORY_LABELS[effectiveCategory]}</span>
-		{/if}
-		{#if data.thread.severity_override}
-			<span class="tiny">You set this. The model said {data.thread.severity}.</span>
-		{/if}
+<div class="top">
+	<div class="headings">
+		<h1>{data.thread.subject ?? '(no subject)'}</h1>
+		<p class="meta">
+			{data.messages.length} message{data.messages.length === 1 ? '' : 's'}
+			{#if data.thread.first_at}&middot; {formatMoment(data.thread.first_at)}{/if}
+			{#if data.thread.last_at && data.thread.last_at !== data.thread.first_at}
+				to {formatMoment(data.thread.last_at)}
+			{/if}
+			{#if data.thread.client_name}
+				&middot; <a href="/clients/{data.thread.client_id}">{data.thread.client_name}</a>
+			{/if}
+		</p>
+
+		<div class="state">
+			<span class="chip {data.thread.archived_at ? 'chip-archived' : (CHIP[effective ?? ''] ?? 'chip-none')}">
+				{data.thread.archived_at
+					? 'Archived'
+					: effective
+						? SEVERITY_LABELS[effective]
+						: 'Untriaged'}
+			</span>
+			{#if effectiveCategory}
+				<span class="cat mono">{CATEGORY_LABELS[effectiveCategory]}</span>
+			{/if}
+			{#if data.thread.severity_override}
+				<span class="note">You set this. The model said {data.thread.severity}.</span>
+			{/if}
+		</div>
+
+		<div class="state">
+			<span class="fixes-label mono">Change to</span>
+			{#each SEVERITIES as severity (severity)}
+				{#if severity !== effective}
+					<button
+						type="button"
+						class="pill"
+						disabled={busy}
+						title={SEVERITY_HELP[severity]}
+						onclick={() => correct(severity)}
+					>
+						{SEVERITY_LABELS[severity]}
+					</button>
+				{/if}
+			{/each}
+			<button type="button" class="pill" disabled={busy} onclick={archive}>
+				{data.thread.archived_at ? 'Unarchive' : 'Archive'}
+			</button>
+		</div>
+
+		<p class="fine">
+			Archiving files it here. Your Gmail is untouched, because this app has no permission to
+			change it.
+		</p>
 	</div>
 
-	<div class="fixes">
-		{#each SEVERITIES as severity (severity)}
-			{#if severity !== effective}
-				<button type="button" class="fix" disabled={busy} title={SEVERITY_HELP[severity]} onclick={() => correct(severity)}>
-					{SEVERITY_LABELS[severity]}
-				</button>
+	<section class="tools">
+		<button
+			type="button"
+			class="tools-head"
+			aria-expanded={attachmentsOpen}
+			onclick={() => (attachmentsOpen = !attachmentsOpen)}
+		>
+			<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--navy-700)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+				<path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+			</svg>
+			<span class="tools-title">
+				{data.attachments.length === 0
+					? 'No attachments'
+					: `${data.attachments.length} attachment${data.attachments.length === 1 ? '' : 's'}`}
+			</span>
+			<span class="grow"></span>
+			{#if data.attachments.length > 0}
+				<span class="mono dim">{fileSize(attachmentBytes)}</span>
 			{/if}
-		{/each}
-		<button type="button" class="fix" disabled={busy} onclick={archive}>
-			{data.thread.archived_at ? 'Unarchive' : 'Archive'}
 		</button>
-	</div>
-	<p class="tiny">
-		Archiving files it here. Your Gmail is untouched, because this app has no permission
-		to change it.
-	</p>
+
+		{#if attachmentsOpen && data.attachments.length > 0}
+			<ul class="files">
+				{#each data.attachments as file (file.id)}
+					<li>
+						<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+							<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6" />
+						</svg>
+						<span class="fname">{file.filename ?? 'Unnamed file'}</span>
+						<span class="mono dim">{fileSize(file.size_bytes)}</span>
+						<a
+							class="dl"
+							href="/api/email/attachments/{file.id}/download{acct}"
+							title="Download {file.filename ?? 'file'}"
+							download
+						>
+							<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+								<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><path d="M7 10l5 5 5-5" /><path d="M12 15V3" />
+							</svg>
+							<span class="visually-hidden">Download {file.filename ?? 'file'}</span>
+						</a>
+					</li>
+				{/each}
+			</ul>
+			{#if data.attachments.length > 1}
+				<div class="pad">
+					<button type="button" class="ghost" onclick={downloadAll}>Download all</button>
+				</div>
+			{/if}
+			<p class="fine pad">Fetched from Gmail when you ask. Nothing is stored here.</p>
+		{/if}
+
+		<div class="tools-foot">
+			<a class="ghost" href={gmailUrl} target="_blank" rel="noopener noreferrer">
+				<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+					<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+					<path d="M15 3h6v6" />
+					<path d="M10 14 21 3" />
+				</svg>
+				Open in Gmail
+			</a>
+			<button
+				type="button"
+				class="ghost"
+				onclick={() => copy(data.thread.summary ?? data.thread.gist ?? '', 'summary')}
+			>
+				{copied === 'summary' ? 'Copied' : 'Copy summary'}
+			</button>
+			<span class="mono fine count">{people} {people === 1 ? 'person' : 'people'}</span>
+		</div>
+	</section>
 </div>
 
-{#if data.thread.summary}
-	<Card title="Summary" subtitle={data.thread.gist ?? undefined}>
-		<p class="summary">{data.thread.summary}</p>
-		{#if data.thread.summary_at}
-			<p class="tiny">
-				Written {formatMoment(data.thread.summary_at)}
-				{#if data.thread.summary_model}by {data.thread.summary_model}{/if}.
-				{#if data.thread.last_at && data.thread.summary_at < data.thread.last_at}
-					The thread has had messages since, so this does not cover them.
-				{/if}
-			</p>
-		{/if}
-	</Card>
-{/if}
-
-
-<section class="draft">
-	<div class="draft-head">
-		<h2>Reply</h2>
-		<div class="draft-actions">
-			<button type="button" class="fix" disabled={drafting} onclick={writeDraft}>
-				{drafting ? 'Writing...' : data.draft ? 'Write it again' : 'Draft a reply'}
-			</button>
-			{#if data.draft}
-				<button type="button" class="fix" onclick={copyDraft}>
-					{copied ? 'Copied' : 'Copy'}
+<div class="cols">
+	<div class="messages">
+		{#each ordered as message (message.id)}
+			{@const isOpen = openIds.includes(message.id)}
+			<article class="msg">
+				<button class="msg-head" type="button" aria-expanded={isOpen} onclick={() => toggle(message)}>
+					<span class="avatar" aria-hidden="true">{initials(message)}</span>
+					<span class="from">{who(message)}</span>
+					{#if message.from_email}<span class="mono dim addr">{message.from_email}</span>{/if}
+					<span class="grow"></span>
+					<span class="mono dim">{formatMoment(message.sent_at)}</span>
+					<svg class="chev" class:open={isOpen} width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+						<path d="M6 9l6 6 6-6" />
+					</svg>
 				</button>
-			{/if}
+
+				{#if isOpen}
+					<div class="msg-body">
+						{#if message.to_emails}<p class="fine">To {message.to_emails}</p>{/if}
+						{#if bodies[message.id]}
+							<EmailBody body={bodies[message.id].body} format={bodies[message.id].format} />
+						{:else if loading === message.id}
+							<p class="fine">Reading...</p>
+						{:else}
+							<p class="fine">No body was stored for this message.</p>
+						{/if}
+					</div>
+				{:else if message.snippet}
+					<p class="preview">{message.snippet}</p>
+				{/if}
+			</article>
+		{/each}
+
+		<div class="thread-actions">
+			<button type="button" class="primary" onclick={focusGuidance}>
+				<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+					<path d="M9 17l-5-5 5-5" /><path d="M20 18v-2a4 4 0 0 0-4-4H4" />
+				</svg>
+				Reply
+			</button>
+			<button
+				type="button"
+				class="secondary"
+				onclick={() => copy(forwardBlock(), 'forward')}
+			>
+				<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+					<path d="M15 17l5-5-5-5" /><path d="M4 18v-2a4 4 0 0 1 4-4h12" />
+				</svg>
+				{copied === 'forward' ? 'Copied' : 'Forward'}
+			</button>
+			<span class="fine self">Both put text on your clipboard. Neither sends anything.</span>
 		</div>
 	</div>
 
-	<p class="tiny">
-		This app cannot send email and never will. It has no permission to send, reply or
-		create a draft in Gmail, so a reply leaves here by being copied out and sent by you.
-	</p>
-
-	{#if data.draft}
-		{#if draftStale}
-			<p class="warn" role="status">
-				The thread has had a message since this was written. Write it again before
-				sending.
-			</p>
+	<div class="rail">
+		{#if data.thread.summary}
+			<section class="card">
+				<h2>Summary</h2>
+				{#if data.thread.gist}<p class="gist">{data.thread.gist}</p>{/if}
+				<p class="prose">{data.thread.summary}</p>
+				{#if data.thread.summary_at}
+					<p class="fine mono">
+						Written {formatMoment(data.thread.summary_at)}
+						{#if data.thread.summary_model}by {data.thread.summary_model}{/if}.
+						{#if data.thread.last_at && data.thread.summary_at < data.thread.last_at}
+							The thread has moved since.
+						{/if}
+					</p>
+				{/if}
+			</section>
 		{/if}
 
-		<textarea
-			rows="12"
-			value={draftText}
-			oninput={(e) => (draftEdit = (e.currentTarget as HTMLTextAreaElement).value)}
-			aria-label="Proposed reply"
-		></textarea>
+		<section class="card">
+			<h2>Reply</h2>
+			<p class="fine">
+				This app cannot send email and never will. A reply leaves here by being copied out and
+				sent by you. The draft reads the whole thread, anything known about the client, and how
+				you write in your own sent messages.
+			</p>
 
-		<p class="tiny">
-			{#if draftEdit !== null}
-				<button type="button" class="fix" disabled={drafting} onclick={saveEdit}>Save edit</button>
-				Your changes are kept next to the original, not over it.
-			{:else}
-				Written by {data.draft.model ?? 'the model'}.
-				{#if data.draft.edited_at}You have edited it.{/if}
-				{#if data.draft.copied_at}Copied {formatMoment(data.draft.copied_at)}.{/if}
+			<textarea
+				bind:this={guidanceBox}
+				bind:value={guidance}
+				rows="3"
+				aria-label="Steer the draft"
+				placeholder="Optional. Add a few words to steer the draft, or paste your full reply to rephrase."
+			></textarea>
+
+			<div class="draft-buttons">
+				<button type="button" class="primary sm" disabled={busy} onclick={() => draft(false)}>
+					{busy ? 'Working...' : 'Draft automatically'}
+				</button>
+				<button
+					type="button"
+					class="secondary sm"
+					disabled={busy || !guidance.trim()}
+					title={guidance.trim() ? undefined : 'Write a few words above first'}
+					onclick={() => draft(true)}
+				>
+					Draft from my words
+				</button>
+			</div>
+
+			{#if data.draft}
+				<div class="draft">
+					<p class="fine mono label">
+						{#if data.draft.edited_at}
+							Draft, edited by you
+						{:else if draftMode === 'from_your_words'}
+							Draft, built on your words
+						{:else if draftMode === 'from_thread'}
+							Draft, written from the thread
+						{:else}
+							Draft
+						{/if}
+					</p>
+					{#if draftStale}
+						<p class="warn">The thread has had a message since this was written.</p>
+					{/if}
+					<p class="prose pre">{draftText}</p>
+					<div class="draft-buttons">
+						<button type="button" class="secondary sm" onclick={() => copy(draftText, 'draft')}>
+							{copied === 'draft' ? 'Copied' : 'Copy draft'}
+						</button>
+					</div>
+					<p class="fine">Copy it out and send from Gmail.</p>
+				</div>
 			{/if}
-		</p>
-	{:else}
-		<p class="tiny">
-			No draft yet. It reads the whole thread, anything known about the client, and how
-			you write in your own sent messages.
-		</p>
-	{/if}
-</section>
-
-
-{#if data.attachments.length > 0}
-	<section class="files">
-		<h2>Attachments</h2>
-		<ul>
-			{#each data.attachments as file (file.id)}
-				<li>
-					<span class="name">{file.filename ?? 'Unnamed file'}</span>
-					<span class="tiny">{file.mime_type ?? 'unknown type'} &middot; {fileSize(file.size_bytes)}</span>
-				</li>
-			{/each}
-		</ul>
-		<p class="tiny">
-			Names and sizes only. The files themselves stay in Gmail until asked for.
-		</p>
-	</section>
-{/if}
-
-<ul class="messages">
-	{#each data.messages as message (message.id)}
-		{@const isOpen = openIds.includes(message.id)}
-		<li>
-			<button class="row" type="button" aria-expanded={isOpen} onclick={() => toggle(message)}>
-				<span class="from">{who(message)}</span>
-				<span class="when mono">{formatMoment(message.sent_at)}</span>
-			</button>
-
-			{#if isOpen}
-				{#if message.to_emails}<p class="to">To {message.to_emails}</p>{/if}
-				{#if bodies[message.id]}
-					<EmailBody body={bodies[message.id].body} format={bodies[message.id].format} />
-				{:else if loading === message.id}
-					<p class="tiny">Reading...</p>
-				{:else}
-					<p class="tiny">No body was stored for this message.</p>
-				{/if}
-			{:else if message.snippet}
-				<p class="snippet">{message.snippet}</p>
-			{/if}
-		</li>
-	{/each}
-</ul>
+		</section>
+	</div>
+</div>
 
 <style>
-	.crumbs {
-		font-size: var(--text-xs);
-		margin-bottom: var(--space-3);
-		color: var(--text-secondary);
+	.back {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		margin-left: -10px;
+		padding: 6px 10px;
+		border-radius: var(--radius-sm);
+		text-decoration: none;
+		font-size: var(--text-base);
+		font-weight: 500;
+		color: var(--navy-700);
+		transition: background-color var(--transition-fast);
 	}
 
-	.head {
-		margin-bottom: var(--space-3);
+	.back:hover {
+		background: var(--navy-50);
+	}
+
+	.top {
+		display: flex;
+		gap: var(--space-5);
+		align-items: flex-start;
+		justify-content: space-between;
+		flex-wrap: wrap;
+		margin-top: var(--space-3);
+	}
+
+	.headings {
+		flex: 1;
+		min-width: min(420px, 100%);
 	}
 
 	h1 {
-		margin: 0 0 var(--space-1);
+		font-size: var(--text-2xl);
+		font-weight: 700;
+		margin: 0 0 6px;
 		overflow-wrap: anywhere;
 	}
 
@@ -368,170 +577,285 @@
 		color: var(--text-secondary);
 	}
 
-	.triage {
-		margin-bottom: var(--space-4);
-	}
-
-	.chips,
-	.fixes {
+	.state {
 		display: flex;
-		flex-wrap: wrap;
 		align-items: center;
 		gap: var(--space-2);
-		margin-bottom: var(--space-2);
-	}
-
-	.sev,
-	.cat {
-		font-size: var(--text-xs);
-		text-transform: uppercase;
-		letter-spacing: 0.04em;
-		padding: 1px 8px;
-		border-radius: 999px;
-		border: 1px solid var(--border);
-	}
-
-	.sev-urgent {
-		border-color: var(--gold);
-		font-weight: 700;
-	}
-
-	.sev-important {
-		border-color: var(--navy, #102a4c);
-		font-weight: 600;
-	}
-
-	.sev-noise,
-	.sev-none {
-		color: var(--text-secondary);
-	}
-
-	.fix {
-		font: inherit;
-		font-size: var(--text-xs);
-		background: none;
-		border: 1px solid var(--border);
-		border-radius: 999px;
-		padding: 1px 8px;
-		cursor: pointer;
-		color: var(--text-secondary);
-	}
-
-	.fix:hover {
-		color: var(--text-primary);
-		border-color: var(--navy, #102a4c);
-	}
-
-	.summary {
-		margin: 0 0 var(--space-2);
-	}
-
-	.tiny {
-		margin: 0;
-		font-size: var(--text-xs);
-		color: var(--text-secondary);
-	}
-
-	.draft,
-	.files {
-		margin: var(--space-4) 0 0;
-		border: 1px solid var(--border);
-		border-radius: var(--radius-md);
-		background: var(--surface);
-		padding: var(--space-3) var(--space-4);
-	}
-
-	.draft-head {
-		display: flex;
+		margin-top: var(--space-3);
 		flex-wrap: wrap;
-		align-items: baseline;
-		justify-content: space-between;
-		gap: var(--space-2);
 	}
 
-	.draft h2,
-	.files h2 {
-		margin: 0 0 var(--space-2);
-		font-size: var(--text-base);
+	.chip,
+	.cat {
+		font-family: var(--font-mono);
+		font-size: var(--text-xs);
+		letter-spacing: var(--tracking-label);
+		text-transform: uppercase;
+		padding: 4px 12px;
+		border-radius: var(--radius-pill);
+		white-space: nowrap;
 	}
 
-	.draft-actions {
+	.chip-urgent {
+		background: #f3e5c2;
+		color: #77590f;
+	}
+	.chip-important {
+		background: var(--gold-100);
+		color: var(--gold-600);
+	}
+	.chip-routine {
+		background: var(--navy-50);
+		color: var(--navy-500);
+	}
+	.chip-noise,
+	.chip-none {
+		background: #f0efea;
+		color: var(--muted);
+	}
+	.chip-archived {
+		background: var(--navy-100);
+		color: var(--navy);
+	}
+
+	.cat {
+		background: transparent;
+		color: var(--text-secondary);
+		padding-left: 0;
+	}
+
+	.note,
+	.fine {
+		font-size: var(--text-sm);
+		color: var(--text-secondary);
+	}
+
+	.fine {
+		margin: var(--space-2) 0 0;
+	}
+
+	.fine.pad {
+		padding: 0 16px 12px;
+	}
+
+	.fine.self {
+		align-self: center;
+		margin: 0;
+	}
+
+	.fixes-label {
+		font-size: var(--text-xs);
+		letter-spacing: var(--tracking-label);
+		text-transform: uppercase;
+		color: var(--text-secondary);
+	}
+
+	.pill {
+		padding: 4px 12px;
+		background: var(--surface-card);
+		border: 1px solid var(--border-strong);
+		border-radius: var(--radius-pill);
+		cursor: pointer;
+		font-family: var(--font-sans);
+		font-size: var(--text-sm);
+		font-weight: 500;
+		color: var(--navy-700);
+		transition:
+			background-color var(--transition-fast),
+			border-color var(--transition-fast);
+	}
+
+	.pill:hover:not(:disabled) {
+		background: var(--navy-50);
+		border-color: var(--navy-500);
+	}
+
+	.tools {
+		width: 380px;
+		max-width: 100%;
+		flex-shrink: 0;
+		background: var(--surface-card);
+		border: 1px solid var(--border-thin);
+		border-radius: var(--radius-lg);
+		box-shadow: var(--shadow-card);
+		overflow: hidden;
+	}
+
+	.tools-head {
 		display: flex;
+		align-items: center;
 		gap: var(--space-2);
-	}
-
-	.draft textarea {
 		width: 100%;
+		padding: 12px 16px;
+		background: none;
+		border: 0;
+		cursor: pointer;
 		font: inherit;
-		font-size: var(--text-sm);
-		line-height: 1.6;
-		padding: var(--space-3);
-		border: 1px solid var(--border);
-		border-radius: var(--radius-sm);
+		text-align: left;
+		color: inherit;
+		transition: background-color var(--transition-fast);
+	}
+
+	.tools-head:hover {
 		background: var(--surface-hover);
-		color: var(--text-primary);
-		resize: vertical;
 	}
 
-	.warn {
-		margin: 0 0 var(--space-2);
-		font-size: var(--text-sm);
-		border: 1px solid var(--gold);
-		border-radius: var(--radius-md);
-		padding: var(--space-2) var(--space-3);
+	.tools-title {
+		font-weight: 600;
+		color: var(--text-link);
 	}
 
-	.files ul {
+	.grow {
+		flex: 1;
+	}
+
+	.dim {
+		font-size: var(--text-xs);
+		color: var(--text-secondary);
+	}
+
+	.files {
 		list-style: none;
-		margin: 0 0 var(--space-2);
+		margin: 0;
 		padding: 0;
 	}
 
 	.files li {
 		display: flex;
-		flex-wrap: wrap;
+		align-items: center;
 		gap: var(--space-2);
-		align-items: baseline;
-		padding: var(--space-1) 0;
+		padding: 9px 16px;
+		border-top: 1px solid var(--border-thin);
 	}
 
-	.files .name {
-		font-weight: 600;
+	.fname {
+		flex: 1;
+		min-width: 0;
+		font-size: var(--text-sm);
+		font-weight: 500;
+		color: var(--text-link);
 		overflow-wrap: anywhere;
 	}
 
+	.dl {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 26px;
+		height: 26px;
+		background: var(--surface-card);
+		border: 1px solid var(--border-strong);
+		border-radius: var(--radius-sm);
+		color: var(--navy-700);
+		transition: background-color var(--transition-fast);
+	}
+
+	.dl:hover {
+		background: var(--navy-50);
+	}
+
+	.tools-foot {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 4px;
+		padding: 8px 12px;
+		border-top: 1px solid var(--border-thin);
+	}
+
+	/* The count sits opposite the controls, which is what pushes it right. */
+	.tools-foot .count {
+		margin-left: auto;
+		color: var(--text-secondary);
+	}
+
+	.ghost {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		text-decoration: none;
+		padding: 6px 10px;
+		background: none;
+		border: 0;
+		border-radius: var(--radius-sm);
+		cursor: pointer;
+		font-family: var(--font-sans);
+		font-size: var(--text-sm);
+		font-weight: 500;
+		color: var(--navy-700);
+		transition: background-color var(--transition-fast);
+	}
+
+	.ghost:hover {
+		background: var(--navy-50);
+	}
+
+	.cols {
+		display: grid;
+		grid-template-columns: minmax(420px, 1fr) 380px;
+		gap: var(--space-5);
+		align-items: start;
+		margin-top: var(--space-5);
+	}
+
+	/* One column on a phone, and the rail follows the messages rather than
+	   sitting beside them. The suite checks 412px for sideways scroll. */
+	@media (max-width: 900px) {
+		.cols {
+			grid-template-columns: 1fr;
+		}
+
+		.tools {
+			width: 100%;
+		}
+	}
+
 	.messages {
-		list-style: none;
-		margin: var(--space-4) 0 0;
-		padding: 0;
-		border: 1px solid var(--border);
-		border-radius: var(--radius-md);
-		background: var(--surface);
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-3);
+		min-width: 0;
+	}
+
+	.msg {
+		background: var(--surface-card);
+		border: 1px solid var(--border-thin);
+		border-radius: var(--radius-lg);
+		box-shadow: var(--shadow-card);
 		overflow: hidden;
 	}
 
-	.messages li {
-		padding: var(--space-3) var(--space-4);
-	}
-
-	.messages li + li {
-		border-top: 1px solid var(--border);
-	}
-
-	.row {
+	.msg-head {
 		display: flex;
-		flex-wrap: wrap;
-		gap: var(--space-2);
-		justify-content: space-between;
-		align-items: baseline;
+		align-items: center;
+		gap: var(--space-3);
 		width: 100%;
+		padding: 14px 20px;
 		background: none;
 		border: 0;
-		padding: 0 0 var(--space-2);
-		font: inherit;
-		color: inherit;
-		text-align: left;
 		cursor: pointer;
+		font: inherit;
+		text-align: left;
+		color: inherit;
+		transition: background-color var(--transition-fast);
+	}
+
+	.msg-head:hover {
+		background: var(--surface-hover);
+	}
+
+	.avatar {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 32px;
+		height: 32px;
+		flex-shrink: 0;
+		border-radius: 50%;
+		background: var(--navy-100);
+		color: var(--navy);
+		font-size: var(--text-sm);
+		font-weight: 600;
 	}
 
 	.from {
@@ -539,17 +863,169 @@
 		overflow-wrap: anywhere;
 	}
 
-	.when {
-		font-size: var(--text-xs);
-		color: var(--text-secondary);
+	.addr {
+		overflow: hidden;
+		text-overflow: ellipsis;
 		white-space: nowrap;
+		max-width: 16rem;
 	}
 
-	.to,
-	.snippet {
-		margin: 0 0 var(--space-2);
-		font-size: var(--text-xs);
+	.chev {
+		flex-shrink: 0;
+		transition: transform var(--transition-fast);
+	}
+
+	.chev.open {
+		transform: rotate(180deg);
+	}
+
+	.msg-body {
+		padding: 4px 24px 20px 64px;
+		border-top: 1px solid var(--border-thin);
+	}
+
+	.preview {
+		margin: 0;
+		padding: 0 20px 14px 64px;
+		font-size: var(--text-sm);
 		color: var(--text-secondary);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	.thread-actions {
+		display: flex;
+		gap: var(--space-2);
+		margin-top: var(--space-2);
+		flex-wrap: wrap;
+	}
+
+	.primary,
+	.secondary {
+		display: inline-flex;
+		align-items: center;
+		gap: var(--space-2);
+		padding: 9px 16px;
+		border-radius: var(--radius-sm);
+		cursor: pointer;
+		font-family: var(--font-sans);
+		font-size: var(--text-base);
+		font-weight: 500;
+		transition: background-color var(--transition-fast);
+	}
+
+	.primary {
+		background: var(--navy);
+		color: var(--text-inverse);
+		border: 1px solid transparent;
+	}
+
+	.primary:hover:not(:disabled) {
+		background: var(--navy-700);
+	}
+
+	.secondary {
+		background: var(--surface-card);
+		color: var(--ink);
+		border: 1px solid var(--border-strong);
+	}
+
+	.secondary:hover:not(:disabled) {
+		background: var(--surface-hover);
+	}
+
+	.primary:disabled,
+	.secondary:disabled {
+		opacity: 0.55;
+		cursor: default;
+	}
+
+	.sm {
+		padding: 6px 12px;
+		font-size: var(--text-sm);
+	}
+
+	.rail {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-4);
+		min-width: 0;
+	}
+
+	.card {
+		padding: 20px 24px;
+		background: var(--surface-card);
+		border: 1px solid var(--border-thin);
+		border-radius: var(--radius-lg);
+		box-shadow: var(--shadow-card);
+	}
+
+	.card h2 {
+		font-size: var(--text-lg);
+		font-weight: 700;
+		margin: 0 0 8px;
+	}
+
+	.gist {
+		margin: 0 0 12px;
+		font-weight: 600;
+		font-size: var(--text-base);
+	}
+
+	.prose {
+		margin: 0;
+		font-size: var(--text-base);
+		line-height: 1.6;
+		color: var(--text-body);
 		overflow-wrap: anywhere;
+	}
+
+	.prose.pre {
+		white-space: pre-line;
+	}
+
+	textarea {
+		width: 100%;
+		box-sizing: border-box;
+		margin-top: var(--space-3);
+		padding: 12px;
+		font-family: var(--font-sans);
+		font-size: var(--text-base);
+		color: var(--ink);
+		background: var(--surface-card);
+		border: 1px solid var(--border-strong);
+		border-radius: var(--radius-sm);
+		resize: vertical;
+	}
+
+	.draft-buttons {
+		display: flex;
+		gap: var(--space-2);
+		margin-top: var(--space-3);
+		flex-wrap: wrap;
+	}
+
+	.draft {
+		margin-top: var(--space-3);
+		padding: 12px;
+		background: var(--surface-callout);
+		border: 1px solid var(--border-thin);
+		border-radius: var(--radius-sm);
+	}
+
+	.draft .label {
+		margin: 0 0 8px;
+		font-size: var(--text-xs);
+		letter-spacing: var(--tracking-label);
+		text-transform: uppercase;
+	}
+
+	.warn {
+		margin: 0 0 8px;
+		padding: var(--space-2);
+		border: 1px solid var(--gold);
+		border-radius: var(--radius-sm);
+		font-size: var(--text-sm);
 	}
 </style>
