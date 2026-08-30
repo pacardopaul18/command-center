@@ -1,21 +1,27 @@
 <script lang="ts">
 	import { formatMoment } from '$lib/format';
+	import type { EmailIngestState, EmailStored } from '$lib/types';
 	import Button from './Button.svelte';
 
 	/**
 	 * The ingestion readout.
 	 *
-	 * Paul has to be able to see ingestion state rather than infer it, which is
-	 * why every number here comes from the stored record rather than from
-	 * whatever the last request happened to return. A page opened halfway through
-	 * a run, or after one finished, shows the same truth as one that watched it.
+	 * Rewritten after it contradicted itself in front of Paul: the bar sat at
+	 * "100% of an estimate" while the text beside it read "64 of 201". Two
+	 * different quantities were being shown as though they were one.
 	 *
-	 * The total is labelled an estimate because it is one. Gmail's own count is
-	 * approximate, and a bar that reaches 100% at 93% of the real work, or stops
-	 * at 92% having finished, is only confusing if it claimed to be exact.
+	 * `discovered` is messages Gmail listed. `fetched` is messages newly stored.
+	 * They diverge whenever a run covers mail already held, which is the normal
+	 * case for every run after the first; on the run that exposed this they were
+	 * 250 and 64. Both are now labelled for what they actually are.
+	 *
+	 * THERE IS NO PERCENTAGE ANY MORE. Gmail's `resultSizeEstimate` is not a
+	 * count of the query's results: on that same run it said 201 while the run
+	 * had already listed 250. A bar drawn from a number the run has demonstrably
+	 * passed is not an approximation, it is a false statement, and clamping it to
+	 * 100% only hides that it is wrong. Counts that are true beat a bar that is
+	 * not.
 	 */
-
-	import type { EmailIngestState, EmailStored } from '$lib/types';
 
 	let {
 		ingest,
@@ -37,17 +43,13 @@
 
 	let days = $state(30);
 
-	const percent = $derived(
-		ingest && ingest.total_estimate && ingest.total_estimate > 0
-			? Math.min(100, Math.round((ingest.discovered / ingest.total_estimate) * 100))
-			: null
-	);
-
 	const label = $derived(
 		!ingest
 			? 'Never run'
 			: ingest.status === 'running'
-				? 'Reading'
+				? busy
+					? 'Reading now'
+					: 'Started, not currently reading'
 				: ingest.status === 'paused'
 					? 'Paused'
 					: ingest.status === 'done'
@@ -56,33 +58,89 @@
 							? 'Stopped on an error'
 							: 'Idle'
 	);
+
+	/**
+	 * Messages listed per minute, measured from the run itself.
+	 *
+	 * Computed from started_at to updated_at, so a run that has been sitting
+	 * untouched reports the rate it managed while it was moving rather than
+	 * averaging in an hour of nothing.
+	 */
+	const rate = $derived.by(() => {
+		if (!ingest?.started_at || !ingest.updated_at) return null;
+		const elapsed = Date.parse(ingest.updated_at) - Date.parse(ingest.started_at);
+		if (elapsed < 5000 || ingest.discovered < 25) return null;
+		return Math.round((ingest.discovered / elapsed) * 60_000);
+	});
+
+	/** True once the run has listed more than Gmail said existed. */
+	const estimatePassed = $derived(
+		Boolean(ingest?.total_estimate && ingest.discovered > ingest.total_estimate)
+	);
+
+	/**
+	 * Roughly how much longer, in minutes.
+	 *
+	 * Offered only while the estimate is still plausible. Once a run has passed
+	 * it, the honest answer is that nobody knows how many remain, and saying so
+	 * beats a number derived from a total already proven wrong.
+	 */
+	const minutesLeft = $derived.by(() => {
+		if (!ingest?.total_estimate || !rate || estimatePassed) return null;
+		const remaining = ingest.total_estimate - ingest.discovered;
+		if (remaining <= 0) return null;
+		return Math.max(1, Math.round(remaining / rate));
+	});
+
+	/** A run that says it is running while nothing is driving it. */
+	const stalled = $derived(ingest?.status === 'running' && !busy);
 </script>
 
 <div class="ingest">
-	<p class="line">
-		<strong>{label}</strong>
-		{#if ingest}
-			&middot; {ingest.fetched} of about {ingest.total_estimate ?? '?'} messages read
-			{#if ingest.updated_at}
-				&middot; last activity {formatMoment(ingest.updated_at)}
-			{/if}
-		{/if}
-	</p>
+	<p class="line"><strong>{label}</strong></p>
 
-	{#if percent !== null && ingest?.status !== 'done'}
-		<div
-			class="bar"
-			role="progressbar"
-			aria-valuenow={percent}
-			aria-valuemin="0"
-			aria-valuemax="100"
-			aria-label="Mail ingestion progress"
-		>
-			<span style="width: {percent}%"></span>
-		</div>
+	{#if ingest}
+		<dl class="counters">
+			<div>
+				<dt>Listed by Gmail</dt>
+				<dd class="mono">{ingest.discovered}</dd>
+			</div>
+			<div>
+				<dt>Newly stored</dt>
+				<dd class="mono">{ingest.fetched}</dd>
+			</div>
+			<div>
+				<dt>Gmail's estimate</dt>
+				<dd class="mono">{ingest.total_estimate ?? 'unknown'}</dd>
+			</div>
+			<div>
+				<dt>Last activity</dt>
+				<dd class="mono">
+					{ingest.updated_at ? formatMoment(ingest.updated_at) : 'None'}
+				</dd>
+			</div>
+		</dl>
+
 		<p class="tiny">
-			{percent}% of an estimate. Gmail's own count is approximate, so the end may arrive a
-			little early or late.
+			Listed is what Gmail returned. Newly stored is what was not already held, so a
+			second run over the same mail lists a lot and stores little.
+			{#if estimatePassed}
+				This run has already listed more than Gmail estimated, so the estimate was low
+				and the number remaining is not known.
+			{:else if minutesLeft}
+				At the current rate, roughly {minutesLeft} minute{minutesLeft === 1 ? '' : 's'} left.
+			{/if}
+			{#if rate}
+				About {rate} messages a minute while it is moving.
+			{/if}
+		</p>
+	{/if}
+
+	{#if stalled}
+		<p class="warn" role="status">
+			This run is not moving. Reading happens from this page, so it stops when you
+			navigate away, and nothing is lost when it does. Press Continue to pick up from
+			where it stopped.
 		</p>
 	{/if}
 
@@ -90,7 +148,7 @@
 		<p class="err" role="alert">{ingest.last_error}</p>
 	{/if}
 
-	<dl class="grid">
+	<dl class="counters">
 		<div>
 			<dt>Account</dt>
 			<dd>{account ?? 'Not connected'}</dd>
@@ -122,46 +180,34 @@
 		</label>
 
 		<Button onclick={() => onStart(days)} disabled={busy}>
-			{busy ? 'Working...' : 'Read the last ' + days + ' days'}
+			{busy ? 'Reading...' : 'Read the last ' + days + ' days'}
 		</Button>
 
-		{#if ingest && (ingest.status === 'running' || ingest.status === 'paused' || ingest.status === 'failed')}
-			{#if ingest.status === 'running'}
-				<Button variant="ghost" onclick={onPause} disabled={busy}>Pause</Button>
+		{#if ingest && ingest.status !== 'done' && ingest.status !== 'idle'}
+			{#if busy}
+				<Button variant="ghost" onclick={onPause}>Pause</Button>
 			{:else}
-				<Button variant="secondary" onclick={onRun} disabled={busy}>Continue</Button>
+				<Button variant="secondary" onclick={onRun}>Continue</Button>
 			{/if}
 		{/if}
 	</div>
 
 	<p class="tiny">
-		Reading only. Nothing is sent, replied to, drafted or labelled, because the permission
-		to do any of that was never requested.
+		Keep this page open while it reads. Each batch is its own request and the position
+		is written after every one, so closing the tab costs nothing but the time to press
+		Continue.
+	</p>
+
+	<p class="tiny">
+		Reading only. Nothing is sent, replied to, drafted or labelled, because the
+		permission to do any of that was never requested.
 	</p>
 </div>
 
 <style>
-	.ingest {
-		display: block;
-	}
-
 	.line {
 		margin: 0 0 var(--space-2);
 		font-size: var(--text-sm);
-	}
-
-	.bar {
-		height: 8px;
-		border-radius: 999px;
-		background: var(--surface-hover);
-		overflow: hidden;
-		margin-bottom: var(--space-1);
-	}
-
-	.bar span {
-		display: block;
-		height: 100%;
-		background: var(--navy, #102a4c);
 	}
 
 	.tiny {
@@ -170,6 +216,7 @@
 		color: var(--text-secondary);
 	}
 
+	.warn,
 	.err {
 		margin: 0 0 var(--space-3);
 		font-size: var(--text-sm);
@@ -178,7 +225,7 @@
 		padding: var(--space-2) var(--space-3);
 	}
 
-	.grid {
+	.counters {
 		display: grid;
 		grid-template-columns: repeat(2, minmax(0, 1fr));
 		gap: var(--space-3);
@@ -186,12 +233,12 @@
 	}
 
 	@media (min-width: 720px) {
-		.grid {
+		.counters {
 			grid-template-columns: repeat(4, minmax(0, 1fr));
 		}
 	}
 
-	.grid dt {
+	.counters dt {
 		font-size: var(--text-xs);
 		text-transform: uppercase;
 		letter-spacing: 0.04em;
@@ -199,7 +246,7 @@
 		margin-bottom: 2px;
 	}
 
-	.grid dd {
+	.counters dd {
 		margin: 0;
 		font-size: var(--text-base);
 		overflow-wrap: anywhere;

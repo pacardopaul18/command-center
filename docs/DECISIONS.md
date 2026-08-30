@@ -2200,6 +2200,51 @@ than D70 and D82 and worth stating explicitly for that reason. Nothing in the
 code prevents printing a body. The rule is the only thing that does, so it is
 written down where it can be pointed at.
 
+### D90: three defects from one evening of real use
+
+Found by Paul using it, not by testing it. All three are the same species: code
+that was correct in the case it was written for and wrong in the case that
+actually happened.
+
+**The thread page 404ed.** The list built links to `/mail/{id}` and that route
+did not exist. Nothing caught it because nothing asked for it: the API was
+tested, the list was tested, and the link between them was written once and
+never followed. A link is a claim that a destination exists, and this one was
+never checked.
+
+**The readout contradicted itself.** The bar sat at 100% while the text beside
+it read 64 of 201, in the same component. Two different quantities were being
+rendered as one: `discovered` is what Gmail listed, `fetched` is what was newly
+stored, and they diverge on every run after the first because most of the mail
+is already held. On the run Paul saw they were 250 and 64.
+
+The percentage is gone rather than fixed. Gmail's `resultSizeEstimate` said 201
+while the run had listed 250, so the total was not merely approximate, it was
+already exceeded. A bar drawn from a number the run has passed is a false
+statement, and clamping it to 100% hides that rather than fixing it. Counts that
+are true beat a bar that is not. This is D85 again, and D85 only fixed half of
+it: the stored value stopped being overwritten, but the display kept treating it
+as a total.
+
+**The ingest stopped when Paul navigated away**, and the UI said "running" while
+nothing was running. The diagnosis was confirmed from the record rather than
+guessed: `started_at 09:29:41`, `updated_at 09:30:41`, status still `running`.
+Ten batches in one minute, then nothing for the rest of the night.
+
+That is inherent to driving the run from a page, and the fix is honesty plus
+recovery rather than pretending otherwise: the readout distinguishes "reading
+now" from "started, not currently reading", says plainly that reading happens
+from this page and that nothing is lost, and Settings resumes a stalled run
+automatically when it is opened. Moving the loop server-side would need a
+Durable Object or the cron surface, and the cron surface does not change without
+an evidence-window review.
+
+The general lesson is the one worth keeping: a status field that records intent
+rather than activity will eventually say "running" about something that is not.
+Either the record has to be refreshed by the work itself, which is what
+`updated_at` allows a reader to check, or the display has to compare the two and
+say what it finds.
+
 ## Interpretation notes
 
 Not decisions. Judgment calls made inside an existing decision, recorded so the

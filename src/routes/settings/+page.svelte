@@ -118,6 +118,25 @@
 		connecting = false;
 	}
 
+	/**
+	 * Picks a stalled run back up when Settings is opened.
+	 *
+	 * The run is driven from this page, so navigating away stops it. That is a
+	 * real constraint of doing the work client side, and the honest responses are
+	 * to say so plainly, which the readout now does, and to resume automatically
+	 * when the page comes back, which this does. Guarded so it fires once rather
+	 * than on every reactive update: `runIngest` itself calls invalidateAll after
+	 * every batch, and without the guard that would start a second loop each time.
+	 */
+	let resumeAttempted = false;
+	$effect(() => {
+		const status = data.mail?.state?.status;
+		if (status === 'running' && !connecting && !resumeAttempted) {
+			resumeAttempted = true;
+			runIngest();
+		}
+	});
+
 	async function startIngest(days: number) {
 		connecting = true;
 		errorMessage = '';
