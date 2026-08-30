@@ -21,12 +21,16 @@ declare global {
 				ANTHROPIC_API_KEY?: string;
 				ASANA_TOKEN?: string;
 				GOOGLE_CLIENT_SECRET?: string;
-				// Plain vars from wrangler.toml, not secrets.
+				// Not a secret by nature: the OAuth client id is public by design
+				// and appears in the consent URL every user sees. It is stored as
+				// one anyway because that is where Paul put it, and a secret and a
+				// var resolve identically here. Over-protecting a public value
+				// costs nothing; the only real consequence is that it is not in
+				// wrangler.toml, so it does not travel with the repo.
+				GOOGLE_CLIENT_ID?: string;
+				// Plain vars from wrangler.toml.
 				DIGEST_FROM?: string;
 				DIGEST_TO?: string;
-				// The OAuth client id is public by design: it appears in the
-				// consent URL every user sees. Only the secret is a secret.
-				GOOGLE_CLIENT_ID?: string;
 			};
 			cf?: import('@cloudflare/workers-types').CfProperties;
 			ctx: import('@cloudflare/workers-types').ExecutionContext;
