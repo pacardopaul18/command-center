@@ -76,6 +76,18 @@ function grouped(sql: string): Record<string, number> {
 }
 
 describe('layer 1: the loaded data came from the current seed', () => {
+	it('the seed is still anchored to today, in Mountain Time', () => {
+		const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Denver' }).format(
+			new Date()
+		);
+		expect(
+			expected.today_mt,
+			'The seed was generated for a different Mountain day, so every deadline band ' +
+				'in it now means something else. Regenerate and reload: ' +
+				'npm run seed:generate && npm run seed:load'
+		).toBe(today);
+	});
+
 	it('the seed fingerprint in the database matches expected.json', () => {
 		const row = one<{ display_name: string }>(
 			"SELECT display_name FROM users WHERE id = 'v-u-seed'"

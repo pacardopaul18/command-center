@@ -32,7 +32,16 @@
 	let notice = $state('');
 	let errorMessage = $state('');
 
-	const attention = $derived([...data.overdue, ...data.due_today]);
+	/**
+	 * Overdue and due today, merged and capped as one card.
+	 *
+	 * The API caps each list separately, so concatenating them gave this card
+	 * twice the rows of every other one, which is not a glance. Overdue comes
+	 * first because it is worse, and the cap falls on whatever is left.
+	 */
+	const attention = $derived(
+		[...data.overdue, ...data.due_today].slice(0, data.card_limit)
+	);
 	const attentionCount = $derived(data.counts.overdue + data.counts.due_today);
 
 	/** The one sentence at the top. It has to be true on an empty day too. */

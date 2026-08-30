@@ -329,14 +329,61 @@ test.describe('billing periods open to their time', () => {
 	});
 });
 
-test.describe('the cockpit', () => {
-	test('shows all four cards with real data', async ({ page }) => {
+test.describe('the dashboard', () => {
+	test('shows the six cards and the four headline tiles', async ({ page }) => {
 		await page.goto('/');
-		for (const title of ['Overdue and due today', 'What will slip', "Today's meetings", 'Invoice alerts']) {
+		for (const title of [
+			'Needs you now',
+			"Today's meetings",
+			'The week ahead',
+			'Money past due',
+			'Finished today',
+			'What will slip'
+		]) {
 			await expect(page.getByRole('heading', { name: title })).toBeVisible();
+		}
+		for (const label of ['Overdue', 'Due today', 'Awaiting a decision', 'Past due']) {
+			await expect(page.locator('.tile-label', { hasText: new RegExp(`^${label}$`) })).toBeVisible();
 		}
 		// The design mocks meeting times and agendas. Neither is in the schema.
 		await expect(page.getByText('agenda drafted')).toHaveCount(0);
+	});
+
+	test('every headline tile is a link to the screen that owns the number', async ({ page }) => {
+		await page.goto('/');
+		const hrefs = await page.locator('a.tile').evaluateAll((els) =>
+			els.map((e) => (e as HTMLAnchorElement).getAttribute('href'))
+		);
+		expect(hrefs).toEqual([
+			'/actions?view=overdue',
+			'/actions?view=today',
+			'/reports/slipping',
+			'/invoices'
+		]);
+	});
+
+	test('a card shows a few rows and names the true count', async ({ page }) => {
+		await page.goto('/');
+		const card = page
+			.locator('section.card')
+			.filter({ has: page.getByRole('heading', { name: 'Needs you now' }) });
+
+		// Six at most, which is the API's cap, not however many happen to fit.
+		const rows = await card.locator('li.row').count();
+		expect(rows).toBeGreaterThan(0);
+		expect(rows).toBeLessThanOrEqual(6);
+
+		// At volume the card must say what it is not showing.
+		await expect(card).toContainText(/Showing \d+ of \d+/);
+	});
+
+	test('the headline sentence names the worst thing first', async ({ page }) => {
+		await page.goto('/');
+		const overdue = Number(
+			await page.locator('a.tile', { hasText: 'Overdue' }).locator('.tile-value').first().innerText()
+		);
+		const sub = await page.locator('.sub').innerText();
+		if (overdue > 0) expect(sub).toContain('overdue');
 	});
 
 	test('the Asana push is visibly unavailable, never silently broken', async ({ page }) => {
