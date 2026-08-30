@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { DatabaseSync } from 'node:sqlite';
-import { readdirSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 /**
@@ -235,6 +235,30 @@ describe('layer 2: excluded categories produce zero context rows', () => {
 				.prepare('SELECT COUNT(*) AS n FROM mail_contacts WHERE email = ?')
 				.get(sender) as { n: number };
 			expect(Number(found.n), `${sender} became a contact and should not have`).toBe(0);
+		}
+	});
+
+	it('the AI pass reaches for the same eligible set, not a wider one', async () => {
+		// The exclusion has to hold on the expensive path, not only the free one.
+		// This asserts the pass takes its threads from `eligibleThreads` rather
+		// than selecting its own, which is the way a cost control quietly widens:
+		// a second query written by somebody who did not know the rule.
+		const source = readFileSync('src/lib/server/context.ts', 'utf8');
+		const passBody = source.slice(source.indexOf('export async function runContextPass'));
+
+		// It must call the one gate.
+		expect(passBody).toContain('await eligibleThreads(');
+
+		// And it must not select threads by any other route. A FROM email_threads
+		// inside the pass would be a second, ungoverned source of work.
+		const ownThreadQueries = passBody.match(/FROM email_threads/g) ?? [];
+		for (const _ of ownThreadQueries) {
+			// The only permitted ones are joins that filter to correspondence
+			// explicitly, so any occurrence must carry that filter nearby.
+			expect(
+				passBody.includes("t.category = 'correspondence'"),
+				'the context pass selects threads without the category filter'
+			).toBe(true);
 		}
 	});
 

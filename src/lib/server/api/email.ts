@@ -13,7 +13,7 @@ import {
 	scopePlaceholders
 } from '../accounts';
 import { draftReply } from '../ai';
-import { seedContacts } from '../context';
+import { runContextPass, seedContacts } from '../context';
 import { stripHtml } from '../google';
 
 /**
@@ -878,6 +878,28 @@ email.post('/context/contacts', async (c) => {
 	const account = await resolveAccount(c.env.DB, c.req.query('account'));
 	const outcome = await seedContacts(c.env.DB, account.id, account.account_email);
 	return c.json({ ok: true, ...outcome });
+});
+
+/**
+ * The supervised context pass.
+ *
+ * Explicit, with a call ceiling, and it reports what it spent. Nothing about
+ * this runs on a timer yet: the first exercise of a path that has never run is
+ * watched, and only then considered for automation.
+ */
+email.post('/context/build', async (c) => {
+	if (!c.env.ANTHROPIC_API_KEY) {
+		throw new ApiError(503, 'No AI key is configured.');
+	}
+	const account = await resolveAccount(c.env.DB, c.req.query('account'));
+	const maxCalls = Math.min(Math.max(Number(c.req.query('max_calls') ?? 60), 1), 400);
+
+	try {
+		const outcome = await runContextPass(c.env, account.id, account.account_email, maxCalls);
+		return c.json({ ok: true, account: account.id, max_calls: maxCalls, ...outcome });
+	} catch (err) {
+		throw asApiError(err);
+	}
 });
 
 /** The derived contact graph, and how much of it the AI passes still owe. */

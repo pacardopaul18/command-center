@@ -681,3 +681,298 @@ export async function draftReply(
 		throw toAiError(err);
 	}
 }
+
+/* -------------------------------------------------------------------------
+ * E4: the context engine's four passes
+ * ---------------------------------------------------------------------- */
+
+/**
+ * Shared across all four: report what the messages support and nothing else.
+ *
+ * A context store is worse than no context store when it is confidently
+ * wrong, because everything downstream inherits the error and a draft written
+ * from an invented commitment reads exactly like one written from a real one.
+ */
+const CONTEXT_RULES = `Report only what the messages actually say.
+
+- Never infer a decision from silence, and never turn a proposal into an
+  agreement.
+- Where the thread does not say, write that it does not say. An honest gap is
+  useful; a confident guess is not.
+- Names and dates come from the messages. Do not supply either from context.
+- No em dashes.`;
+
+const PROFILE_SYSTEM = `You summarise one person's working relationship with Paul,
+from the mail between them.
+
+Reply with JSON only, no prose, no code fence:
+{"relationship":"...","usual_topics":"...","expected_tone":"...","open_commitments":"..."}
+
+relationship: who this person is to Paul, in one line, as the mail shows it.
+usual_topics: what they actually correspond about.
+expected_tone: how Paul writes to THIS person specifically. People write
+  differently to a client than to a recruiter, and that difference is the
+  point of storing it per contact.
+open_commitments: anything either owes the other that the mail leaves open,
+  or the word none.
+
+If there is too little mail to say, say so in the field rather than
+generalising from one message.
+
+${CONTEXT_RULES}`;
+
+export interface ContactProfile {
+	relationship: string;
+	usual_topics: string;
+	expected_tone: string;
+	open_commitments: string;
+}
+
+function parseJson(raw: string): Record<string, unknown> {
+	// Models sometimes fence JSON despite being told not to. A formatting habit
+	// rather than a failure, so it is unwrapped rather than rejected.
+	const body = raw.trim().replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
+	try {
+		return JSON.parse(body) as Record<string, unknown>;
+	} catch {
+		throw new AiError(502, 'Claude did not return usable JSON.');
+	}
+}
+
+function textField(value: unknown, max = 1200): string {
+	return enforceHouseStyle(String(value ?? '').trim()).slice(0, max);
+}
+
+/** Sonnet grade: 18 contacts at today's scale, and the output is reused often. */
+export async function buildContactProfile(
+	apiKey: string,
+	person: string,
+	messages: { from: string | null; sent_at: string; body: string }[]
+): Promise<{ profile: ContactProfile; model: string; usage: Usage }> {
+	const rendered = messages
+		.map((m) => ['From: ' + (m.from ?? 'unknown'), 'Sent: ' + m.sent_at, '', m.body].join('\n'))
+		.join('\n\n---\n\n');
+
+	try {
+		const message = await client(apiKey).messages.create({
+			model: MODEL,
+			max_tokens: 700,
+			system: PROFILE_SYSTEM,
+			messages: [{ role: 'user', content: 'Mail with ' + person + ':\n\n' + rendered }]
+		});
+		assertUsable(message);
+		const parsed = parseJson(textOf(message));
+		return {
+			profile: {
+				relationship: textField(parsed.relationship),
+				usual_topics: textField(parsed.usual_topics),
+				expected_tone: textField(parsed.expected_tone),
+				open_commitments: textField(parsed.open_commitments)
+			},
+			model: message.model,
+			usage: usageOf(message)
+		};
+	} catch (err) {
+		if (err instanceof AiError) throw err;
+		throw toAiError(err);
+	}
+}
+
+const DIGEST_SYSTEM = `You digest one email thread into structured facts.
+
+Reply with JSON only, no prose, no code fence:
+{"summary":"...","decisions":"...","open_asks":"...","paul_commitments":"...","next_move":"paul|them|nobody|unclear"}
+
+summary: two or three sentences on what this thread is.
+decisions: what was actually agreed, or the word none. A proposal nobody
+  answered is not a decision.
+open_asks: what is outstanding and on whom, or none.
+paul_commitments: what PAUL specifically said he would do, in his own
+  wording where possible, or none. This feeds his drafts, so a commitment
+  invented here becomes a promise he never made.
+next_move: who the thread is waiting on. Use unclear when the thread does
+  not say, rather than guessing.
+
+${CONTEXT_RULES}`;
+
+export interface ThreadDigest {
+	summary: string;
+	decisions: string;
+	open_asks: string;
+	paul_commitments: string;
+	next_move: 'paul' | 'them' | 'nobody' | 'unclear';
+}
+
+const MOVES = ['paul', 'them', 'nobody', 'unclear'];
+
+/** Haiku grade: one per correspondence thread, and the shape is constrained. */
+export async function buildThreadDigest(
+	apiKey: string,
+	subject: string,
+	messages: { from: string | null; sent_at: string; body: string }[]
+): Promise<{ digest: ThreadDigest; model: string; usage: Usage }> {
+	const rendered = messages
+		.map((m) => ['From: ' + (m.from ?? 'unknown'), 'Sent: ' + m.sent_at, '', m.body].join('\n'))
+		.join('\n\n---\n\n');
+
+	try {
+		const message = await client(apiKey).messages.create({
+			model: CHEAP_MODEL,
+			max_tokens: 800,
+			system: DIGEST_SYSTEM,
+			messages: [{ role: 'user', content: 'Subject: ' + subject + '\n\n' + rendered }]
+		});
+		assertUsable(message);
+		const parsed = parseJson(textOf(message));
+
+		const move = String(parsed.next_move ?? '').toLowerCase();
+		return {
+			digest: {
+				summary: textField(parsed.summary),
+				decisions: textField(parsed.decisions),
+				open_asks: textField(parsed.open_asks),
+				paul_commitments: textField(parsed.paul_commitments),
+				// An answer outside the set becomes 'unclear' rather than being
+				// coerced to a specific party. Saying the wrong person owes the next
+				// move is worse than admitting the thread does not say.
+				next_move: (MOVES.includes(move) ? move : 'unclear') as ThreadDigest['next_move']
+			},
+			model: message.model,
+			usage: usageOf(message)
+		};
+	} catch (err) {
+		if (err instanceof AiError) throw err;
+		throw toAiError(err);
+	}
+}
+
+const VOICE_SYSTEM = `You describe how one person writes, from their own sent mail.
+
+Reply with JSON only, no prose, no code fence:
+{"greetings":"...","sign_offs":"...","sentence_length":"...","formality":"...","recurring_phrases":"...","notes":"..."}
+
+Quote what he actually writes rather than characterising it. "Hi [name]," and
+"Thanks," are useful; "warm and professional" is not, because it describes
+half the people who have ever written an email.
+
+sentence_length: short, medium or long, with a rough word count.
+formality: where he sits, and whether it changes by recipient.
+recurring_phrases: turns of phrase that appear more than once.
+notes: anything else a writer imitating him would need, including habits he
+  probably does not know he has.
+
+${CONTEXT_RULES}`;
+
+export interface VoiceProfile {
+	greetings: string;
+	sign_offs: string;
+	sentence_length: string;
+	formality: string;
+	recurring_phrases: string;
+	notes: string;
+}
+
+/** Sonnet grade: one per account, and every draft depends on it. */
+export async function buildVoiceProfile(
+	apiKey: string,
+	sent: string[]
+): Promise<{ voice: VoiceProfile; model: string; usage: Usage }> {
+	const rendered = sent.map((m, i) => '--- message ' + (i + 1) + ' ---\n' + m).join('\n\n');
+
+	try {
+		const message = await client(apiKey).messages.create({
+			model: MODEL,
+			max_tokens: 900,
+			system: VOICE_SYSTEM,
+			messages: [{ role: 'user', content: 'Messages Paul sent:\n\n' + rendered }]
+		});
+		assertUsable(message);
+		const parsed = parseJson(textOf(message));
+		return {
+			voice: {
+				greetings: textField(parsed.greetings, 600),
+				sign_offs: textField(parsed.sign_offs, 600),
+				sentence_length: textField(parsed.sentence_length, 300),
+				formality: textField(parsed.formality, 600),
+				recurring_phrases: textField(parsed.recurring_phrases, 900),
+				notes: textField(parsed.notes, 1200)
+			},
+			model: message.model,
+			usage: usageOf(message)
+		};
+	} catch (err) {
+		if (err instanceof AiError) throw err;
+		throw toAiError(err);
+	}
+}
+
+const COMMITMENT_SYSTEM = `You extract promises from one email thread.
+
+Reply with JSON only, no prose, no code fence:
+{"commitments":[{"owed_by":"paul|them","owed_to":"...","what":"...","due_signal":"..."}]}
+
+A commitment is somebody saying they will do a specific thing. Not an
+intention, not a suggestion, not a question about whether something could
+happen.
+
+what: the promise, in the words the message used.
+due_signal: what the message said about timing, quoted. Leave it empty when
+  no timing was given. NEVER supply a date the message did not state: a
+  deadline invented here becomes a deadline Paul believes he agreed to.
+
+Return an empty array when nothing was promised. Most threads promise
+nothing, and an empty array is the correct answer far more often than not.
+
+${CONTEXT_RULES}`;
+
+export interface ExtractedCommitment {
+	owed_by: 'paul' | 'them';
+	owed_to: string;
+	what: string;
+	due_signal: string;
+}
+
+/** Haiku grade: runs on the same threads as the digest. */
+export async function extractCommitments(
+	apiKey: string,
+	subject: string,
+	messages: { from: string | null; sent_at: string; body: string }[]
+): Promise<{ commitments: ExtractedCommitment[]; model: string; usage: Usage }> {
+	const rendered = messages
+		.map((m) => ['From: ' + (m.from ?? 'unknown'), 'Sent: ' + m.sent_at, '', m.body].join('\n'))
+		.join('\n\n---\n\n');
+
+	try {
+		const message = await client(apiKey).messages.create({
+			model: CHEAP_MODEL,
+			max_tokens: 900,
+			system: COMMITMENT_SYSTEM,
+			messages: [{ role: 'user', content: 'Subject: ' + subject + '\n\n' + rendered }]
+		});
+		assertUsable(message);
+		const parsed = parseJson(textOf(message));
+		const raw = Array.isArray(parsed.commitments) ? parsed.commitments : [];
+
+		const commitments: ExtractedCommitment[] = [];
+		for (const item of raw) {
+			const row = item as Record<string, unknown>;
+			const what = textField(row.what, 600);
+			// A commitment with no text is a row saying somebody promised something
+			// and unable to say what. The database refuses it; so does this.
+			if (!what) continue;
+			const owedBy = String(row.owed_by ?? '').toLowerCase();
+			if (owedBy !== 'paul' && owedBy !== 'them') continue;
+			commitments.push({
+				owed_by: owedBy,
+				owed_to: textField(row.owed_to, 200),
+				what,
+				due_signal: textField(row.due_signal, 300)
+			});
+		}
+
+		return { commitments, model: message.model, usage: usageOf(message) };
+	} catch (err) {
+		if (err instanceof AiError) throw err;
+		throw toAiError(err);
+	}
+}
