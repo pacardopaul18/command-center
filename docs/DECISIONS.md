@@ -2169,6 +2169,37 @@ Verified on real mail: five threads, 170 to 295 characters each, and zero em or
 en dashes, which is the house style rule holding through a path that had never
 been through it before.
 
+### D89: verify mail by counts, never by content
+
+Standing rule, ratified 2026-08-30, and it applies to every future pass over
+Paul's mail.
+
+Proving the ingestion worked did not require displaying any of it. The whole
+build was verified on aggregates: message and thread counts, body sizes, sender
+cardinality, ingest status, summary lengths, and an em dash count. Not one
+subject, sender or body was printed into the session transcript.
+
+That is the standard from here. Counts, sizes, aggregates, statuses. Never
+content.
+
+Two reasons it holds, and the second is the one that generalises.
+
+A session transcript is a durable artifact in a place the mail was never
+intended to reach. Reading a mailbox to build a feature does not require
+reproducing the mailbox somewhere else, and every line printed is a copy that
+now exists in a second location with different handling.
+
+And it is the posture the partner conversation will need described. "The tool
+reads mail and the operator never sees it in the build logs" is a sentence with
+a demonstrable practice behind it. "We were careful" is not. The discipline is
+worth more as an established habit with a record than as an assurance offered
+when somebody finally asks.
+
+This is enforcement by practice rather than by structure, which makes it weaker
+than D70 and D82 and worth stating explicitly for that reason. Nothing in the
+code prevents printing a body. The rule is the only thing that does, so it is
+written down where it can be pointed at.
+
 ## Interpretation notes
 
 Not decisions. Judgment calls made inside an existing decision, recorded so the
