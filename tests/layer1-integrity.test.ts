@@ -285,6 +285,17 @@ describe('layer 1: referential integrity', () => {
 		}
 	});
 
+	it('no test tickets are left behind', () => {
+		// Tickets have no seeded rows at all, so any row here is a leak from a
+		// test or a probe. The suite has caught stray action items three times;
+		// this is the same guard on the newest table.
+		const { c } = one<{ c: number }>('SELECT COUNT(*) AS c FROM tickets');
+		expect(
+			Number(c),
+			'Tickets exist that the seed did not create. A test or a probe left them behind.'
+		).toBe(0);
+	});
+
 	it('no seeded action item carries an Asana gid', () => {
 		const { c } = one<{ c: number }>(
 			'SELECT COUNT(*) AS c FROM action_items WHERE asana_task_gid IS NOT NULL'

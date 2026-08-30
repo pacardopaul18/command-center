@@ -175,6 +175,32 @@
 		return data.asana.blocked_because;
 	}
 
+	/**
+	 * Converts an action item into a ticket.
+	 *
+	 * The action item is not touched. It is the record that the commitment was
+	 * made, and closing or deleting it here would destroy the capture history to
+	 * tidy a list. A second conversion is refused by the server, so the button
+	 * disappears once one exists rather than relying on the user remembering.
+	 */
+	async function convert(item: ActionItem) {
+		busy = true;
+		notice = '';
+		errorMessage = '';
+		const result = await apiWrite<{ ticket: { id: string; title: string } }>(
+			`/api/tickets/convert/${item.id}`,
+			'POST',
+			{}
+		);
+		if (!result.ok) {
+			errorMessage = result.error ?? 'Could not convert to a ticket.';
+		} else {
+			notice = `Converted to a ticket. The action item is still here as the record.`;
+			await invalidateAll();
+		}
+		busy = false;
+	}
+
 	async function remove(item: ActionItem) {
 		if (!confirm(`Delete "${item.title}"? This cannot be undone.`)) return;
 		const ok = await send(`/api/action-items/${item.id}`, 'DELETE');
@@ -442,7 +468,18 @@
 								</Button>
 							{/if}
 						</td>
-						<td class="right">
+						<td class="right nowrap">
+							{#if item.project_id && item.status !== 'done'}
+								<Button
+									variant="ghost"
+									size="sm"
+									disabled={busy}
+									title="Create a ticket from this item"
+									onclick={() => convert(item)}
+								>
+									To ticket<span class="visually-hidden">: {item.title}</span>
+								</Button>
+							{/if}
 							<Button variant="ghost" size="sm" onclick={() => startEdit(item)}>
 								Edit<span class="visually-hidden"> {item.title}</span>
 							</Button>
@@ -535,9 +572,16 @@
 						{/if}
 					</div>
 
-					<Button variant="ghost" size="sm" onclick={() => startEdit(item)}>
-						Edit<span class="visually-hidden"> {item.title}</span>
-					</Button>
+					<div class="card-actions">
+						{#if item.project_id && item.status !== 'done'}
+							<Button variant="ghost" size="sm" disabled={busy} onclick={() => convert(item)}>
+								To ticket<span class="visually-hidden">: {item.title}</span>
+							</Button>
+						{/if}
+						<Button variant="ghost" size="sm" onclick={() => startEdit(item)}>
+							Edit<span class="visually-hidden"> {item.title}</span>
+						</Button>
+					</div>
 				</div>
 			</li>
 		{/each}
@@ -970,6 +1014,12 @@
 	.asana-link {
 		font-size: var(--text-sm);
 		color: var(--text-link);
+	}
+
+	.card-actions {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-1);
 	}
 
 	.card-push {

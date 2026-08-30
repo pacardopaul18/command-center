@@ -19,6 +19,29 @@ export function formatDay(date: string): string {
 	return dayFormatter.format(new Date(`${date}T00:00:00Z`));
 }
 
+/**
+ * A stored UTC timestamp shown in Mountain Time.
+ *
+ * Deliberately different from `formatDay`. A deadline is a bare date with no
+ * zone: 'Sep 3' means Sep 3 wherever you are, so it formats in UTC to stop the
+ * browser shifting it a day. A completion is a real instant, and the only
+ * honest way to show it is in the timezone the person was working in. Intl
+ * carries the DST rules, so this needs no arithmetic of its own.
+ */
+const momentFormatter = new Intl.DateTimeFormat('en-US', {
+	timeZone: 'America/Denver',
+	month: 'short',
+	day: 'numeric',
+	hour: 'numeric',
+	minute: '2-digit'
+});
+
+export function formatMoment(iso: string): string {
+	const at = new Date(iso);
+	if (Number.isNaN(at.getTime())) return iso;
+	return momentFormatter.format(at);
+}
+
 export type DeadlineTone = 'overdue' | 'today' | 'soon' | 'later' | 'none';
 
 export interface DeadlineLabel {

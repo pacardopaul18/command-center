@@ -37,6 +37,7 @@ file records what was decided along the way that neither of them says, and why.
 | T-silent-writes | Route every client write through `apiWrite` | PARTIAL 2026-08-29, D66. Quick add and the action items screen converted and verified against an intercepted 200 HTML response. Ratified as post-gate work: the remaining 24 sites get the same treatment, each verified by intercepting a response rather than by reading the code. Carries an open question, below |
 | T-dup-cleanup | Four duplicate action items on production from the retry loop | DONE 2026-08-29 on PM go. Snapshot taken first and all five ids confirmed recoverable from it before any delete. Four rows written, count 8 to 4, keeper `944e4e5a` intact with the three originals |
 | T-backup-prod | Prove the backup write path against production before the first firing | DONE 2026-08-30, D58. Wrote 28,661 bytes to production R2 from real D1, pulled it back and restored it clean. 09:00Z now tests only the scheduled trigger |
+| T-ws1-tickets | Phase 2 workstream 1: tickets entity and the additive rate model | DONE 2026-08-30, D71 and D72. Migration 0008 applied local then remote, 8 of 8, snapshot `snapshot-2026-08-30-pre-0008.sql` taken first. All twelve constraints probed individually, conversion uniqueness and the computed actual proven live. Suite extended: layer 2 contract tests for tickets, conversion and rates, layer 3 flows, and a layer 1 leak guard because tickets have no seeded rows |
 | T-v2-baseline | Partner time baseline audit, running 15-minute-increment note | OPEN, DRI Paul, starting week of 2026-08-31. Prerequisite for the v2 partner-hours-saved dashboard, D52. Nothing blocks on it in v1 |
 
 ## Decisions
@@ -1676,6 +1677,122 @@ then a symptom appeared, therefore the deploy caused the symptom. Here the only
 client change in that deploy was confined to a notice string in the Asana push
 handler and could not have touched creation. The correlation was real and the
 causation was invented.
+
+### D68: Phase 2 opened, five workstreams sequenced by dependency
+
+Estimates accepted at `aa088c1`. Five workstreams, ordered by what each one
+needs rather than by calendar:
+
+1. Two-way Asana sync
+2. Tickets and the rate model
+3. F18-lean Client 360
+4. Connection infrastructure, built dark
+5. Rate model, additive
+
+Lean across the board, confirmed, with one explicit addendum: Asana lean is
+polling via `modified_since` only. Webhooks are out of lean entirely, not
+deferred inside it. That distinction matters because a deferred item comes back
+by default and an excluded one has to be argued for.
+
+Standing rules carry forward unchanged. Dual estimates before each build, suite
+green per push, production clean of test data, the cron surface untouched
+without an evidence window review, and Wednesday's dress rehearsal still pauses
+everything.
+
+### D69: a deleted Asana task marks the item ambiguous and touches nothing else
+
+The conflict case that needed a rule: an item has a stored gid and Asana no
+longer returns that task, or returns it in a state the sync cannot resolve.
+
+The ruling is to mark the item ambiguous with a note, never touch its status,
+and never clear the gid.
+
+Each half of that is load bearing. Touching status would let a remote system
+close Paul's own commitment, which inverts who owns the record. Clearing the gid
+would destroy the only evidence that the two systems were ever connected, and it
+would do it precisely at the moment that evidence is most needed, because a gid
+that resolves to nothing is the thing worth investigating. Ambiguous is not a
+failure state to be cleaned up. It is an accurate description of what is known,
+and the honest output when the truth is that the two systems disagree.
+
+### D70: a scope never granted cannot be reached by a later bug
+
+Gmail stays draft-only. No send capability, period, and the form that rule takes
+is the point.
+
+The weak version is a policy: never call the send endpoint. That survives
+exactly as long as every future change remembers it. The strong version is to
+never request the send scope, so the token the app holds is physically incapable
+of sending, and a bug, a bad refactor, or a confused model cannot produce a sent
+message no matter what it tries. There is nothing to remember because there is
+nothing to reach.
+
+This is D65 applied to permissions rather than to form controls. D65 said do not
+offer an option whose selection produces a broken record. This says do not hold
+a permission whose use would be a breach. Both are enforcement by absence, which
+is the standing form of the rule now: where a guarantee can be made structural,
+making it structural beats documenting it.
+
+The classification check is a hard precondition on all of it. No Gmail code gets
+written until `gmail.readonly`'s restricted or sensitive status is read off the
+actual consent screen, because the answer changes whether verification and CASA
+are in scope, and that is a schedule question, not a detail.
+
+Paul's, personally, and not delegable: the Cloud Console work. The OAuth client
+must live in his own Google account and must not be created through any session
+credential. An OAuth client created by a session is a production identity owned
+by the wrong party.
+
+### D71: tickets and action items are two entities, and actual hours are never stored
+
+Workstream 1, built. Migration `0008_tickets_and_rates.sql`, applied local then
+remote, 8 of 8.
+
+The entity fork is confirmed rather than reconsidered: an action item is the
+capture layer, a thing written down in ten seconds during a call, and a ticket
+is what one becomes when somebody is going to work it. One table with optional
+columns would have made every screen ask which kind of row it was holding.
+
+Three properties are worth stating because they were choices, not defaults.
+
+Actual hours are not a column. They are summed from `time_entries.ticket_id` on
+every read. A stored actual is a second copy of a number that already exists,
+and second copies drift; here the drift would be between an estimate and an
+actual, which is the one comparison the ticket exists to support.
+
+Conversion leaves the action item completely untouched. The item is the record
+that the commitment was made, and closing or deleting it to tidy a list would
+destroy capture history. A partial unique index enforces one ticket per item, so
+a second conversion is a 409 rather than a quiet duplicate.
+
+`completed_at` is enforced by a table CHECK in both directions: a finished
+ticket must record when, and an unfinished one must not carry a stale timestamp.
+Twelve constraints were probed individually before the remote apply, and every
+one behaved.
+
+D38 explicitly does not apply here. Nothing was rebuilt, because SQLite adds
+nullable columns in place, so no referential actions fired and no stash and
+restore was needed. Recorded so the next migration does not copy a ceremony it
+does not need.
+
+### D72: the rate model is additive and never rewrites an entered amount
+
+`clients.default_rate_cents`, `time_entries.rate_cents`, both nullable.
+
+A rate is a default that gets copied onto a time entry when one is created. It
+is not a lookup performed at read time. That is the whole distinction: raising a
+client's rate must not silently change what last quarter's work was worth, and
+an amount already entered on an invoice stays valid forever. The suite asserts
+this rather than trusting it, by reading the billing totals, changing a rate,
+and reading them again.
+
+Computed value is shown on the ticket and labelled as a computation, not an
+invoiced amount. Nothing in this model writes to invoices.
+
+Fulfillment status is hand-set for now, with linked invoices displayed
+alongside. The column is shaped so a computed mode can arrive later without a
+migration: a status plus an optional basis field, where the basis records what
+the status was derived from once anything derives it.
 
 ## Interpretation notes
 

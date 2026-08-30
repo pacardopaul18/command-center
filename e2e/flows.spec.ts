@@ -392,3 +392,104 @@ test.describe('the dashboard', () => {
 		await expect(push).toBeDisabled();
 	});
 });
+
+test.describe('tickets: the worked unit under a project', () => {
+	const TITLE = 'E2E ticket probe';
+
+	/**
+	 * Tickets have no seeded rows, so anything this suite creates has to be
+	 * removed or layer 1 fails on the next run. That is deliberate: the leak
+	 * guard and the cleanup here check each other.
+	 */
+	async function removeTicket(request: import('@playwright/test').APIRequestContext, title: string) {
+		const res = await request.get('/api/tickets?status=all');
+		const body = await res.json();
+		for (const t of body.tickets) {
+			if (t.title === title) await request.delete(`/api/tickets/${t.id}`);
+		}
+	}
+
+	test.afterEach(async ({ request }) => {
+		await removeTicket(request, TITLE);
+	});
+
+	test('a ticket is created on a project and shows estimate against actual', async ({
+		page,
+		request
+	}) => {
+		const projects = await (await request.get('/api/projects')).json();
+		const project = projects.projects[0];
+
+		await page.goto(`/projects/${project.id}`);
+		await ready(page);
+
+		// The form is behind a toggle, so it does not exist until asked for.
+		await page.getByRole('button', { name: 'New ticket' }).click();
+
+		// Scoped by its own submit button, the way captureForm is. The project page
+		// has several forms and 'Title' appears in more than one of them.
+		const form = page
+			.locator('form')
+			.filter({ has: page.getByRole('button', { name: 'Create ticket' }) });
+		await form.getByLabel('Title').fill(TITLE);
+		await form.getByLabel(/Estimate/i).fill('8');
+		await form.getByRole('button', { name: 'Create ticket' }).click();
+
+		const row = page.getByRole('link', { name: TITLE }).first();
+		await expect(row).toBeVisible();
+
+		await row.click();
+		await expect(page.getByRole('heading', { level: 1, name: TITLE })).toBeVisible();
+
+		// A new ticket has an estimate and no time booked. The zero is computed
+		// from time entries, so it has to render as a real zero, not a blank.
+		await expect(page.locator('main')).toContainText('8');
+		await expect(page.locator('main')).toContainText(/0(\.0+)?\s*h/i);
+	});
+
+	test('finishing a ticket records when, and reopening it clears that', async ({
+		page,
+		request
+	}) => {
+		const projects = await (await request.get('/api/projects')).json();
+		const created = await request.post('/api/tickets', {
+			data: { project_id: projects.projects[0].id, title: TITLE, estimate_hours: 3 }
+		});
+		const { ticket } = await created.json();
+
+		await page.goto(`/tickets/${ticket.id}`);
+		await ready(page);
+
+		// The page must say when it finished, not merely that it did. This caught a
+		// real omission: completed_at was stored and never shown.
+		await page.getByLabel(/^Status/i).selectOption('done');
+		await expect(page.locator('dl.facts')).toContainText('Finished');
+
+		await page.getByLabel(/^Status/i).selectOption('in_progress');
+		await expect(page.locator('dl.facts')).not.toContainText('Finished');
+	});
+
+	test('converting an action item leaves the action item standing', async ({ page, request }) => {
+		const list = await (await request.get('/api/action-items?view=open&page_size=200')).json();
+		const item = list.items.find((i: { project_id?: string }) => i.project_id);
+		expect(item, 'the seed should have an open item on a project').toBeTruthy();
+
+		await page.goto(`/actions?view=open&q=${encodeURIComponent(item.title)}`);
+		await ready(page);
+
+		await page.getByRole('button', { name: /To ticket/i }).first().click();
+		await expect(page.locator('main')).toContainText(/still here as the record/i);
+
+		// The item is the record that the commitment was made. Converting is not
+		// a move, and a screen that quietly removed it would be losing history.
+		await expect(page.getByText(item.title).first()).toBeVisible();
+
+		const after = await (await request.get('/api/tickets?status=all')).json();
+		const made = after.tickets.find(
+			(t: { converted_from_action_item_id?: string }) =>
+				t.converted_from_action_item_id === item.id
+		);
+		expect(made).toBeTruthy();
+		await request.delete(`/api/tickets/${made.id}`);
+	});
+});

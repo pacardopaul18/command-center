@@ -1,0 +1,485 @@
+<script lang="ts">
+	import { invalidateAll } from '$app/navigation';
+	import { apiWrite } from '$lib/http';
+	import { formatDay, formatMoment } from '$lib/format';
+	import {
+		TICKET_PRIORITIES,
+		TICKET_PRIORITY_LABELS,
+		TICKET_STATUSES,
+		TICKET_STATUS_LABELS,
+		TICKET_STATUS_TONE,
+		estimateVariance,
+		formatMoney
+	} from '$lib/types';
+	import Button from '$lib/components/Button.svelte';
+	import Card from '$lib/components/Card.svelte';
+	import FormField from '$lib/components/FormField.svelte';
+	import Input from '$lib/components/Input.svelte';
+	import Markdown from '$lib/components/Markdown.svelte';
+	import Select from '$lib/components/Select.svelte';
+	import StatusChip from '$lib/components/StatusChip.svelte';
+	import Textarea from '$lib/components/Textarea.svelte';
+	import type { PageData } from './$types';
+
+	/**
+	 * One ticket.
+	 *
+	 * Estimate against actual is the number this page exists to show, and the
+	 * actual is summed from the time booked to the ticket rather than typed. A
+	 * variance against no estimate is not a small variance, it is an absent one,
+	 * so it says nothing rather than zero.
+	 */
+
+	let { data }: { data: PageData } = $props();
+
+	const ticket = $derived(data.ticket);
+	const variance = $derived(estimateVariance(ticket.estimate_hours, ticket.actual_hours));
+
+	let busy = $state(false);
+	let notice = $state('');
+	let errorMessage = $state('');
+	let editing = $state(false);
+
+	let edit = $state<Record<string, string>>({});
+
+	function startEdit() {
+		edit = {
+			title: ticket.title,
+			description: ticket.description ?? '',
+			start_date: ticket.start_date ?? '',
+			due_date: ticket.due_date ?? '',
+			estimate_hours: ticket.estimate_hours == null ? '' : String(ticket.estimate_hours),
+			priority: ticket.priority,
+			assignee: ticket.assignee ?? '',
+			reporter: ticket.reporter ?? ''
+		};
+		editing = true;
+	}
+
+	async function patch(body: Record<string, unknown>, message: string) {
+		busy = true;
+		errorMessage = '';
+		const result = await apiWrite(`/api/tickets/${ticket.id}`, 'PATCH', body);
+		if (!result.ok) {
+			errorMessage = result.error ?? 'Could not update the ticket.';
+		} else {
+			await invalidateAll();
+			notice = message;
+			editing = false;
+		}
+		busy = false;
+	}
+
+	async function save(event: SubmitEvent) {
+		event.preventDefault();
+		await patch(
+			{ ...edit, estimate_hours: edit.estimate_hours === '' ? null : edit.estimate_hours },
+			'Changes saved.'
+		);
+	}
+
+	/** The owner picker adds the stored value if the roster does not have it. */
+	function ownerOptions(current: string | null): string[] {
+		const list = [...data.owners];
+		const value = (current ?? '').trim();
+		if (value && !list.some((o) => o.toLowerCase() === value.toLowerCase())) list.unshift(value);
+		return list;
+	}
+</script>
+
+<svelte:head><title>{ticket.title}</title></svelte:head>
+
+<header class="head">
+	<p class="crumb">
+		<a href="/projects/{ticket.project_id}">{ticket.project_name}</a>
+		{#if ticket.client_name}
+			<span class="sep">·</span>{ticket.client_name}
+		{/if}
+	</p>
+	<div class="title-row">
+		<h1>{ticket.title}</h1>
+		<div class="chips">
+			{#if ticket.priority !== 'normal'}
+				<StatusChip
+					tone={ticket.priority === 'urgent'
+						? 'overdue'
+						: ticket.priority === 'high'
+							? 'atrisk'
+							: 'waiting'}
+					label={TICKET_PRIORITY_LABELS[ticket.priority]}
+				/>
+			{/if}
+			<StatusChip
+				tone={TICKET_STATUS_TONE[ticket.status]}
+				label={TICKET_STATUS_LABELS[ticket.status]}
+			/>
+		</div>
+	</div>
+</header>
+
+{#if notice}<p class="status-line" role="status" aria-live="polite">{notice}</p>{/if}
+{#if errorMessage}<p class="error-banner" role="alert">{errorMessage}</p>{/if}
+
+<div class="controls">
+	<label class="quick">
+		<span>Status</span>
+		<Select
+			value={ticket.status}
+			disabled={busy}
+			onchange={(e) => patch({ status: e.currentTarget.value }, 'Status updated.')}
+		>
+			{#each TICKET_STATUSES as s (s)}
+				<option value={s}>{TICKET_STATUS_LABELS[s]}</option>
+			{/each}
+		</Select>
+	</label>
+	<Button variant="secondary" onclick={startEdit} disabled={busy}>Edit details</Button>
+</div>
+
+<dl class="facts">
+	<div>
+		<dt>Assignee</dt>
+		<dd>{ticket.assignee ?? 'Unassigned'}</dd>
+	</div>
+	<div>
+		<dt>Reporter</dt>
+		<dd>{ticket.reporter ?? 'Not recorded'}</dd>
+	</div>
+	<div>
+		<dt>Start</dt>
+		<dd class="mono">{ticket.start_date ? formatDay(ticket.start_date) : 'Not set'}</dd>
+	</div>
+	<div>
+		<dt>Due</dt>
+		<dd class="mono">{ticket.due_date ? formatDay(ticket.due_date) : 'Not set'}</dd>
+	</div>
+	{#if ticket.completed_at}
+		<div>
+			<dt>Finished</dt>
+			<dd class="mono">{formatMoment(ticket.completed_at)}</dd>
+		</div>
+	{/if}
+
+	<div>
+		<dt>Estimate</dt>
+		<dd class="mono">{ticket.estimate_hours ? `${ticket.estimate_hours}h` : 'None'}</dd>
+	</div>
+	<div>
+		<dt>Actual</dt>
+		<dd class="mono">
+			{ticket.actual_hours ?? 0}h
+			{#if variance}
+				<span class="variance" class:over={variance.over}>{variance.text}</span>
+			{/if}
+		</dd>
+	</div>
+</dl>
+
+{#if editing}
+	<Card title="Edit ticket">
+		<form onsubmit={save}>
+			<div class="grid">
+				<div class="span-all">
+					<FormField label="Title">
+						<Input bind:value={edit.title} maxlength={300} required />
+					</FormField>
+				</div>
+				<FormField label="Assignee">
+					<Select bind:value={edit.assignee}>
+						<option value="">Unassigned</option>
+						{#each ownerOptions(edit.assignee) as name (name)}
+							<option value={name}>{name}</option>
+						{/each}
+					</Select>
+				</FormField>
+				<FormField label="Reporter">
+					<Select bind:value={edit.reporter}>
+						<option value="">Not recorded</option>
+						{#each ownerOptions(edit.reporter) as name (name)}
+							<option value={name}>{name}</option>
+						{/each}
+					</Select>
+				</FormField>
+				<FormField label="Priority">
+					<Select bind:value={edit.priority}>
+						{#each TICKET_PRIORITIES as p (p)}
+							<option value={p}>{TICKET_PRIORITY_LABELS[p]}</option>
+						{/each}
+					</Select>
+				</FormField>
+				<FormField label="Estimate, hours" hint="Actual is summed from time entries, never typed.">
+					<Input type="number" step="0.25" min="0.25" bind:value={edit.estimate_hours} mono />
+				</FormField>
+				<FormField label="Start">
+					<Input type="date" bind:value={edit.start_date} mono />
+				</FormField>
+				<FormField label="Due">
+					<Input type="date" bind:value={edit.due_date} mono />
+				</FormField>
+				<div class="span-all">
+					<FormField label="Description">
+						<Textarea bind:value={edit.description} rows={5} maxlength={8000} />
+					</FormField>
+				</div>
+			</div>
+			<div class="form-actions">
+				<Button type="submit" disabled={busy}>Save changes</Button>
+				<Button variant="secondary" onclick={() => (editing = false)} disabled={busy}>Cancel</Button>
+			</div>
+		</form>
+	</Card>
+{/if}
+
+{#if ticket.description}
+	<Card title="Description">
+		<Markdown source={ticket.description} />
+	</Card>
+{/if}
+
+<Card
+	title="Time booked"
+	subtitle={ticket.entry_count
+		? `${ticket.entry_count} entr${ticket.entry_count === 1 ? 'y' : 'ies'}`
+		: undefined}
+	padded={false}
+>
+	{#if data.entries.length === 0}
+		<p class="empty">
+			No time booked to this ticket. Book it against the billing period, choosing this ticket.
+		</p>
+	{:else}
+		<div class="scroll">
+			<table>
+				<thead>
+					<tr>
+						<th scope="col">Date</th>
+						<th scope="col">Description</th>
+						<th scope="col" class="num">Hours</th>
+						<th scope="col" class="num">Rate</th>
+						<th scope="col" class="num">Value</th>
+					</tr>
+				</thead>
+				<tbody>
+					{#each data.entries as entry (entry.id)}
+						<tr>
+							<td class="mono nowrap">{formatDay(entry.entry_date)}</td>
+							<td>{entry.description ?? 'No description'}</td>
+							<td class="num mono">{entry.hours.toFixed(2)}</td>
+							<td class="num mono">
+								{entry.rate_cents != null ? formatMoney(entry.rate_cents) : 'No rate'}
+							</td>
+							<td class="num mono">
+								{entry.rate_cents != null
+									? formatMoney(Math.round(entry.hours * entry.rate_cents))
+									: '-'}
+							</td>
+						</tr>
+					{/each}
+				</tbody>
+			</table>
+		</div>
+		{#if (ticket.computed_value_cents ?? 0) > 0}
+			<p class="value-note">
+				{formatMoney(ticket.computed_value_cents ?? 0)} at the rates recorded on these entries. This
+				is a computation, not an invoiced amount.
+			</p>
+		{/if}
+	{/if}
+</Card>
+
+{#if ticket.converted_from_action_item_id}
+	<p class="footnote">
+		Converted from an action item. The original capture is still in
+		<a href="/actions?view=all&q={encodeURIComponent(ticket.title)}">Action items</a>.
+	</p>
+{/if}
+
+<style>
+	.head {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-2);
+		margin-bottom: var(--space-4);
+	}
+
+	.crumb {
+		margin: 0;
+		font-size: var(--text-sm);
+		color: var(--text-secondary);
+	}
+
+	.crumb a {
+		color: var(--text-link);
+	}
+
+	.sep {
+		margin: 0 var(--space-2);
+	}
+
+	.title-row {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		justify-content: space-between;
+		gap: var(--space-3);
+	}
+
+	h1 {
+		margin: 0;
+		font-size: var(--text-xl);
+		font-weight: var(--weight-medium);
+		overflow-wrap: anywhere;
+	}
+
+	.chips {
+		display: flex;
+		gap: var(--space-2);
+	}
+
+	.status-line,
+	.error-banner {
+		margin: 0 0 var(--space-3);
+		padding: var(--space-2) var(--space-3);
+		border-radius: var(--radius-sm);
+		font-size: var(--text-sm);
+	}
+
+	.status-line {
+		background: var(--green-100);
+		color: var(--green-700);
+	}
+
+	.error-banner {
+		background: var(--red-100);
+		color: var(--red);
+	}
+
+	.controls {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: flex-end;
+		gap: var(--space-3);
+		margin-bottom: var(--space-4);
+	}
+
+	.quick {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-1);
+		font-size: var(--text-sm);
+		color: var(--text-secondary);
+	}
+
+	.facts {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: var(--space-3);
+		margin: 0 0 var(--space-4);
+		padding: var(--space-4);
+		border: 1px solid var(--border-thin);
+		border-radius: var(--radius-md);
+		background: var(--surface-card);
+	}
+
+	@media (min-width: 720px) {
+		.facts {
+			grid-template-columns: repeat(6, 1fr);
+		}
+	}
+
+	.facts dt {
+		font-size: var(--text-xs);
+		text-transform: uppercase;
+		letter-spacing: var(--tracking-label);
+		color: var(--text-secondary);
+	}
+
+	.facts dd {
+		margin: 2px 0 0;
+		font-size: var(--text-sm);
+		overflow-wrap: anywhere;
+	}
+
+	/* Never colour alone: the words say over or under too. */
+	.variance {
+		display: block;
+		font-size: var(--text-xs);
+		color: var(--text-positive);
+	}
+
+	.variance.over {
+		color: var(--text-alarm);
+	}
+
+	.scroll {
+		overflow-x: auto;
+	}
+
+	table {
+		width: 100%;
+		border-collapse: collapse;
+		font-size: var(--text-sm);
+	}
+
+	th,
+	td {
+		padding: var(--space-2) var(--space-3);
+		text-align: left;
+		border-bottom: 1px solid var(--border-thin);
+	}
+
+	tbody tr:last-child td {
+		border-bottom: none;
+	}
+
+	.num {
+		text-align: right;
+	}
+
+	.nowrap {
+		white-space: nowrap;
+	}
+
+	.value-note {
+		margin: 0;
+		padding: var(--space-3) var(--space-4);
+		border-top: 1px solid var(--border-thin);
+		font-size: var(--text-xs);
+		color: var(--text-secondary);
+	}
+
+	.empty {
+		margin: 0;
+		padding: var(--space-4);
+		font-size: var(--text-sm);
+		color: var(--text-secondary);
+	}
+
+	.footnote {
+		margin-top: var(--space-4);
+		font-size: var(--text-xs);
+		color: var(--text-secondary);
+	}
+
+	.grid {
+		display: grid;
+		grid-template-columns: 1fr;
+		gap: var(--space-4);
+	}
+
+	@media (min-width: 720px) {
+		.grid {
+			grid-template-columns: repeat(2, 1fr);
+		}
+
+		.span-all {
+			grid-column: 1 / -1;
+		}
+	}
+
+	.form-actions {
+		display: flex;
+		gap: var(--space-3);
+		margin-top: var(--space-4);
+	}
+</style>

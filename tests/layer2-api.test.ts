@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeAll } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 
 /**
@@ -302,6 +302,189 @@ describe('layer 2: report windows', () => {
 		const { res, json } = await api('/api/reports/slipping?from=2026-07-01&to=2026-07-31');
 		expect(res.status).toBe(200);
 		expect(json.data.totals.total_count).toBeGreaterThan(0);
+	});
+});
+
+describe('layer 2: tickets', () => {
+	let projectId = '';
+	const made: string[] = [];
+
+	beforeAll(async () => {
+		const { json } = await api('/api/projects');
+		projectId = json.projects[0].id;
+	});
+
+	afterAll(async () => {
+		for (const id of made) await api(`/api/tickets/${id}`, { method: 'DELETE' }).catch(() => {});
+	});
+
+	async function make(over: Record<string, unknown> = {}) {
+		const res = await api('/api/tickets', body({ project_id: projectId, title: 'SUITE ticket', ...over }));
+		if (res.res.status === 201) made.push(res.json.ticket.id);
+		return res;
+	}
+
+	it('creates a ticket with an estimate and no actual yet', async () => {
+		const { res, json } = await make({ estimate_hours: 4, priority: 'high' });
+		expect(res.status).toBe(201);
+		expect(json.ticket.estimate_hours).toBe(4);
+		// Actual is summed from time entries, never stored, so a new ticket is zero.
+		expect(json.ticket.actual_hours).toBe(0);
+		expect(json.ticket.entry_count).toBe(0);
+		expect(json.ticket.completed_at).toBeNull();
+	});
+
+	it('refuses the shapes the database refuses, with the rule named', async () => {
+		const cases: [Record<string, unknown>, RegExp][] = [
+			[{ start_date: '2026-09-10', due_date: '2026-09-01' }, /due date cannot be before/i],
+			[{ status: 'nope' }, /status must be one of/i],
+			[{ priority: 'critical' }, /priority must be one of/i],
+			[{ estimate_hours: 0 }, /greater than zero/i]
+		];
+		for (const [over, message] of cases) {
+			const { res, json } = await make(over);
+			expect(res.status).toBe(400);
+			expect(json.error).toMatch(message);
+		}
+	});
+
+	it('requires a project, because a ticket without one is an action item', async () => {
+		const { res } = await api('/api/tickets', body({ title: 'No project' }));
+		expect(res.status).toBe(400);
+	});
+
+	it('sets completed_at on finishing and clears it on reopening', async () => {
+		const { json } = await make();
+		const id = json.ticket.id;
+
+		const done = await api(`/api/tickets/${id}`, {
+			method: 'PATCH',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ status: 'done' })
+		});
+		expect(done.json.ticket.completed_at).not.toBeNull();
+
+		const back = await api(`/api/tickets/${id}`, {
+			method: 'PATCH',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ status: 'in_progress' })
+		});
+		expect(back.json.ticket.completed_at).toBeNull();
+	});
+
+	it('the default list is live work, and status=all includes the finished', async () => {
+		const { json } = await make();
+		const id = json.ticket.id;
+		await api(`/api/tickets/${id}`, {
+			method: 'PATCH',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ status: 'done' })
+		});
+
+		const live = await api('/api/tickets');
+		const all = await api('/api/tickets?status=all');
+		expect(live.json.tickets.some((t: any) => t.id === id)).toBe(false);
+		expect(all.json.tickets.some((t: any) => t.id === id)).toBe(true);
+	});
+
+	it('404s a ticket that does not exist', async () => {
+		const { res } = await api('/api/tickets/does-not-exist');
+		expect(res.status).toBe(404);
+	});
+});
+
+describe('layer 2: converting an action item to a ticket', () => {
+	it('carries the item across, links back, and leaves the item alone', async () => {
+		const list = await api('/api/action-items?view=open&page_size=200');
+		const item = list.json.items.find((i: any) => i.project_id && !i.converted);
+		expect(item, 'the seed should have an item on a project').toBeTruthy();
+
+		const { res, json } = await api(`/api/tickets/convert/${item.id}`, { method: 'POST' });
+		expect(res.status).toBe(201);
+
+		expect(json.ticket.title).toBe(item.title);
+		expect(json.ticket.due_date).toBe(item.deadline);
+		expect(json.ticket.converted_from_action_item_id).toBe(item.id);
+
+		// The capture record survives. Deleting or closing it would destroy the
+		// history to tidy a list.
+		const after = await api(`/api/action-items?view=all&q=${encodeURIComponent(item.title)}`);
+		expect(after.json.items.some((i: any) => i.id === item.id)).toBe(true);
+
+		// One commitment, one worked unit.
+		const again = await api(`/api/tickets/convert/${item.id}`, { method: 'POST' });
+		expect(again.res.status).toBe(409);
+
+		// Removing the ticket frees the item to be converted again, which is what
+		// makes this test repeatable rather than passing once and skipping after.
+		await api(`/api/tickets/${json.ticket.id}`, { method: 'DELETE' });
+	});
+
+	it('refuses an item with no project until one is chosen', async () => {
+		const list = await api('/api/action-items?view=open&page_size=200');
+		const item = list.json.items.find((i: any) => !i.project_id);
+		if (!item) return;
+		const { res, json } = await api(`/api/tickets/convert/${item.id}`, { method: 'POST' });
+		expect(res.status).toBe(400);
+		expect(json.error).toMatch(/must belong to one/i);
+	});
+
+	it('404s an unknown action item', async () => {
+		const { res } = await api('/api/tickets/convert/does-not-exist', { method: 'POST' });
+		expect(res.status).toBe(404);
+	});
+});
+
+describe('layer 2: the rate model is additive', () => {
+	let clientId = '';
+
+	beforeAll(async () => {
+		const { json } = await api('/api/clients');
+		clientId = json.clients[0].id;
+	});
+
+	afterAll(async () => {
+		await api(`/api/clients/${clientId}`, {
+			method: 'PATCH',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ default_rate_cents: '' })
+		});
+	});
+
+	async function setRate(value: unknown) {
+		return api(`/api/clients/${clientId}`, {
+			method: 'PATCH',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ default_rate_cents: value })
+		});
+	}
+
+	it('accepts money strings and stores integer cents', async () => {
+		expect((await setRate('150')).json.client.default_rate_cents).toBe(15000);
+		expect((await setRate('150.00')).json.client.default_rate_cents).toBe(15000);
+		expect((await setRate('99.99')).json.client.default_rate_cents).toBe(9999);
+	});
+
+	it('empty clears the rate, which is a real state', async () => {
+		expect((await setRate('')).json.client.default_rate_cents).toBeNull();
+	});
+
+	it('refuses a negative, a fraction of a cent, and nonsense', async () => {
+		expect((await setRate(-5)).res.status).toBe(400);
+		expect((await setRate(150.5)).res.status).toBe(400);
+		expect((await setRate('abc')).res.status).toBe(400);
+	});
+
+	it('entered invoice amounts are untouched by any of this', async () => {
+		// The ruling was that entered amounts stay valid forever. Nothing in the
+		// rate model writes to invoices, and this asserts it rather than trusting
+		// that no code path does.
+		const before = await api('/api/reports/billing');
+		await setRate('250');
+		const after = await api('/api/reports/billing');
+		expect(after.json.data.totals.outstanding_cents).toBe(
+			before.json.data.totals.outstanding_cents
+		);
 	});
 });
 

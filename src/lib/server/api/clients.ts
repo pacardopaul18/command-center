@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import type { ApiEnv } from './env';
 import { nowUtc } from '../dates';
 import { ApiError, oneOf, optionalText, readJsonObject, requiredText } from './validate';
-import { CLIENT_STATUSES } from '$lib/types';
+import { CLIENT_STATUSES, parseMoneyToCents } from '$lib/types';
 import type { ClientStatus } from '$lib/types';
 
 /**
@@ -76,7 +76,30 @@ clients.post('/', async (c) => {
 	return c.json({ client: created }, 201);
 });
 
-const UPDATABLE = ['name', 'billing_terms', 'notes', 'status'] as const;
+const UPDATABLE = ['name', 'billing_terms', 'notes', 'status', 'default_rate_cents'] as const;
+
+/**
+ * A default hourly rate, in cents.
+ *
+ * Accepts a plain number of cents or a money string such as "150" or "150.00",
+ * because the field on screen is money and the column is cents. Rejects anything
+ * else rather than coercing, since a silently wrong rate multiplies through
+ * every hour booked against the client.
+ */
+function readRate(raw: unknown): number | null {
+	if (raw === null || raw === undefined || raw === '') return null;
+	if (typeof raw === 'number') {
+		if (!Number.isInteger(raw) || raw < 0) {
+			throw new ApiError(400, 'The default rate must be a whole number of cents, or empty.');
+		}
+		return raw;
+	}
+	const cents = parseMoneyToCents(String(raw));
+	if (cents === null) {
+		throw new ApiError(400, 'The default rate must be an amount such as 150 or 150.00, or empty.');
+	}
+	return cents;
+}
 
 clients.patch('/:id', async (c) => {
 	const id = c.req.param('id');
@@ -91,7 +114,7 @@ clients.patch('/:id', async (c) => {
 	for (const field of UPDATABLE) {
 		if (!(field in body)) continue;
 		const raw = body[field];
-		let value: string | null;
+		let value: string | number | null;
 
 		switch (field) {
 			case 'name':
@@ -102,6 +125,12 @@ clients.patch('/:id', async (c) => {
 				break;
 			case 'notes':
 				value = optionalText(raw, 'Notes', 4000);
+				break;
+			case 'default_rate_cents':
+				// Money, so integer cents and never a float. Empty clears the rate,
+				// which is a real state: a client billed at whatever was agreed per
+				// invoice rather than at a standing rate.
+				value = readRate(raw);
 				break;
 			default:
 				value = oneOf<ClientStatus>(raw, CLIENT_STATUSES, 'status', 'active');

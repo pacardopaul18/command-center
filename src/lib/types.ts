@@ -233,6 +233,9 @@ export interface TimeEntry {
 	billable: number;
 	source: 'clockify' | 'manual';
 	created_at: string;
+	/** Added in migration 0008. Null on every entry recorded before rates existed. */
+	ticket_id: string | null;
+	rate_cents: number | null;
 	project_name?: string | null;
 }
 
@@ -282,6 +285,8 @@ export interface Client {
 	id: string;
 	name: string;
 	billing_terms: string | null;
+	/** Added in migration 0008. Offered when booking time, never imposed. */
+	default_rate_cents?: number | null;
 	status: ClientStatus;
 	notes: string | null;
 	created_at: string;
@@ -459,4 +464,98 @@ export interface Paging {
 	total: number;
 	page_count: number;
 	sizes: readonly number[];
+}
+
+// --- Tickets ---
+
+/**
+ * The ticket lifecycle.
+ *
+ * Six states, not the four a project uses. A project is on track or it is not;
+ * a ticket moves through work. `cancelled` exists because a ticket that will
+ * never be done is a different fact from one that was finished, and collapsing
+ * the two would make every completion metric wrong.
+ */
+export const TICKET_STATUSES = [
+	'open',
+	'in_progress',
+	'blocked',
+	'in_review',
+	'done',
+	'cancelled'
+] as const;
+export type TicketStatus = (typeof TICKET_STATUSES)[number];
+
+export const TICKET_STATUS_LABELS: Record<TicketStatus, string> = {
+	open: 'Open',
+	in_progress: 'In progress',
+	blocked: 'Blocked',
+	in_review: 'In review',
+	done: 'Done',
+	cancelled: 'Cancelled'
+};
+
+/** Chip tones, reusing the vocabulary the design system already fixes. */
+export const TICKET_STATUS_TONE: Record<TicketStatus, 'open' | 'ontrack' | 'blocked' | 'waiting' | 'done'> = {
+	open: 'open',
+	in_progress: 'ontrack',
+	blocked: 'blocked',
+	in_review: 'waiting',
+	done: 'done',
+	cancelled: 'waiting'
+};
+
+export const TICKET_PRIORITIES = ['low', 'normal', 'high', 'urgent'] as const;
+export type TicketPriority = (typeof TICKET_PRIORITIES)[number];
+
+export const TICKET_PRIORITY_LABELS: Record<TicketPriority, string> = {
+	low: 'Low',
+	normal: 'Normal',
+	high: 'High',
+	urgent: 'Urgent'
+};
+
+export interface Ticket {
+	id: string;
+	project_id: string;
+	title: string;
+	description: string | null;
+	start_date: string | null;
+	due_date: string | null;
+	estimate_hours: number | null;
+	status: TicketStatus;
+	priority: TicketPriority;
+	assignee: string | null;
+	assignee_id: string | null;
+	reporter: string | null;
+	reporter_id: string | null;
+	completed_at: string | null;
+	converted_from_action_item_id: string | null;
+	created_at: string;
+	updated_at: string;
+	/** Joined and computed, never stored. */
+	project_name?: string;
+	client_name?: string | null;
+	actual_hours?: number;
+	computed_value_cents?: number;
+	entry_count?: number;
+}
+
+/**
+ * Estimate against actual, as a sentence rather than a number.
+ *
+ * Returns null when there is no estimate, because a variance against nothing is
+ * not a small variance, it is an absent one.
+ */
+export function estimateVariance(
+	estimate: number | null | undefined,
+	actual: number | null | undefined
+): { over: boolean; hours: number; text: string } | null {
+	if (!estimate || estimate <= 0) return null;
+	const spent = actual ?? 0;
+	const diff = Math.round((spent - estimate) * 10) / 10;
+	if (diff === 0) return { over: false, hours: 0, text: 'exactly on estimate' };
+	return diff > 0
+		? { over: true, hours: diff, text: `${diff}h over estimate` }
+		: { over: false, hours: -diff, text: `${-diff}h under estimate` };
 }

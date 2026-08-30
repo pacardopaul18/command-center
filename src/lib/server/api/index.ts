@@ -12,6 +12,7 @@ import { projects } from './projects';
 import { reports } from './reports';
 import { sops } from './sops';
 import { templates } from './templates';
+import { tickets } from './tickets';
 import { today } from './today';
 import { ApiError } from './validate';
 import { todayInWorkingZone, WORKING_TIME_ZONE } from '../dates';
@@ -50,6 +51,7 @@ api.get('/health', async (c) => {
 	);
 });
 
+api.route('/tickets', tickets);
 api.route('/today', today);
 api.route('/action-items', actionItems);
 api.route('/asana', asana);

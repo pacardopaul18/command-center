@@ -1,4 +1,12 @@
 <script lang="ts">
+	import { apiWrite } from '$lib/http';
+	import {
+		TICKET_PRIORITIES,
+		TICKET_PRIORITY_LABELS,
+		TICKET_STATUS_LABELS,
+		TICKET_STATUS_TONE,
+		estimateVariance
+	} from '$lib/types';
 	import { invalidateAll } from '$app/navigation';
 	import {
 		PHASE_LABELS,
@@ -84,6 +92,57 @@
 		if (project.target_close) bits.push(`target close ${formatDay(project.target_close)}`);
 		return bits.join(' · ');
 	});
+
+	/**
+	 * Tickets under this project.
+	 *
+	 * Live work first, finished at the bottom, because the list is read to find
+	 * what to do next rather than to audit what happened.
+	 */
+	const liveTickets = $derived(
+		data.tickets.filter((t) => t.status !== 'done' && t.status !== 'cancelled')
+	);
+	const closedTickets = $derived(
+		data.tickets.filter((t) => t.status === 'done' || t.status === 'cancelled')
+	);
+
+	let showTicketForm = $state(false);
+	let ticketDraft = $state({
+		title: '',
+		description: '',
+		start_date: '',
+		due_date: '',
+		estimate_hours: '',
+		priority: 'normal',
+		assignee: ''
+	});
+
+	async function createTicket(event: SubmitEvent) {
+		event.preventDefault();
+		busy = true;
+		errorMessage = '';
+		const result = await apiWrite('/api/tickets', 'POST', {
+			...ticketDraft,
+			project_id: project.id,
+			estimate_hours: ticketDraft.estimate_hours === '' ? null : ticketDraft.estimate_hours
+		});
+		if (!result.ok) {
+			errorMessage = result.error ?? 'Could not create the ticket.';
+		} else {
+			ticketDraft = {
+				title: '',
+				description: '',
+				start_date: '',
+				due_date: '',
+				estimate_hours: '',
+				priority: 'normal',
+				assignee: ''
+			};
+			showTicketForm = false;
+			await invalidateAll();
+		}
+		busy = false;
+	}
 </script>
 
 <svelte:head>
@@ -247,6 +306,96 @@
 	</Card>
 </div>
 
+<Card
+	title="Tickets"
+	subtitle="{liveTickets.length} open, {closedTickets.length} closed"
+	padded={false}
+>
+	{#snippet actions()}
+		<Button variant="secondary" size="sm" onclick={() => (showTicketForm = !showTicketForm)}>
+			{showTicketForm ? 'Cancel' : 'New ticket'}
+		</Button>
+	{/snippet}
+
+	{#if showTicketForm}
+		<form class="ticket-form" onsubmit={createTicket}>
+			<div class="grid">
+				<div class="span-all">
+					<FormField label="Title">
+						<Input bind:value={ticketDraft.title} maxlength={300} required />
+					</FormField>
+				</div>
+				<FormField label="Assignee">
+					<Select bind:value={ticketDraft.assignee}>
+						<option value="">Unassigned</option>
+						{#each data.owners as name (name)}
+							<option value={name}>{name}</option>
+						{/each}
+					</Select>
+				</FormField>
+				<FormField label="Priority">
+					<Select bind:value={ticketDraft.priority}>
+						{#each TICKET_PRIORITIES as p (p)}
+							<option value={p}>{TICKET_PRIORITY_LABELS[p]}</option>
+						{/each}
+					</Select>
+				</FormField>
+				<FormField label="Start">
+					<Input type="date" bind:value={ticketDraft.start_date} mono />
+				</FormField>
+				<FormField label="Due">
+					<Input type="date" bind:value={ticketDraft.due_date} mono />
+				</FormField>
+				<FormField label="Estimate, hours" hint="Optional. Actual is summed from time entries.">
+					<Input type="number" step="0.25" min="0.25" bind:value={ticketDraft.estimate_hours} mono />
+				</FormField>
+				<div class="span-all">
+					<FormField label="Description">
+						<Textarea bind:value={ticketDraft.description} rows={3} maxlength={8000} />
+					</FormField>
+				</div>
+			</div>
+			<div class="form-actions">
+				<Button type="submit" disabled={busy}>Create ticket</Button>
+			</div>
+		</form>
+	{/if}
+
+	{#if data.tickets.length === 0}
+		<p class="empty">No tickets on this project yet.</p>
+	{:else}
+		<ul class="ticket-rows">
+			{#each [...liveTickets, ...closedTickets] as ticket (ticket.id)}
+				{@const variance = estimateVariance(ticket.estimate_hours, ticket.actual_hours)}
+				<li class="ticket-row" class:closed={ticket.status === 'done' || ticket.status === 'cancelled'}>
+					<a class="ticket-body" href="/tickets/{ticket.id}">
+						<span class="ticket-title">{ticket.title}</span>
+						<span class="ticket-meta mono">
+							{ticket.assignee ?? 'Unassigned'}{ticket.due_date
+								? `, due ${formatDay(ticket.due_date)}`
+								: ''}{ticket.estimate_hours
+								? `, ${ticket.actual_hours ?? 0} of ${ticket.estimate_hours}h`
+								: ''}{variance ? `, ${variance.text}` : ''}
+						</span>
+					</a>
+					{#if ticket.priority === 'urgent' || ticket.priority === 'high'}
+						<StatusChip
+							tone={ticket.priority === 'urgent' ? 'overdue' : 'atrisk'}
+							label={TICKET_PRIORITY_LABELS[ticket.priority]}
+							size="sm"
+						/>
+					{/if}
+					<StatusChip
+						tone={TICKET_STATUS_TONE[ticket.status]}
+						label={TICKET_STATUS_LABELS[ticket.status]}
+						size="sm"
+					/>
+				</li>
+			{/each}
+		</ul>
+	{/if}
+</Card>
+
 {#if project.description}
 	<div class="block">
 		<Card title="Description">
@@ -256,6 +405,50 @@
 {/if}
 
 <style>
+	.ticket-form {
+		padding: var(--space-4);
+		border-bottom: 1px solid var(--border-thin);
+	}
+
+	.ticket-rows {
+		list-style: none;
+		margin: 0;
+		padding: var(--space-2);
+	}
+
+	.ticket-row {
+		display: flex;
+		align-items: center;
+		gap: var(--space-2);
+		padding: var(--space-2);
+		border-radius: var(--radius-sm);
+	}
+
+	.ticket-row.closed .ticket-title {
+		color: var(--text-secondary);
+	}
+
+	.ticket-body {
+		flex: 1;
+		min-width: 0;
+		display: block;
+		color: inherit;
+		text-decoration: none;
+	}
+
+	.ticket-title {
+		display: block;
+		overflow-wrap: anywhere;
+	}
+
+	.ticket-meta {
+		display: block;
+		margin-top: 2px;
+		font-size: var(--text-xs);
+		color: var(--text-secondary);
+		overflow-wrap: anywhere;
+	}
+
 	.crumbs {
 		display: flex;
 		flex-wrap: wrap;
