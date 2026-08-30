@@ -2341,6 +2341,64 @@ Same family as the pre-hydration race the suite already chases: anything that
 only happens on the client is invisible until the client arrives, and a check
 run against the server output will not see it.
 
+### D95: heavy work does not belong to a browser tab
+
+The ruling, and it was overdue. Every heavy job ran inside a loop on the
+Settings page, so ingesting mail and triaging it continued only while Paul kept
+that tab open. He navigated away, everything stopped, and 747 threads sat
+untriaged looking like a classifier that had failed rather than one that had
+never been allowed to finish.
+
+Ingest and triage are now shared jobs that the scheduled firings run. The API
+routes call the same functions, so there is one implementation rather than a
+cron copy that drifts from the interactive one.
+
+Mail rides the existing firings rather than getting a cron of its own. The cron
+surface does not change without an evidence-window review, and piggybacking
+needs no expression change at all. It runs after the digest or the backup and
+never throws: a passenger must not be able to take down the job the firing
+exists for.
+
+Each job takes a subrequest budget and stops when it runs low, rather than being
+cut off part way through a write. Both are resumable, so stopping early costs
+nothing. The ingest is careful about one thing in particular: the page cursor
+advances only when every message on that page was handled, so a batch that ran
+out of budget re-reads the page rather than stepping over the rest of it.
+
+### D96: one bad row must not block the queue
+
+Found by running the drain, and it is the more serious of the two defects the
+drain exposed.
+
+A thread whose summary hit the model's output limit threw, which killed the
+batch. Because that thread stayed first in the ordering, every following run hit
+it again and died in the same place. The backlog could not drain past it, and
+nothing about the symptom said which thread was responsible.
+
+Two fixes. The input is bounded per thread rather than only per message, since
+twelve messages at eight thousand characters is ninety six thousand and the
+model wrote until it hit its ceiling. And a failure now records the attempt and
+moves on.
+
+### D97: transient and permanent failures are not the same failure
+
+Immediately after the fix above, and it is the reason that fix was not finished.
+
+Recording every failure as attempted meant thirteen threads were written off in
+one batch, all of them with the same cause: "Could not reach the Anthropic API".
+A network blip says nothing whatever about a thread. Those thirteen were about
+to be permanently excluded from triage over a condition that had already passed,
+and the exclusion would have been invisible, because a thread nobody retries
+looks exactly like a thread nobody has got to yet.
+
+Now a rate limit or a 5xx ends the batch and leaves the thread untouched, so the
+next run picks it up. Only a failure that will recur however often it is retried
+is recorded as attempted. The thirteen were restored.
+
+The general shape is worth keeping: recovery code that treats every error the
+same is not recovery, it is a second failure mode wearing recovery's clothes.
+Before writing a row off, the question is whether the cause was about that row.
+
 ## Interpretation notes
 
 Not decisions. Judgment calls made inside an existing decision, recorded so the

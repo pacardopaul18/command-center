@@ -47,6 +47,16 @@ const MAX_BODY_BYTES = 100_000;
 const MAX_CHARS_PER_MESSAGE = 8000;
 const MAX_MESSAGES_PER_THREAD = 12;
 
+/**
+ * Total characters sent for one thread, across all its messages.
+ *
+ * A per-message cap alone is not a cap: twelve messages at eight thousand
+ * characters is ninety six thousand, and a thread that long made the model
+ * write until it hit its own output ceiling, which surfaced as a hard failure
+ * rather than a long summary. Bounding the whole thread bounds the answer.
+ */
+const MAX_CHARS_PER_THREAD = 24_000;
+
 /** Roughly what one message costs: a Gmail read, an R2 put, a few D1 writes. */
 const COST_PER_MESSAGE = 6;
 
@@ -353,7 +363,10 @@ export async function ingestStep(env: MailEnv, budgetUnits: number): Promise<Ing
 
 export interface TriageOutcome {
 	summarised: number;
+	/** No readable body, so nothing to judge. */
 	skipped: number;
+	/** Tried and could not be answered. Recorded so it is not retried forever. */
+	failed: number;
 	remaining: number;
 	spent: number;
 }
@@ -376,6 +389,7 @@ export async function triageBatch(env: MailEnv, budgetUnits: number): Promise<Tr
 		`SELECT id, subject, last_at FROM email_threads
      WHERE connection_id = ?
        AND (summary IS NULL OR summary_at IS NULL OR summary_at < last_at OR severity IS NULL)
+       AND NOT (severity IS NULL AND classified_at IS NOT NULL)
      ORDER BY last_at DESC
      LIMIT 40`
 	)
@@ -384,6 +398,7 @@ export async function triageBatch(env: MailEnv, budgetUnits: number): Promise<Tr
 
 	let summarised = 0;
 	let skipped = 0;
+	let failed = 0;
 
 	for (const thread of results ?? []) {
 		if (!budget.canAfford(COST_PER_THREAD)) break;
@@ -415,6 +430,18 @@ export async function triageBatch(env: MailEnv, budgetUnits: number): Promise<Tr
 			if (text.trim()) withBodies.push({ from: m.from_email, sent_at: m.sent_at, body: text });
 		}
 
+		// Trim from the front when a thread is very long. The recent messages are
+		// what a summary is mostly about, and the oldest are usually the part
+		// already covered by whatever came before.
+		let total = 0;
+		const trimmed: typeof withBodies = [];
+		for (let i = withBodies.length - 1; i >= 0; i--) {
+			if (total + withBodies[i].body.length > MAX_CHARS_PER_THREAD) break;
+			total += withBodies[i].body.length;
+			trimmed.unshift(withBodies[i]);
+		}
+		const sending = trimmed.length > 0 ? trimmed : [withBodies[0]];
+
 		// Nothing readable is not a failure, and not a thread to invent a label
 		// for. Triaging a subject line alone produces a confident answer with no
 		// evidence under it.
@@ -426,8 +453,8 @@ export async function triageBatch(env: MailEnv, budgetUnits: number): Promise<Tr
 		const subject = thread.subject ?? '(no subject)';
 		try {
 			const [summarisedThread, triaged] = await Promise.all([
-				summariseThread(apiKey, subject, withBodies),
-				triageThread(apiKey, subject, withBodies)
+				summariseThread(apiKey, subject, sending),
+				triageThread(apiKey, subject, sending)
 			]);
 
 			const at = nowUtc();
@@ -454,17 +481,51 @@ export async function triageBatch(env: MailEnv, budgetUnits: number): Promise<Tr
 			budget.spend(COST_PER_THREAD);
 			summarised += 1;
 		} catch (err) {
-			// Rate limiting ends the batch rather than the run. Everything already
-			// written stays written, and the next firing picks up the rest.
-			if (err instanceof AiError && err.status === 429) break;
-			throw err;
+			/**
+			 * Transient against permanent, and the distinction is load bearing.
+			 *
+			 * A rate limit or an unreachable API says nothing about this thread. The
+			 * first version of this recovery marked every failure as attempted, so
+			 * thirteen perfectly good threads were about to be written off over a
+			 * network blip and never looked at again. Transient failures end the
+			 * batch and leave the thread untouched for the next run.
+			 *
+			 * Only a failure that will recur no matter how often it is retried, such
+			 * as a thread whose answer will not fit, is recorded as attempted.
+			 */
+			const transient =
+				err instanceof AiError && (err.status === 429 || err.status >= 500);
+			if (transient) {
+				console.error('triage stopping, transient failure', String(err));
+				break;
+			}
+
+			// ONE BAD THREAD MUST NOT BLOCK THE QUEUE.
+			//
+			// Throwing here killed the whole batch, and because the failing thread
+			// stayed first in the ordering, every following run hit it again and
+			// died in the same place. The backlog could never drain past it.
+			//
+			// So the attempt is recorded and the loop continues. `classified_at`
+			// means it was tried; `severity` still null means no answer was got.
+			// The thread stays visibly untriaged rather than being given a made up
+			// label, and the pending query skips anything already attempted.
+			console.error('triage failed for thread', thread.id, String(err));
+			await env.DB.prepare(
+				'UPDATE email_threads SET classified_at = ?, updated_at = ? WHERE id = ?'
+			)
+				.bind(nowUtc(), nowUtc(), thread.id)
+				.run();
+			failed += 1;
+			budget.spend(COST_PER_THREAD);
 		}
 	}
 
 	const remaining = await env.DB.prepare(
 		`SELECT COUNT(*) AS n FROM email_threads
      WHERE connection_id = ?
-       AND (summary IS NULL OR summary_at IS NULL OR summary_at < last_at OR severity IS NULL)`
+       AND (summary IS NULL OR summary_at IS NULL OR summary_at < last_at OR severity IS NULL)
+       AND NOT (severity IS NULL AND classified_at IS NOT NULL)`
 	)
 		.bind(conn.id)
 		.first<{ n: number }>();
@@ -472,6 +533,7 @@ export async function triageBatch(env: MailEnv, budgetUnits: number): Promise<Tr
 	return {
 		summarised,
 		skipped,
+		failed,
 		remaining: Number(remaining?.n ?? 0),
 		spent: budget.spent
 	};
@@ -526,7 +588,7 @@ export async function runMailMaintenance(
 			ran: 'triage',
 			detail:
 				`${outcome.summarised} triaged, ${outcome.skipped} skipped, ` +
-				`${outcome.remaining} still to do`
+				`${outcome.failed} failed, ${outcome.remaining} still to do`
 		};
 	} catch (err) {
 		return { ran: 'triage', detail: `failed: ${String(err)}` };
