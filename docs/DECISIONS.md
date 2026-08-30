@@ -30,12 +30,13 @@ file records what was decided along the way that neither of them says, and why.
 | T-log-read | Read the 13:00Z invocation record from the Cloudflare dashboard | OPEN, DRI Paul, tonight. Workers and Pages, command-center, Logs. 3 day retention, so it expires 2026-09-01. D61 |
 | T-obs-token | Scoped Cloudflare API token: Workers Observability Read, plus Workers Builds read | OPEN, DRI Paul. D61, widened by D64. Builds read added because the branch-build question hit the same 403 and had to be deferred. Delivered by `wrangler secret put`, never in chat |
 | T-asana-fix | Push sets an assignee and warns when no project is chosen | DONE 2026-08-29. Defect D-asana-1: the first production push created a task with no assignee, invisible in My Tasks. Assignee now defaults to the token owner and cannot be blank |
-| T-asana-repush | Re-push one action item after the assignee fix | OPEN, DRI Paul, two minutes. Closes v1 gate row c and answers the `permalink_url` question, which the push notice now reports |
+| T-asana-repush | Re-push one action item after the assignee fix | DONE 2026-08-29. Task visible in My Tasks, assignee Paul Pacardo, due Monday, gid `1217968531303699`. Row c closed. The permalink question was then answered separately on 2026-08-30 by a production push of `First Week Checklist`, gid `1217972687132070` |
 | T-volume-seed | Local volume seed and rendered screenshots at load | DONE 2026-08-29, D62. 44 action items, 23 invoices across all bands, 14 projects. Remote verified clean of every seeded row |
 | T-density | Sticky sidebar and the spacing pass, judged against the volume renders | DONE 2026-08-29, D63. Sidebar fills and sticks, headings group with their tables, rows banded |
 | T-hold-branch | Park held cron wiring on `hold/cron-wiring`, local main tracks origin main | DONE 2026-08-29, D64. Branch created and verified to carry the six-hour cron; main verified unchanged and equal to origin. Branch stays local until the freeze lifts, because a branch build of unknown configuration could deploy it |
 | T-silent-writes | Route every client write through `apiWrite` | PARTIAL 2026-08-29, D66. Quick add and the action items screen converted and verified against an intercepted 200 HTML response. Ratified as post-gate work: the remaining 24 sites get the same treatment, each verified by intercepting a response rather than by reading the code. Carries an open question, below |
 | T-dup-cleanup | Four duplicate action items on production from the retry loop | DONE 2026-08-29 on PM go. Snapshot taken first and all five ids confirmed recoverable from it before any delete. Four rows written, count 8 to 4, keeper `944e4e5a` intact with the three originals |
+| T-backup-prod | Prove the backup write path against production before the first firing | DONE 2026-08-30, D58. Wrote 28,661 bytes to production R2 from real D1, pulled it back and restored it clean. 09:00Z now tests only the scheduled trigger |
 | T-v2-baseline | Partner time baseline audit, running 15-minute-increment note | OPEN, DRI Paul, starting week of 2026-08-31. Prerequisite for the v2 partner-hours-saved dashboard, D52. Nothing blocks on it in v1 |
 
 ## Decisions
@@ -1064,11 +1065,39 @@ Pacardo, due Monday, which is the same run confirming D-asana-1 fixed: before
 the fix the task existed and was invisible, after it the task is where a person
 looks.
 
-**The permalink question is still open, and it is not recoverable from stored
-data.** `url_from_asana` is computed in `createTask`, returned in the push
-response, and rendered in the notice. It is never persisted, because D4 stores
-the gid and nothing else. So the answer existed once, on screen, and nothing
-wrote it down.
+#### The permalink question, ANSWERED 2026-08-30
+
+**Asana does return `permalink_url`** when it is asked for through `opt_fields`
+on `POST /tasks`. Read from the response of a real production push rather than
+from a log, because a path to the production bindings existed that made the
+direct answer available:
+
+    gid             1217972687132070
+    assignee        me
+    url_from_asana  true
+    url             https://app.asana.com/1/1217966932722649/project/1217966932722956/task/1217972687132070
+
+This closes the one thing D55 recorded as unconfirmed, and it was worth
+confirming rather than assuming, because **the permalink is not the shape this
+code guesses**. Asana's own URL is
+`/1/<workspace>/project/<project>/task/<gid>`. The fallback in `taskUrl` builds
+`/0/0/<gid>`, which is a different form entirely.
+
+The fallback is nonetheless correct: Paul clicked the "In Asana" link on a stored
+action item, which is built from the gid by that exact function, and it opened
+the right task. So Asana resolves both forms and the app is right either way.
+That is now known rather than hoped, which is the whole difference. Had the
+constructed form been wrong, every stored link in the app would have been broken
+and nothing would have said so.
+
+The push response carries Asana's permalink and the UI link is rebuilt from the
+gid. Both work. D4's decision to store only the gid holds, ratified, and is not
+disturbed by this.
+
+**It was not recoverable from stored data, which is why the logging was added.**
+`url_from_asana` is computed in `createTask`, returned in the push response, and
+rendered in the notice. It is never persisted, because D4 stores the gid and
+nothing else. So the answer existed once, on screen, and nothing wrote it down.
 
 Two ways it can still be answered. Paul read the notice and can report the
 wording. Or the next push reports it: `console.log` now records the gid, the
@@ -1282,6 +1311,27 @@ project links intact.
 
 Retention is 30 days. The boundary was checked at exactly 30 days, which is
 kept, and at 31, which is deleted.
+
+#### Proven against production, 2026-08-30
+
+Run ahead of the first scheduled firing deliberately, so that 09:00Z tests only
+the trigger and not the write path underneath it. Reached through
+`wrangler dev --remote`, which binds the real D1, KV and R2 to a preview worker
+without touching the production deployment, since the API itself sits behind
+Access and cannot be called from here.
+
+| Step | Result |
+| --- | --- |
+| `POST /api/backups/run` | wrote `backups/d1/2026-08-29.sql`, 28,661 bytes, 14 rows over 13 tables |
+| `GET /api/backups` | the object listed, uploaded 2026-08-30T00:16:35Z |
+| Pulled from production R2 and restored | 13 tables, 14 rows, `foreign_key_check` clean, `integrity_check` ok |
+| Asana gids after the round trip | both survive intact |
+
+The key is `2026-08-29` because the backup is named for the Mountain day and the
+run happened at 18:16 Mountain. That is the same day boundary the digests use and
+it is correct, not a defect. It also means this manual run cannot collide with
+the 09:00Z firing, which will be 03:00 Mountain on the 30th and will write
+`2026-08-30.sql`.
 
 ### D59: the backup gets its own cron firing, not a ride on the digest
 
@@ -1779,6 +1829,17 @@ condition rather than a one-off, so it will happen again.
 Not confirmed, and deliberately not assumed, because assuming a plausible cause
 from a matching symptom is what D67 was just written about.
 
+**A 302 is what production returns to an unauthenticated write.** Confirmed
+directly: `POST https://work.kabuhayan.app/api/backups/run` from outside the
+Access session returns `302`. A browser follows that redirect, lands on the
+Access sign-in page, and receives HTML with a 200. That is exactly the
+2xx-non-JSON shape D66 describes, produced by the live system rather than by a
+test harness.
+
+This raises the Access explanation from plausible to mechanically demonstrated
+as reachable. It still does not prove it happened to Paul on that occasion, and
+the distinction matters: knowing a mechanism exists is not knowing it fired.
+
 **The reload test narrowed it.** Paul reloaded and got the app, not a sign-in
 wall, with all five duplicates present and the counts matching exactly: three
 originals plus five copies, nothing extra and nothing lost. So the writes always
@@ -1994,8 +2055,20 @@ Mitigation available, not yet taken: verify kabuhayan.app in Resend and move
 `DIGEST_FROM` to an address on it. A verified domain with SPF and DKIM is the
 single biggest lever on placement.
 
-Closes when Paul confirms where the digests actually land after several days,
-not after one. Record the answer here.
+**Day one, 2026-08-29.** Both digests delivered cleanly, morning and evening.
+Placement is not a useful signal on this account: Paul runs his own Gmail label
+automation, so where a message lands reflects his rules rather than the
+provider's spam judgement. What the day does establish is delivery, twice,
+from `digest@kabuhayan.app` on a domain verified with DKIM and SPF.
+
+That changes what this risk can ever close on. The original fear was a digest
+silently landing in spam, and label automation means the inbox is not evidence
+against that. The honest remaining test is absence: a digest that fails to
+arrive at all, or arrives late enough to be useless, over several days. One
+clean day is one data point toward that and not a closure.
+
+Closes when Paul confirms delivery over several days, not after one. Record each
+day here.
 
 ### R8: log evidence for a cron incident was unreachable, AMBER, MITIGATED
 
