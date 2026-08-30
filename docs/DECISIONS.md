@@ -2526,6 +2526,16 @@ re-read that changed nothing anybody said, and it ties when two writes land in
 the same second. An id is exact: unchanged means there is nothing new to read,
 so there is nothing to pay for.
 
+**Identity, not recency.** The near miss makes the rule concrete. Tonight's own
+body re-read touched all 865 messages to store the rich version, which moved
+every thread's `last_at`, while changing nothing anybody had written. Under a
+timestamp key that would have queued a full re-summarise of every thread on the
+expensive model: not a cost control at all, a cost bomb, triggered by a
+maintenance job that improved nothing about what the summaries said. Keying on
+the identity of the newest message rather than on when the row was last touched
+is the difference, and it generalises to anything that decides whether work
+needs redoing.
+
 ### D104: the meter reports tokens, not money
 
 Every call now records what it cost, read off the API response rather than
@@ -2534,7 +2544,10 @@ can be wrong about money.
 
 No price is stored. A hardcoded rate goes stale silently, and a meter that is
 confidently wrong about a bill is worse than one that reports tokens and lets
-Paul apply the current rate himself. The table shows calls, input and output
+Paul apply the current rate himself. This is D65 applied to money: do not offer
+a number whose correctness the app cannot maintain. The division is that the app
+knows what it consumed and the human knows what it costs, and neither should
+guess at the other's half. The table shows calls, input and output
 tokens, broken down by job and by model, so a surprising bill can be traced to
 the kind of work that caused it.
 
@@ -2548,6 +2561,12 @@ which is somebody else's diary already visible.
 So subscribing to a colleague's calendar is not a feature this app has to build
 a permission flow for. They share it in Google, which is ordinary office
 behaviour, and it appears in the list. The only gate is the human one.
+
+That is F14's "subscribe to whoever" delivered by scope design rather than by
+building anything, and it changes what has to happen before it works: Dustin and
+John sharing their calendars is a thing they do in Google, not an OAuth
+conversation anybody has to have. The boundary does not move, though. Their mail
+is still governed by the partner conversation, and nothing here touches it.
 
 Nothing syncs by default. The list Google returns includes holidays, week
 numbers and anything ever shared, and pulling all of it would fill the day view
@@ -2576,10 +2595,40 @@ bodies now stored as HTML where they were previously stripped text. Verified on
 a real urgent thread, which renders thirty seven paragraphs and nineteen real
 links where it used to render a wall.
 
-Three fixes for one symptom, and each looked sufficient at the time. Worth
-noting that the order mattered: the batch size and the input cap made the
-failure rarer, which made it look almost solved, and only removing the duplicate
-work made it stop.
+Three fixes for one symptom, and each looked sufficient at the time.
+
+**A mitigation that reduces frequency is not a fix, and it is dangerous
+precisely because it looks like one.** Cutting the batch size and capping the
+decode input both made the failure rarer, and rarer reads as almost solved,
+which is the point at which people stop looking. The cause was that both MIME
+alternatives were decoded and one discarded: half the most expensive operation
+in the ingest was work thrown away. Only removing that stopped it.
+
+The test is whether the change removes the cause or reduces the exposure to it.
+Both are worth having. Only one of them ends the bug, and calling the other one
+finished is how a symptom comes back under load.
+
+### D107: a job making no progress must not hold the whole budget
+
+Caught before it ran, by checking what the cron would actually do rather than
+assuming it would do the right thing.
+
+`runMailMaintenance` gave the entire firing to the ingest whenever one was
+unfinished, and fell through to triage only when none was. The re-read left the
+ingest marked `running` with a cursor held, and every body had already been
+stored, so each firing would have paged through two thousand listings, stored
+nothing, and returned. The 187 outstanding triages would have waited
+indefinitely behind a job that had nothing left to do.
+
+The ingest now takes a share of the budget rather than all of it, and triage
+always gets the remainder. Priority is right and exclusivity is not: a job that
+should go first should not be able to starve one that should go second,
+especially when the first one has quietly finished and nobody told the flag.
+
+Worth stating as a rule: any dispatcher that picks one job over another needs an
+answer to what happens when the preferred job stops making progress. Without
+one, the failure is invisible, because a firing that did nothing and a firing
+that was busy look identical in a log unless the log says which.
 
 ## Interpretation notes
 

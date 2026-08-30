@@ -735,29 +735,50 @@ export async function runMailMaintenance(
 		.bind(conn.id)
 		.first<{ status: string }>();
 
+	const parts: string[] = [];
+	let ran: MaintenanceOutcome['ran'] = 'nothing';
+	let left = budgetUnits;
+
+	/**
+	 * Ingest gets a share, never the whole firing.
+	 *
+	 * The first version handed the entire budget to the ingest whenever one was
+	 * unfinished, and that starves triage completely. It nearly did: a run left
+	 * `running` after every body had already been re-read would have spent every
+	 * firing paging through two thousand listings that stored nothing, while a
+	 * backlog of triage sat untouched indefinitely. A job that is making no
+	 * progress must not be able to hold the whole budget.
+	 */
 	if (state && (state.status === 'running' || state.status === 'failed')) {
+		const share = Math.max(12, Math.floor(budgetUnits * 0.4));
 		try {
-			const outcome = await ingestStep(env, budgetUnits);
-			return {
-				ran: 'ingest',
-				detail:
-					`${outcome.fetched} stored, ${outcome.seen} seen, ` +
-					`${outcome.discovered} listed so far, status ${outcome.status}`
-			};
+			const outcome = await ingestStep(env, share);
+			ran = 'ingest';
+			left -= Math.max(outcome.spent, 1);
+			parts.push(
+				`ingest ${outcome.fetched} stored, ${outcome.seen} seen, status ${outcome.status}`
+			);
 		} catch (err) {
-			return { ran: 'ingest', detail: `failed: ${String(err)}` };
+			parts.push(`ingest failed: ${String(err)}`);
+			left -= share;
 		}
 	}
 
-	try {
-		const outcome = await triageBatch(env, budgetUnits);
-		return {
-			ran: 'triage',
-			detail:
-				`${outcome.summarised} triaged, ${outcome.skipped} skipped, ` +
-				`${outcome.failed} failed, ${outcome.remaining} still to do`
-		};
-	} catch (err) {
-		return { ran: 'triage', detail: `failed: ${String(err)}` };
+	if (left >= COST_PER_THREAD) {
+		try {
+			const outcome = await triageBatch(env, left);
+			ran = ran === 'ingest' ? 'ingest' : 'triage';
+			parts.push(
+				`triage ${outcome.summarised} done, ${outcome.skipped} skipped, ` +
+					`${outcome.failed} failed, ${outcome.remaining} left`
+			);
+		} catch (err) {
+			parts.push(`triage failed: ${String(err)}`);
+		}
 	}
+
+	return {
+		ran,
+		detail: parts.length > 0 ? parts.join('; ') : 'nothing to do'
+	};
 }
