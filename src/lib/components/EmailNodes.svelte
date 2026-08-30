@@ -34,7 +34,10 @@
 		{#if showImages && node.src}
 			<img src={node.src} alt={node.alt ?? ''} loading="lazy" referrerpolicy="no-referrer" />
 		{:else}
-			<span class="blocked">[image{node.alt ? `: ${node.alt}` : ''}]</span>
+			<span class="blocked" title={node.src ? new URL(node.src).hostname : undefined}>
+				{node.alt ? `Image: ${node.alt}` : 'Image'}
+				{#if node.src}<span class="host">from {new URL(node.src).hostname}</span>{/if}
+			</span>
 		{/if}
 	{:else if node.tag === 'a'}
 		<a href={node.href} target="_blank" rel="noopener noreferrer nofollow">
@@ -100,11 +103,22 @@
 {/each}
 
 <style>
+	/* A held-back image says what it is and who it would have called. A bare
+	   [image] tells the reader nothing about what they are missing or why. */
 	.blocked {
+		display: inline-flex;
+		gap: 4px;
+		align-items: baseline;
 		font-size: var(--text-xs);
 		color: var(--text-secondary);
 		border: 1px dashed var(--border);
 		border-radius: var(--radius-sm);
-		padding: 0 4px;
+		padding: 0 6px;
+		max-width: 100%;
+		overflow-wrap: anywhere;
+	}
+
+	.host {
+		opacity: 0.75;
 	}
 </style>

@@ -1,6 +1,8 @@
 import { digestDueAt, runDigest } from './digest';
 import type { DigestEnv } from './digest';
 import { backupDueAt, runBackup } from './backup';
+import { runMailMaintenance } from './mail-jobs';
+import type { MailEnv } from './mail-jobs';
 
 /**
  * The Cron Trigger entry point.
@@ -21,6 +23,15 @@ import { backupDueAt, runBackup } from './backup';
  * must not be able to delay or break the digest, and an operator reading the
  * logs should be able to tell which job failed without untangling them.
  *
+ * Mail work rides these same firings rather than getting a cron of its own.
+ * The cron surface does not change without an evidence-window review, and
+ * piggybacking needs no expression change at all: every firing does whatever
+ * mail work its remaining budget allows, after the job the firing exists for.
+ *
+ * That ordering is deliberate. Mail maintenance never throws and never runs
+ * first, so a slow or failing mail job cannot delay or break a digest or a
+ * backup. It is a passenger, and it is treated as one.
+ *
  * The send is awaited rather than handed to ctx.waitUntil.
  *
  * waitUntil is legal in a scheduled handler and the work does run, but the
@@ -33,9 +44,18 @@ import { backupDueAt, runBackup } from './backup';
  */
 export async function handleScheduled(
 	event: { scheduledTime: number; cron: string },
-	env: DigestEnv
+	env: DigestEnv & MailEnv
 ): Promise<void> {
 	const now = new Date(event.scheduledTime);
+
+	/**
+	 * Mail work, logged like everything else so a firing that did nothing and a
+	 * firing that failed do not look the same from outside.
+	 */
+	async function mailWork() {
+		const outcome = await runMailMaintenance(env);
+		console.log(`cron ${event.cron}: mail ${outcome.ran}, ${outcome.detail}`);
+	}
 
 	// Every firing logs, including the ones that do nothing. An absent job and a
 	// broken one look identical from the outside otherwise, which is exactly the
@@ -53,6 +73,7 @@ export async function handleScheduled(
 			console.error(`cron ${event.cron}: backup threw`, String(err));
 			throw err;
 		}
+		await mailWork();
 		return;
 	}
 
@@ -60,8 +81,11 @@ export async function handleScheduled(
 
 	if (!kind) {
 		console.log(
-			`cron ${event.cron} at ${now.toISOString()}: nothing due at this Mountain hour`
+			`cron ${event.cron} at ${now.toISOString()}: no digest due at this Mountain hour`
 		);
+		// The quiet firings are the useful ones for mail: nothing else is
+		// competing for the invocation's budget.
+		await mailWork();
 		return;
 	}
 
@@ -81,4 +105,6 @@ export async function handleScheduled(
 		console.error(`cron ${event.cron}: ${kind} digest threw`, String(err));
 		throw err;
 	}
+
+	await mailWork();
 }

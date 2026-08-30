@@ -104,13 +104,19 @@ async function run(env: unknown, whenUtc: Date) {
 
 const utc = (y: number, m: number, d: number, h: number) => new Date(Date.UTC(y, m, d, h, 0, 0));
 
+/**
+ * The wording changed from "nothing due" to "no digest due" when mail work
+ * started riding these firings. A firing with no digest is no longer a firing
+ * that does nothing: it is where the mail backlog gets worked, because nothing
+ * else is competing for the invocation's budget.
+ */
 describe('layer 4: the schedule routes correctly in summer, MDT', () => {
 	const cases: [number, RegExp][] = [
-		[0, /nothing due/],
+		[0, /no digest due/],
 		[9, /nightly backup due/],
-		[10, /nothing due/],
+		[10, /no digest due/],
 		[13, /morning digest due/],
-		[14, /nothing due/],
+		[14, /no digest due/],
 		[23, /evening digest due/]
 	];
 
@@ -126,11 +132,11 @@ describe('layer 4: the schedule routes correctly in summer, MDT', () => {
 describe('layer 4: the schedule routes correctly in winter, MST', () => {
 	const cases: [number, RegExp][] = [
 		[0, /evening digest due/],
-		[9, /nothing due/],
+		[9, /no digest due/],
 		[10, /nightly backup due/],
-		[13, /nothing due/],
+		[13, /no digest due/],
 		[14, /morning digest due/],
-		[23, /nothing due/]
+		[23, /no digest due/]
 	];
 
 	for (const [hour, want] of cases) {

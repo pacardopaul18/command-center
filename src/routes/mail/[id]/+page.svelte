@@ -27,25 +27,29 @@
 
 	let { data }: { data: PageData } = $props();
 
-	// Initialised from the load, not only synced by an effect. Effects do not run
-	// during server rendering, so seeding them there alone left the first paint
-	// with no body at all and the message appeared only after hydration.
-	let bodies = $state<Record<string, { body: string; format: 'text' | 'html' | null }>>({
-		...data.bodies
-	});
-	let openIds = $state<string[]>([...data.open_ids]);
+	/**
+	 * Bodies the server sent, merged with any fetched here since.
+	 *
+	 * A derived merge rather than state seeded from the load. Effects do not run
+	 * during server rendering, so seeding through one left the first paint with
+	 * no body at all and the message appeared only after hydration; and seeding
+	 * at declaration would go stale when navigating between threads, which reuses
+	 * this component. Merging is correct in both cases and needs no lifecycle.
+	 */
+	let fetched = $state<Record<string, { body: string; format: 'text' | 'html' | null }>>({});
+	let toggled = $state<Record<string, boolean>>({});
 	let loading = $state<string | null>(null);
 	let busy = $state(false);
 	let errorMessage = $state('');
 
-	// Re-seeded on navigation between threads, which reuses this component.
-	let seededFor = data.thread.id;
-	$effect(() => {
-		if (data.thread.id === seededFor) return;
-		seededFor = data.thread.id;
-		bodies = { ...data.bodies };
-		openIds = [...data.open_ids];
-	});
+	const bodies = $derived({ ...data.bodies, ...fetched });
+
+	/** Open by default per the server, minus anything collapsed here. */
+	const openIds = $derived(
+		data.messages
+			.map((m) => m.id)
+			.filter((id) => (id in toggled ? toggled[id] : data.open_ids.includes(id)))
+	);
 
 	// Reading it marks it read. Not a button: opening a thread is the act.
 	$effect(() => {
@@ -55,11 +59,9 @@
 	});
 
 	async function toggle(message: ThreadMessage) {
-		if (openIds.includes(message.id)) {
-			openIds = openIds.filter((id) => id !== message.id);
-			return;
-		}
-		openIds = [...openIds, message.id];
+		const isOpen = openIds.includes(message.id);
+		toggled = { ...toggled, [message.id]: !isOpen };
+		if (isOpen) return;
 
 		if (bodies[message.id] || !message.body_key) return;
 
@@ -75,7 +77,9 @@
 					body: string | null;
 					format: 'text' | 'html' | null;
 				};
-				if (payload.body) bodies = { ...bodies, [message.id]: { body: payload.body, format: payload.format } };
+				if (payload.body) {
+					fetched = { ...fetched, [message.id]: { body: payload.body, format: payload.format } };
+				}
 			}
 		} catch {
 			errorMessage = 'Could not read that message.';

@@ -44,6 +44,13 @@ if (!/export\s*\{[^}]*as default\s*\}|export default/.test(original)) {
 renameSync(WORKER, APP);
 
 // The cron handler and everything it imports, bundled for the workerd runtime.
+//
+// `node:*` is left external because the Worker runs with nodejs_compat, so the
+// runtime supplies those modules and esbuild must not try to inline them. This
+// only started mattering when the cron began doing mail work: that pulls in the
+// Anthropic SDK, which reaches for node builtins, and the build failed with
+// thirty unresolved imports. The adapter's own bundle already handles this; the
+// scheduled bundle is built separately here and needed telling too.
 await build({
 	entryPoints: ['src/lib/server/scheduled.ts'],
 	bundle: true,
@@ -51,6 +58,10 @@ await build({
 	platform: 'neutral',
 	target: 'es2022',
 	conditions: ['workerd', 'worker', 'browser'],
+	external: ['node:*', 'cloudflare:*'],
+	// The SDK statically imports an optional peer this app never uses and has
+	// not installed. See the stub for why it is aliased rather than externalised.
+	alias: { standardwebhooks: './scripts/stubs/standardwebhooks.js' },
 	outfile: SCHEDULED,
 	logLevel: 'warning'
 });

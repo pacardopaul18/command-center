@@ -89,7 +89,16 @@
 	 */
 	const googleNotice = $derived(page.url.searchParams.get('google'));
 
+	/**
+	 * Separate busy flags per panel.
+	 *
+	 * One shared flag drove Connections, the mail read and the summariser. When
+	 * Settings auto-resumed a stalled ingest it set that flag, and the Connections
+	 * buttons, which had nothing to do with it, sat on "Working..." indefinitely.
+	 * A busy flag has to belong to the thing that is busy.
+	 */
 	let connecting = $state(false);
+	let mailBusy = $state(false);
 
 	/**
 	 * Runs batches until the ingest finishes, pauses or fails.
@@ -100,7 +109,7 @@
 	 * cursor is stored after every batch.
 	 */
 	async function runIngest() {
-		connecting = true;
+		mailBusy = true;
 		errorMessage = '';
 		for (let batch = 0; batch < 500; batch++) {
 			const result = await apiWrite<{ status: string; fetched: number }>(
@@ -115,7 +124,7 @@
 			await invalidateAll();
 			if (result.data.status !== 'running') break;
 		}
-		connecting = false;
+		mailBusy = false;
 	}
 
 	/**
@@ -131,17 +140,17 @@
 	let resumeAttempted = false;
 	$effect(() => {
 		const status = data.mail?.state?.status;
-		if (status === 'running' && !connecting && !resumeAttempted) {
+		if (status === 'running' && !mailBusy && !resumeAttempted) {
 			resumeAttempted = true;
 			runIngest();
 		}
 	});
 
 	async function startIngest(days: number) {
-		connecting = true;
+		mailBusy = true;
 		errorMessage = '';
 		const result = await apiWrite(`/api/email/ingest/start?days=${days}`, 'POST', {});
-		connecting = false;
+		mailBusy = false;
 		if (!result.ok) {
 			errorMessage = result.error ?? 'Could not start reading mail.';
 			return;
@@ -157,7 +166,7 @@
 	 * request, and closing the page loses nothing already written.
 	 */
 	async function summarise() {
-		connecting = true;
+		mailBusy = true;
 		errorMessage = '';
 		for (let batch = 0; batch < 200; batch++) {
 			const result = await apiWrite<{ remaining: number; summarised: number }>(
@@ -172,7 +181,7 @@
 			await invalidateAll();
 			if (result.data.remaining === 0 || result.data.summarised === 0) break;
 		}
-		connecting = false;
+		mailBusy = false;
 	}
 
 	async function pauseIngest() {
@@ -618,7 +627,7 @@
 			ingest={data.mail.state}
 			stored={data.mail.stored}
 			account={data.mail.account}
-			busy={connecting}
+			busy={mailBusy}
 			onStart={startIngest}
 			onRun={runIngest}
 			onPause={pauseIngest}
@@ -629,11 +638,16 @@
 			night to be recoverable.
 		</p>
 		<div class="actions">
-			<Button variant="secondary" onclick={summarise} disabled={connecting}>
-				{connecting ? 'Working...' : 'Summarise threads'}
+			<Button variant="secondary" onclick={summarise} disabled={mailBusy}>
+				{mailBusy ? 'Working...' : 'Summarise threads'}
 			</Button>
 			<a class="browse" href="/mail">Browse what has been read</a>
 		</div>
+		<p class="hint">
+			These also run on their own, on the scheduled firings, so a read or a triage
+			finishes whether or not this page is open. The buttons are for when you want it
+			now rather than at the next firing.
+		</p>
 		<p class="hint">
 			A summary says what a thread is about, what was decided and what is outstanding.
 			It reports only what the messages say: a thread where nothing was decided is
