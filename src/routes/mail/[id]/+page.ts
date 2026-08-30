@@ -17,6 +17,25 @@ export interface ThreadMessage {
 	body_format: 'text' | 'html' | null;
 }
 
+export interface Draft {
+	id: string;
+	body: string;
+	edited_body: string | null;
+	edited_at: string | null;
+	copied_at: string | null;
+	model: string | null;
+	based_on_last_at: string | null;
+	created_at: string;
+}
+
+export interface Attachment {
+	id: string;
+	filename: string | null;
+	mime_type: string | null;
+	size_bytes: number | null;
+	r2_key: string | null;
+}
+
 export interface ThreadDetail {
 	id: string;
 	subject: string | null;
@@ -52,5 +71,7 @@ export const load: PageLoad = async ({ fetch, params }) => {
 		/** Bodies for the messages open on arrival, so nothing needs clicking. */
 		bodies: Record<string, { body: string; format: 'text' | 'html' | null }>;
 		open_ids: string[];
+		draft: Draft | null;
+		attachments: Attachment[];
 	};
 };

@@ -112,6 +112,71 @@
 		return message.from_email ?? 'Unknown sender';
 	}
 
+	let drafting = $state(false);
+	let draftEdit = $state<string | null>(null);
+	let copied = $state(false);
+
+	/** The edit if there is one, otherwise what the model wrote. */
+	const draftText = $derived(
+		draftEdit ?? data.draft?.edited_body ?? data.draft?.body ?? ''
+	);
+
+	/** True when the thread has moved on since the draft was written. */
+	const draftStale = $derived(
+		Boolean(
+			data.draft?.based_on_last_at &&
+				data.thread.last_at &&
+				data.draft.based_on_last_at < data.thread.last_at
+		)
+	);
+
+	async function writeDraft() {
+		drafting = true;
+		errorMessage = '';
+		draftEdit = null;
+		const result = await apiWrite(`/api/email/threads/${data.thread.id}/draft`, 'POST', {});
+		if (!result.ok) errorMessage = result.error ?? 'Could not write a draft.';
+		else await invalidateAll();
+		drafting = false;
+	}
+
+	async function saveEdit() {
+		if (draftEdit === null) return;
+		drafting = true;
+		const result = await apiWrite(`/api/email/threads/${data.thread.id}/draft`, 'PATCH', {
+			body: draftEdit
+		});
+		if (!result.ok) errorMessage = result.error ?? 'Could not save that edit.';
+		else {
+			draftEdit = null;
+			await invalidateAll();
+		}
+		drafting = false;
+	}
+
+	/**
+	 * Copies the draft out. This is as far as the app goes, by design: there is
+	 * no send scope and no compose scope, so a reply leaves here as text on a
+	 * clipboard and a person sends it.
+	 */
+	async function copyDraft() {
+		try {
+			await navigator.clipboard.writeText(draftText);
+			copied = true;
+			setTimeout(() => (copied = false), 4000);
+			await apiWrite(`/api/email/threads/${data.thread.id}/draft/copied`, 'POST', {});
+		} catch {
+			errorMessage = 'Could not reach the clipboard. Select the text and copy it.';
+		}
+	}
+
+	function fileSize(bytes: number | null): string {
+		if (bytes === null) return 'unknown size';
+		if (bytes < 1024) return `${bytes} B`;
+		if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+		return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+	}
+
 	const effective = $derived(data.thread.severity_override ?? data.thread.severity);
 	const effectiveCategory = $derived(data.thread.category_override ?? data.thread.category);
 </script>
@@ -182,6 +247,78 @@
 			</p>
 		{/if}
 	</Card>
+{/if}
+
+
+<section class="draft">
+	<div class="draft-head">
+		<h2>Reply</h2>
+		<div class="draft-actions">
+			<button type="button" class="fix" disabled={drafting} onclick={writeDraft}>
+				{drafting ? 'Writing...' : data.draft ? 'Write it again' : 'Draft a reply'}
+			</button>
+			{#if data.draft}
+				<button type="button" class="fix" onclick={copyDraft}>
+					{copied ? 'Copied' : 'Copy'}
+				</button>
+			{/if}
+		</div>
+	</div>
+
+	<p class="tiny">
+		This app cannot send email and never will. It has no permission to send, reply or
+		create a draft in Gmail, so a reply leaves here by being copied out and sent by you.
+	</p>
+
+	{#if data.draft}
+		{#if draftStale}
+			<p class="warn" role="status">
+				The thread has had a message since this was written. Write it again before
+				sending.
+			</p>
+		{/if}
+
+		<textarea
+			rows="12"
+			value={draftText}
+			oninput={(e) => (draftEdit = (e.currentTarget as HTMLTextAreaElement).value)}
+			aria-label="Proposed reply"
+		></textarea>
+
+		<p class="tiny">
+			{#if draftEdit !== null}
+				<button type="button" class="fix" disabled={drafting} onclick={saveEdit}>Save edit</button>
+				Your changes are kept next to the original, not over it.
+			{:else}
+				Written by {data.draft.model ?? 'the model'}.
+				{#if data.draft.edited_at}You have edited it.{/if}
+				{#if data.draft.copied_at}Copied {formatMoment(data.draft.copied_at)}.{/if}
+			{/if}
+		</p>
+	{:else}
+		<p class="tiny">
+			No draft yet. It reads the whole thread, anything known about the client, and how
+			you write in your own sent messages.
+		</p>
+	{/if}
+</section>
+
+
+{#if data.attachments.length > 0}
+	<section class="files">
+		<h2>Attachments</h2>
+		<ul>
+			{#each data.attachments as file (file.id)}
+				<li>
+					<span class="name">{file.filename ?? 'Unnamed file'}</span>
+					<span class="tiny">{file.mime_type ?? 'unknown type'} &middot; {fileSize(file.size_bytes)}</span>
+				</li>
+			{/each}
+		</ul>
+		<p class="tiny">
+			Names and sizes only. The files themselves stay in Gmail until asked for.
+		</p>
+	</section>
 {/if}
 
 <ul class="messages">
@@ -293,6 +430,74 @@
 		margin: 0;
 		font-size: var(--text-xs);
 		color: var(--text-secondary);
+	}
+
+	.draft,
+	.files {
+		margin: var(--space-4) 0 0;
+		border: 1px solid var(--border);
+		border-radius: var(--radius-md);
+		background: var(--surface);
+		padding: var(--space-3) var(--space-4);
+	}
+
+	.draft-head {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: baseline;
+		justify-content: space-between;
+		gap: var(--space-2);
+	}
+
+	.draft h2,
+	.files h2 {
+		margin: 0 0 var(--space-2);
+		font-size: var(--text-base);
+	}
+
+	.draft-actions {
+		display: flex;
+		gap: var(--space-2);
+	}
+
+	.draft textarea {
+		width: 100%;
+		font: inherit;
+		font-size: var(--text-sm);
+		line-height: 1.6;
+		padding: var(--space-3);
+		border: 1px solid var(--border);
+		border-radius: var(--radius-sm);
+		background: var(--surface-hover);
+		color: var(--text-primary);
+		resize: vertical;
+	}
+
+	.warn {
+		margin: 0 0 var(--space-2);
+		font-size: var(--text-sm);
+		border: 1px solid var(--gold);
+		border-radius: var(--radius-md);
+		padding: var(--space-2) var(--space-3);
+	}
+
+	.files ul {
+		list-style: none;
+		margin: 0 0 var(--space-2);
+		padding: 0;
+	}
+
+	.files li {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--space-2);
+		align-items: baseline;
+		padding: var(--space-1) 0;
+	}
+
+	.files .name {
+		font-weight: 600;
+		overflow-wrap: anywhere;
 	}
 
 	.messages {

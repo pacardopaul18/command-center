@@ -44,7 +44,15 @@ describe('layer 2: decoding a Gmail body', () => {
 });
 
 describe('layer 2: finding the readable part of a message', () => {
-	it('prefers text/plain', () => {
+	it('collects BOTH alternatives, not just the first one it meets', () => {
+		// The original version stopped walking as soon as it found a plain part,
+		// and in multipart/alternative the plain part is always first. So the HTML
+		// was never seen and every rich message rendered as hard-wrapped text.
+		//
+		// The test that used to sit here asserted only that the plain part was
+		// found, which was true with the bug present. A test that cannot fail on
+		// the defect it covers is worse than no test, because it reads as
+		// coverage.
 		const found = extractBody({
 			mimeType: 'multipart/alternative',
 			parts: [
@@ -53,6 +61,27 @@ describe('layer 2: finding the readable part of a message', () => {
 			]
 		});
 		expect(found.text).toBe('the plain one');
+		expect(found.html).toBe('<p>the html one</p>');
+	});
+
+	it('finds the html alternative even when it is nested deeper than the plain one', () => {
+		// A real message with an attachment: multipart/mixed wrapping a
+		// multipart/alternative. Both alternatives must still come back.
+		const found = extractBody({
+			mimeType: 'multipart/mixed',
+			parts: [
+				{
+					mimeType: 'multipart/alternative',
+					parts: [
+						{ mimeType: 'text/plain', body: { data: toBase64Url('plain version') } },
+						{ mimeType: 'text/html', body: { data: toBase64Url('<div>rich version</div>') } }
+					]
+				},
+				{ mimeType: 'application/pdf', body: { data: toBase64Url('binary') } }
+			]
+		});
+		expect(found.text).toBe('plain version');
+		expect(found.html).toBe('<div>rich version</div>');
 	});
 
 	it('walks nested parts, because a reply with an attachment nests deeper', () => {

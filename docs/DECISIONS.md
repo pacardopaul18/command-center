@@ -2399,6 +2399,110 @@ The general shape is worth keeping: recovery code that treats every error the
 same is not recovery, it is a second failure mode wearing recovery's clothes.
 Before writing a row off, the question is whether the cause was about that row.
 
+### D98: unsent drafts are not correspondence
+
+Paul's own unfinished drafts were being ingested and displayed. Reading his mail
+never meant reading things he wrote and chose not to send, and a half-finished
+sentence is the most private text in a mailbox.
+
+Excluded twice over: `-in:drafts` in the Gmail query so they are never listed,
+and a label check on the way in so one arriving anyway is dropped. Two guards
+because the query is a string and strings get edited, and a typo there would
+undo the whole intention silently.
+
+Three stored messages were purged: rows from D1, bodies from R2 each confirmed
+absent individually, and the three threads left with no messages removed. Counts
+only were reported at every step, per D89.
+
+### D99: the multipart walk stopped at the first alternative
+
+The reason every rich message rendered as hard-wrapped text.
+
+`extractBody` returned as soon as it found a `text/plain` part. In
+`multipart/alternative` the plain part comes first by convention, so the HTML
+sibling was never visited, and the caller's preference for HTML could never
+apply to something it had not been shown.
+
+The test that covered this asserted only that the plain part was found, which
+was true with the defect present. A test that cannot fail on the defect it
+covers is worse than no test, because it reads as coverage. It now asserts both
+alternatives come back, and was mutation checked against the old behaviour.
+
+Every stored body was extracted under the defect, so all 855 were re-read.
+Confirmed on real mail: messages that previously stored as `text` now store as
+`html`.
+
+### D100: a rich body costs more CPU than a stripped one
+
+Two resource failures came out of keeping the rich body, and both said the same
+thing in different ways.
+
+The re-read hit `error code 1102`, the worker exceeding its CPU limit, at
+twenty five messages a call. Keeping HTML means decoding both MIME alternatives
+rather than one and writing markup rather than stripped text, so a batch does
+several times the work it used to for the same message count. The API budget
+came down from four hundred units to thirty six, which is about six messages,
+and more calls cost nothing because the job records its position after each one.
+
+The deeper cause was in the decoder. `decodeBody` walks every character of the
+payload to build its byte array, and marketing HTML runs to hundreds of
+kilobytes, so the work was unbounded in the one place it looked like a detail.
+The encoded input is now capped before decoding rather than after, on a four
+character boundary because base64 encodes three bytes per four characters and
+cutting mid-group produces an error rather than a shorter string.
+
+Worth stating generally: a change that looks like "store a different string"
+can be a change in the cost of every row, and the ceiling it hits will be one
+nobody was watching.
+
+### D101: the app proposes words, a person sends them
+
+Drafting, built. Migration `0014_drafts_and_attachments.sql`.
+
+A draft here is not a Gmail draft, and the schema cannot become one. There is no
+send scope, no compose scope, and no column that could hold a Gmail draft id,
+because creating a draft in Gmail needs `gmail.compose` and that was never
+requested either. A row is a proposal that lives in this app and leaves it by
+being copied out. The UI says so in those words.
+
+The column that would have caused trouble is the one deliberately not called
+`sent_at`. This app has no way to know whether a message was ever sent, and a
+field named for sending would eventually be read as if it did. It is
+`copied_at`, which is the only fact available.
+
+The voice is shown, not described. Telling a model to write "professionally but
+warmly" produces the average of everyone ever described that way; six messages
+Paul actually sent carry his greeting, his sign-off, his sentence length and how
+blunt he is willing to be, none of which he could have specified if asked. They
+are found by matching the sender against the connected account, and short ones
+are skipped because "thanks, will do" teaches nothing.
+
+The prompt's hard rule is that it commits to nothing not already agreed in the
+thread. No dates, no prices, no scope. Where a commitment is needed it leaves a
+bracketed blank. A draft that invents a delivery date in Paul's voice is worse
+than no draft, because it reads exactly like something he decided.
+
+Paul's edit is stored beside the model's version rather than over it, and a
+draft written before a newer message arrived is marked stale rather than
+silently offered.
+
+### D102: the AI stopped, and it was not a defect
+
+The supervised drain reached 586 of 773 threads and stopped. The cause was not
+in this app: `You have reached your specified API usage limits. You will regain
+access on 2026-09-01 at 00:00 UTC.`
+
+That is 18:00 Mountain on 31 August, which is before the rehearsal, so the
+remaining 187 threads can be triaged then. Nothing is lost and nothing needs
+re-running: the work is resumable and the cron picks it up.
+
+Recorded because it is the sort of thing that looks like a defect at a glance
+and would have cost an hour of debugging tomorrow. It also drew a line under
+what could be built tonight: Gmail was not limited, so the body re-read and the
+schema work went ahead, while every AI path was written and left unexercised.
+The drafting pass has never produced a draft, and that is stated rather than
+implied.
+
 ## Interpretation notes
 
 Not decisions. Judgment calls made inside an existing decision, recorded so the

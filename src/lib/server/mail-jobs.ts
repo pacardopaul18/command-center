@@ -1,6 +1,13 @@
 import type { D1Database, KVNamespace, R2Bucket } from '@cloudflare/workers-types';
 import { nowUtc } from './dates';
-import { GoogleError, accessToken, getMessage, listMessageIds, stripHtml } from './google';
+import {
+	GoogleError,
+	accessToken,
+	getMessage,
+	isDraft,
+	listMessageIds,
+	stripHtml
+} from './google';
 import { AiError, summariseThread, triageThread } from './ai';
 
 /**
@@ -43,7 +50,16 @@ export const CRON_BUDGET = 35;
 /** Messages read per API-driven batch, where the ceiling is far higher. */
 export const BATCH_SIZE = 25;
 
-const MAX_BODY_BYTES = 100_000;
+/**
+ * Stored body size.
+ *
+ * Lowered from 100k after the worker started exceeding its CPU limit on the
+ * re-read. Keeping the rich body means decoding both MIME alternatives and
+ * writing markup rather than stripped text, so a batch does several times the
+ * work it used to. Sixty thousand characters is far more than any message a
+ * person reads to the end.
+ */
+const MAX_BODY_BYTES = 60_000;
 const MAX_CHARS_PER_MESSAGE = 8000;
 const MAX_MESSAGES_PER_THREAD = 12;
 
@@ -196,6 +212,7 @@ async function storeMessage(
 
 	const threadId = await upsertThread(db, connectionId, message, at);
 	const match = await matchSender(db, message.from_email);
+	const messageRowId = crypto.randomUUID();
 
 	await db
 		.prepare(
@@ -212,7 +229,7 @@ async function storeMessage(
          fetched_at = excluded.fetched_at`
 		)
 		.bind(
-			crypto.randomUUID(),
+			messageRowId,
 			connectionId,
 			threadId,
 			message.provider_message_id,
@@ -234,6 +251,41 @@ async function storeMessage(
 			at
 		)
 		.run();
+
+	if (message.attachments.length === 0) return;
+
+	// The row that was just written, which may be an existing one if this
+	// message was re-read. The metadata attaches to whichever it is.
+	const stored = await db
+		.prepare('SELECT id FROM email_messages WHERE connection_id = ? AND provider_message_id = ?')
+		.bind(connectionId, message.provider_message_id)
+		.first<{ id: string }>();
+	if (!stored) return;
+
+	for (const file of message.attachments) {
+		// Metadata only. The file itself is fetched on demand, because most
+		// attachments are never opened and downloading every one during ingest
+		// would spend the whole budget on files nobody wants.
+		await db
+			.prepare(
+				`INSERT INTO email_attachments
+           (id, message_id, provider_attachment_id, filename, mime_type, size_bytes)
+         VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT(message_id, provider_attachment_id) DO UPDATE SET
+           filename = excluded.filename,
+           mime_type = excluded.mime_type,
+           size_bytes = excluded.size_bytes`
+			)
+			.bind(
+				crypto.randomUUID(),
+				stored.id,
+				file.provider_attachment_id,
+				file.filename,
+				file.mime_type,
+				file.size_bytes
+			)
+			.run();
+	}
 }
 
 /**
@@ -282,9 +334,12 @@ export async function ingestStep(env: MailEnv, budgetUnits: number): Promise<Ing
 		);
 		budget.spend(1);
 
+		// `-in:drafts` keeps unsent drafts out of the listing entirely, so they
+		// are never fetched and never stored. Correspondence is what was sent and
+		// received; a draft is a thought Paul had and chose not to send.
 		const page = await listMessageIds(
 			tokens.access_token,
-			`newer_than:${state.window_days}d`,
+			`newer_than:${state.window_days}d -in:drafts`,
 			state.page_token,
 			BATCH_SIZE
 		);
@@ -313,6 +368,12 @@ export async function ingestStep(env: MailEnv, budgetUnits: number): Promise<Ing
 			if (existing && existing.body_format) continue;
 
 			const message = await getMessage(tokens.access_token, ref.id, true);
+
+			// The second guard. The query should have excluded it; if one arrives
+			// anyway it is dropped here rather than stored, because the query is a
+			// string and strings get edited.
+			if (isDraft(message.label_ids)) continue;
+
 			await storeMessage(env.DB, env.FILES, conn.id, message, at);
 			budget.spend(COST_PER_MESSAGE);
 			fetched += 1;

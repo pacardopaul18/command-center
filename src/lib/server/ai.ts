@@ -555,3 +555,98 @@ export async function triageThread(
 		throw toAiError(err);
 	}
 }
+
+/**
+ * Drafting a reply in Paul's own register.
+ *
+ * The voice is not described, it is shown. Telling a model to write
+ * 'professionally but warmly' produces the average of everyone who was ever
+ * described that way. Giving it half a dozen things Paul actually sent gives
+ * it his greeting, his sign-off, his sentence length and how blunt he is
+ * willing to be, none of which he could have specified accurately if asked.
+ *
+ * THE APP CANNOT SEND. There is no send scope and no compose scope, so this
+ * produces text that lands in the app and is copied out by hand. That is
+ * stated here because it is the reason the prompt never says 'send' and never
+ * signs anything on his behalf without his sign-off being visibly his.
+ */
+const REPLY_SYSTEM = `You draft a reply that Paul will read, edit and send himself.
+
+You are given examples of messages Paul actually sent. Match how he writes:
+his greeting, his sign-off, his sentence length, how direct he is. Do not
+imitate the people writing TO him.
+
+Write the reply body only. No subject line, no 'Here is a draft', no notes
+about what you did. Just the message, ready to paste.
+
+Rules that outrank sounding good:
+- Commit to nothing that is not already agreed in the thread. No dates, no
+  prices, no scope, no promises Paul has not made. Where a commitment is
+  needed, leave a bracketed blank like [date] for him to fill.
+- Answer what was actually asked. A reply that is warm and answers nothing
+  wastes the reader's time and Paul's.
+- If the thread does not contain enough to reply properly, say so in one line
+  inside the draft rather than inventing the missing part.
+- Never apologise for delay unless the thread shows there was one.
+- No em dashes.
+
+Short is better. Most replies are three to six sentences.`;
+
+export interface DraftInput {
+	subject: string;
+	/** The thread, oldest first. */
+	messages: { from: string | null; sent_at: string; body: string }[];
+	/** Things Paul actually sent, used as the voice sample. */
+	voice: string[];
+	/** What the triage said needs doing, when it said anything. */
+	gist: string | null;
+	/** Client and project context, when the thread is linked to one. */
+	context: string | null;
+}
+
+export async function draftReply(
+	apiKey: string,
+	input: DraftInput
+): Promise<{ body: string; model: string }> {
+	const thread = input.messages
+		.map((m) => ['From: ' + (m.from ?? 'unknown'), 'Sent: ' + m.sent_at, '', m.body].join('\n'))
+		.join('\n\n---\n\n');
+
+	const parts: string[] = [];
+
+	if (input.voice.length > 0) {
+		parts.push(
+			'Messages Paul has sent, as a guide to how he writes:\n\n' +
+				input.voice.map((v, i) => '--- example ' + (i + 1) + ' ---\n' + v).join('\n\n')
+		);
+	} else {
+		// Said plainly rather than left to be inferred. A model given no samples
+		// will invent a register, and the draft will read like nobody.
+		parts.push(
+			'No examples of Paul writing are available. Keep the reply plain, short and neutral rather than guessing at a personal style.'
+		);
+	}
+
+	if (input.context) parts.push('What this app knows about the client:\n' + input.context);
+	if (input.gist) parts.push('What this thread appears to need: ' + input.gist);
+
+	parts.push('The thread to reply to, oldest first:\n\nSubject: ' + input.subject + '\n\n' + thread);
+	parts.push('Write Paul\u2019s reply to the most recent message.');
+
+	try {
+		const message = await client(apiKey).messages.create({
+			model: MODEL,
+			max_tokens: 1200,
+			system: REPLY_SYSTEM,
+			messages: [{ role: 'user', content: parts.join('\n\n') }]
+		});
+
+		assertUsable(message);
+		const body = enforceHouseStyle(textOf(message));
+		if (!body) throw new AiError(502, 'Claude returned an empty draft.');
+		return { body, model: message.model };
+	} catch (err) {
+		if (err instanceof AiError) throw err;
+		throw toAiError(err);
+	}
+}

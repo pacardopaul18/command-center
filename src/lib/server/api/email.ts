@@ -5,6 +5,8 @@ import { nowUtc } from '../dates';
 import { ApiError } from './validate';
 import { GoogleError } from '../google';
 import { BATCH_SIZE, ingestStep, triageBatch } from '../mail-jobs';
+import { draftReply } from '../ai';
+import { stripHtml } from '../google';
 
 /**
  * Gmail ingestion, browsing, and the state of the ingestion itself.
@@ -122,10 +124,17 @@ email.post('/ingest/start', async (c) => {
 email.post('/ingest/step', async (c) => {
 	requireConfig(c.env);
 	try {
-		// The same function the cron calls. There is one implementation of
-		// reading mail, and a generous budget here because an API request is not
-		// sharing its invocation with a digest.
-		const outcome = await ingestStep(c.env, 400);
+		// The same function the cron calls. The budget is larger than the cron's
+		// because this invocation is not shared with a digest, but it is not
+		// unlimited: at twenty five messages a call the worker exceeded its CPU
+		// limit outright (error 1102), because every message means a base64
+		// decode, an R2 write and several D1 writes. Ten or so per call finishes
+		// comfortably, and more calls cost nothing since the job is resumable.
+		// Six messages a call. Sixty exceeded the CPU limit once the rich body was
+		// being kept, because each message now decodes two MIME parts and writes
+		// markup instead of stripped text. More calls cost nothing: the job
+		// records its position after every one.
+		const outcome = await ingestStep(c.env, 36);
 		return c.json({ ok: true, ...outcome });
 	} catch (err) {
 		throw asApiError(err);
@@ -336,7 +345,26 @@ email.get('/threads/:id', async (c) => {
 		if (object) bodies[row.id] = { body: await object.text(), format: row.body_format };
 	}
 
-	return c.json({ thread, messages: rows, bodies, open_ids: openIds });
+	const draft = await c.env.DB.prepare('SELECT * FROM email_drafts WHERE thread_id = ?')
+		.bind(id)
+		.first();
+
+	const attachments = await c.env.DB.prepare(
+		`SELECT a.*, m.id AS on_message FROM email_attachments a
+     JOIN email_messages m ON m.id = a.message_id
+     WHERE m.thread_id = ? ORDER BY a.filename`
+	)
+		.bind(id)
+		.all();
+
+	return c.json({
+		thread,
+		messages: rows,
+		bodies,
+		open_ids: openIds,
+		draft,
+		attachments: attachments.results ?? []
+	});
 });
 
 /** One message body, streamed out of R2. Never re-fetched from Google. */
@@ -391,7 +419,9 @@ email.post('/summarise', async (c) => {
 		);
 	}
 	try {
-		const outcome = await triageBatch(c.env, 400);
+		// Same reasoning as the ingest budget: bounded per invocation, resumed by
+		// the next call.
+		const outcome = await triageBatch(c.env, 160);
 		return c.json({ ok: true, ...outcome });
 	} catch (err) {
 		throw asApiError(err);
@@ -508,4 +538,253 @@ email.post('/threads/:id/read', async (c) => {
 		.run();
 	if (!result.meta.changes) throw new ApiError(404, 'Thread not found.');
 	return c.json({ ok: true, read: !undo });
+});
+
+/* -------------------------------------------------------------------------
+ * Drafting
+ * ---------------------------------------------------------------------- */
+
+/** How many of Paul's own messages are used as the voice sample. */
+const VOICE_SAMPLES = 6;
+
+/** Characters kept per voice sample. A greeting and a sign-off is the point. */
+const VOICE_CHARS = 1500;
+
+const DRAFT_THREAD_CHARS = 20_000;
+
+async function bodyText(
+	files: R2Bucket,
+	key: string | null,
+	format: string | null,
+	limit: number
+): Promise<string> {
+	if (!key) return '';
+	const object = await files.get(key);
+	if (!object) return '';
+	const raw = await object.text();
+	return (format === 'html' ? stripHtml(raw) : raw).slice(0, limit).trim();
+}
+
+/**
+ * Things Paul actually sent, as the voice sample.
+ *
+ * Found by matching the sender against the connected account, which is the only
+ * reliable marker of authorship in an ingested mailbox. Deliberately shown
+ * rather than described: telling a model to write "professionally but warmly"
+ * produces the average of everyone ever described that way, while six real
+ * messages carry his greeting, his sign-off and how blunt he is willing to be,
+ * none of which he could have specified accurately if asked.
+ *
+ * Short ones are skipped. "Thanks, will do" is a real message and teaches
+ * nothing about how he writes at length.
+ */
+async function voiceSamples(
+	db: D1Database,
+	files: R2Bucket,
+	account: string | null
+): Promise<string[]> {
+	if (!account) return [];
+
+	const { results } = await db
+		.prepare(
+			`SELECT body_key, body_format FROM email_messages
+       WHERE LOWER(from_email) = LOWER(?) AND body_key IS NOT NULL AND body_bytes > 400
+       ORDER BY sent_at DESC LIMIT ?`
+		)
+		.bind(account, VOICE_SAMPLES)
+		.all<{ body_key: string | null; body_format: string | null }>();
+
+	const samples: string[] = [];
+	for (const row of results ?? []) {
+		const text = await bodyText(files, row.body_key, row.body_format, VOICE_CHARS);
+		if (text.length > 120) samples.push(text);
+	}
+	return samples;
+}
+
+/** Client and project facts, when the thread is linked to one. */
+async function clientContext(db: D1Database, clientId: string | null): Promise<string | null> {
+	if (!clientId) return null;
+
+	const client = await db
+		.prepare('SELECT name, billing_terms, notes FROM clients WHERE id = ?')
+		.bind(clientId)
+		.first<{ name: string; billing_terms: string | null; notes: string | null }>();
+	if (!client) return null;
+
+	const projects = await db
+		.prepare(
+			`SELECT name, status, next_milestone FROM projects WHERE client_id = ?
+       ORDER BY CASE status WHEN 'active' THEN 0 ELSE 1 END LIMIT 5`
+		)
+		.bind(clientId)
+		.all<{ name: string; status: string; next_milestone: string | null }>();
+
+	const lines = [`Client: ${client.name}`];
+	if (client.billing_terms) lines.push(`Billing terms: ${client.billing_terms}`);
+	for (const p of projects.results ?? []) {
+		lines.push(
+			`Project: ${p.name} (${p.status})` + (p.next_milestone ? `, next: ${p.next_milestone}` : '')
+		);
+	}
+	return lines.join('\n');
+}
+
+/**
+ * Proposes a reply to one thread.
+ *
+ * Explicit per thread rather than generated for everything. A draft is Paul
+ * putting words in his own mouth, and producing hundreds of them unasked would
+ * make the app a thing to review rather than a thing that helps.
+ */
+email.post('/threads/:id/draft', async (c) => {
+	const apiKey = c.env.ANTHROPIC_API_KEY;
+	if (!apiKey) {
+		throw new ApiError(503, 'No AI key is configured.');
+	}
+
+	const id = c.req.param('id');
+	const thread = await c.env.DB.prepare(
+		`SELECT t.*, cl.name AS client_name FROM email_threads t
+     LEFT JOIN clients cl ON cl.id = t.client_id WHERE t.id = ?`
+	)
+		.bind(id)
+		.first<{
+			id: string;
+			subject: string | null;
+			client_id: string | null;
+			gist: string | null;
+			last_at: string | null;
+		}>();
+	if (!thread) throw new ApiError(404, 'Thread not found.');
+
+	const conn = await c.env.DB.prepare(
+		"SELECT account_email FROM connections WHERE provider = 'google'"
+	).first<{ account_email: string | null }>();
+
+	const messages = await c.env.DB.prepare(
+		`SELECT id, from_email, sent_at, body_key, body_format FROM email_messages
+     WHERE thread_id = ? ORDER BY sent_at ASC LIMIT 12`
+	)
+		.bind(id)
+		.all<{
+			id: string;
+			from_email: string | null;
+			sent_at: string;
+			body_key: string | null;
+			body_format: string | null;
+		}>();
+
+	const rows = messages.results ?? [];
+	const withBodies: { from: string | null; sent_at: string; body: string }[] = [];
+	let budget = DRAFT_THREAD_CHARS;
+
+	// Newest first while filling the budget, so a long thread keeps the part the
+	// reply is actually answering.
+	for (let i = rows.length - 1; i >= 0; i--) {
+		const text = await bodyText(c.env.FILES, rows[i].body_key, rows[i].body_format, 6000);
+		if (!text) continue;
+		if (text.length > budget) break;
+		budget -= text.length;
+		withBodies.unshift({ from: rows[i].from_email, sent_at: rows[i].sent_at, body: text });
+	}
+
+	if (withBodies.length === 0) {
+		throw new ApiError(400, 'This thread has no readable messages to reply to.');
+	}
+
+	const [voice, context] = await Promise.all([
+		voiceSamples(c.env.DB, c.env.FILES, conn?.account_email ?? null),
+		clientContext(c.env.DB, thread.client_id)
+	]);
+
+	let drafted;
+	try {
+		drafted = await draftReply(apiKey, {
+			subject: thread.subject ?? '(no subject)',
+			messages: withBodies,
+			voice,
+			gist: thread.gist,
+			context
+		});
+	} catch (err) {
+		throw asApiError(err);
+	}
+
+	const at = nowUtc();
+	await c.env.DB.prepare(
+		`INSERT INTO email_drafts
+       (id, thread_id, body, based_on_message_id, based_on_last_at, model, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(thread_id) DO UPDATE SET
+       body = excluded.body,
+       based_on_message_id = excluded.based_on_message_id,
+       based_on_last_at = excluded.based_on_last_at,
+       model = excluded.model,
+       edited_body = NULL,
+       edited_at = NULL,
+       copied_at = NULL,
+       updated_at = excluded.updated_at`
+	)
+		.bind(
+			crypto.randomUUID(),
+			id,
+			drafted.body,
+			rows[rows.length - 1]?.id ?? null,
+			thread.last_at,
+			drafted.model,
+			at,
+			at
+		)
+		.run();
+
+	const draft = await c.env.DB.prepare('SELECT * FROM email_drafts WHERE thread_id = ?')
+		.bind(id)
+		.first();
+
+	return c.json({
+		draft,
+		voice_samples: voice.length,
+		had_client_context: Boolean(context)
+	});
+});
+
+/** Paul's edit, kept beside the model's version rather than over it. */
+email.patch('/threads/:id/draft', async (c) => {
+	const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+	const edited = typeof body.body === 'string' ? body.body : null;
+	if (edited === null) throw new ApiError(400, 'A draft body is required.');
+
+	const result = await c.env.DB.prepare(
+		'UPDATE email_drafts SET edited_body = ?, edited_at = ?, updated_at = ? WHERE thread_id = ?'
+	)
+		.bind(edited, nowUtc(), nowUtc(), c.req.param('id'))
+		.run();
+	if (!result.meta.changes) throw new ApiError(404, 'No draft on that thread.');
+	return c.json({ ok: true });
+});
+
+/**
+ * Records that Paul copied the draft out.
+ *
+ * Deliberately not called sent. This app has no way to know whether a message
+ * was ever sent, and a field named for sending would eventually be read as if
+ * it did know.
+ */
+email.post('/threads/:id/draft/copied', async (c) => {
+	const result = await c.env.DB.prepare(
+		'UPDATE email_drafts SET copied_at = ?, updated_at = ? WHERE thread_id = ?'
+	)
+		.bind(nowUtc(), nowUtc(), c.req.param('id'))
+		.run();
+	if (!result.meta.changes) throw new ApiError(404, 'No draft on that thread.');
+	return c.json({ ok: true });
+});
+
+email.delete('/threads/:id/draft', async (c) => {
+	const result = await c.env.DB.prepare('DELETE FROM email_drafts WHERE thread_id = ?')
+		.bind(c.req.param('id'))
+		.run();
+	if (!result.meta.changes) throw new ApiError(404, 'No draft on that thread.');
+	return c.json({ ok: true });
 });

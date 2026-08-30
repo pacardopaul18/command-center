@@ -368,6 +368,21 @@ export interface MessageRef {
 	threadId: string;
 }
 
+/**
+ * Gmail's label for an unsent draft.
+ *
+ * Drafts are excluded at the query and checked again on the way in. Reading
+ * correspondence never meant reading things Paul had written and not sent, and
+ * a half-finished sentence he chose not to send is the most private text in a
+ * mailbox. Two independent guards because one query typo would silently undo
+ * the whole intention.
+ */
+export const DRAFT_LABEL = 'DRAFT';
+
+export function isDraft(labelIds: string | null): boolean {
+	return (labelIds ?? '').split(',').includes(DRAFT_LABEL);
+}
+
 export interface MessagePage {
 	messages: MessageRef[];
 	nextPageToken: string | null;
@@ -405,6 +420,13 @@ export async function listMessageIds(
 	};
 }
 
+export interface GmailAttachment {
+	provider_attachment_id: string | null;
+	filename: string;
+	mime_type: string | null;
+	size_bytes: number | null;
+}
+
 export interface GmailMessage {
 	provider_message_id: string;
 	provider_thread_id: string;
@@ -417,6 +439,7 @@ export interface GmailMessage {
 	snippet: string | null;
 	label_ids: string | null;
 	is_unread: number;
+	attachments: GmailAttachment[];
 	/**
 	 * The best body Gmail gave, kept as it arrived.
 	 *
@@ -432,14 +455,64 @@ export interface GmailMessage {
 
 interface RawPart {
 	mimeType?: string;
-	body?: { data?: string; size?: number };
+	filename?: string;
+	body?: { data?: string; size?: number; attachmentId?: string };
 	parts?: RawPart[];
 }
 
-/** Gmail base64url, which is not what atob expects. */
+/**
+ * Attachments, by their filename.
+ *
+ * A part with a filename is a file; a part without one is body content. That is
+ * Gmail's own convention and it is more reliable than guessing from the mime
+ * type, since inline images and text parts share types with real attachments.
+ * Inline images with no filename are deliberately not listed: they belong to
+ * the body, and listing them would fill the attachment row with spacer gifs.
+ */
+export function collectAttachments(part: RawPart | undefined, depth = 0): GmailAttachment[] {
+	if (!part || depth > 8) return [];
+
+	const found: GmailAttachment[] = [];
+	if (part.filename && part.filename.trim()) {
+		found.push({
+			provider_attachment_id: part.body?.attachmentId ?? null,
+			filename: part.filename.slice(0, 300),
+			mime_type: part.mimeType ?? null,
+			size_bytes: typeof part.body?.size === 'number' ? part.body.size : null
+		});
+	}
+	for (const child of part.parts ?? []) found.push(...collectAttachments(child, depth + 1));
+	return found;
+}
+
+/**
+ * Gmail base64url, which is not what atob expects.
+ *
+ * The input is capped before decoding, not after. A marketing email can carry
+ * several hundred kilobytes of HTML, and the decode walks every character to
+ * build the byte array; doing that for a dozen messages in one invocation is
+ * what pushed the worker past its CPU limit during the re-read. Truncating the
+ * encoded form first bounds the work rather than doing it and throwing most of
+ * the result away.
+ *
+ * The cut is on a four character boundary because base64 encodes three bytes
+ * per four characters, and cutting mid-group produces a decode error rather
+ * than a shorter string.
+ */
+const MAX_ENCODED_CHARS = 180_000;
+
 export function decodeBody(data: string): string {
-	const normalised = data.replace(/-/g, '+').replace(/_/g, '/');
-	const binary = atob(normalised);
+	const capped =
+		data.length > MAX_ENCODED_CHARS ? data.slice(0, MAX_ENCODED_CHARS - (MAX_ENCODED_CHARS % 4)) : data;
+	const normalised = capped.replace(/-/g, '+').replace(/_/g, '/');
+	let binary: string;
+	try {
+		binary = atob(normalised);
+	} catch {
+		// A truncated payload can still end badly. Showing nothing for this part
+		// is better than failing the whole message.
+		return '';
+	}
 	const bytes = Uint8Array.from(binary, (ch) => ch.charCodeAt(0));
 	// Mail is routinely not ASCII. Decoding as latin1 mangles every accented
 	// name and every smart quote, which is most real correspondence.
@@ -463,13 +536,18 @@ export function extractBody(part: RawPart | undefined, depth = 0): { text: strin
 		if (part.mimeType === 'text/html') return { text: null, html: decoded };
 	}
 
+	// BOTH alternatives are collected, and the caller picks. Stopping the walk
+	// as soon as a plain part turned up was the whole reason rich mail rendered
+	// as hard-wrapped text: in multipart/alternative the plain part comes first
+	// and the HTML sibling was never visited. The preference belongs to the
+	// caller, and it cannot express a preference between things it never saw.
 	let text: string | null = null;
 	let html: string | null = null;
 	for (const child of part.parts ?? []) {
 		const found = extractBody(child, depth + 1);
 		text = text ?? found.text;
 		html = html ?? found.html;
-		if (text) break;
+		if (text && html) break;
 	}
 	return { text, html };
 }
@@ -604,6 +682,7 @@ export async function getMessage(
 		label_ids: labels.length ? labels.join(',') : null,
 		is_unread: labels.includes('UNREAD') ? 1 : 0,
 		body,
-		body_format: bodyFormat
+		body_format: bodyFormat,
+		attachments: withBody ? collectAttachments(raw.payload) : []
 	};
 }
