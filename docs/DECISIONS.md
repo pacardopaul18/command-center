@@ -2797,6 +2797,56 @@ observed rather than manufactured afterwards. Where that did not happen, the
 mutation check is the honest substitute, and skipping it would leave two
 green tests standing in for two guarantees that had never been examined.
 
+### D117: an AI pass is mostly not AI, and that part is testable today
+
+The context runner had never executed, and it runs for the first time against
+Paul's real mail under a shared spend cap. That is the worst moment to discover
+the orchestration is wrong: a bad prompt costs one call, a bad loop costs all of
+them.
+
+So everything except the model's words was proved with the model stubbed. Which
+threads it reaches for, that a second pass over unchanged mail does no work at
+all, that one changed thread redoes exactly one thread, that it stops at its
+call ceiling and says so, that a transient failure leaves no rows behind, that a
+permanent one is counted and the pass continues, that every call is attributed
+to the account that paid, and that re-reading a thread replaces its commitments
+rather than stacking them.
+
+The no-rework test is the one the cost model rests on. If a re-run redid the
+work, the scheduled version would pay full price on every firing forever, and
+the failure would look like an unexplained bill rather than a bug.
+
+Same approach the Asana sync used. The lesson generalises: when a path cannot be
+exercised end to end, find the part that can be, and be explicit about which
+half remains unproven.
+
+### D118: the runner refusing a job is not the runner failing
+
+The first stub returned about fifty characters per message and the voice pass
+skipped every time. It read as a defect and was the opposite: the runner
+declines to learn how somebody writes from a one-line reply.
+
+Better no voice profile than one inferred from "ok, thanks", because a
+confident profile built on nothing then shapes every draft, and nothing
+downstream would say where it came from. The fixture was lengthened and the
+refusal was pinned by its own test rather than being lost to a longer fixture.
+
+Worth remembering when reading a test failure: a component declining to act on
+insufficient input looks identical to one that is broken, and only the reason
+tells them apart.
+
+### D119: D77 caught me again
+
+Three of the runner tests leaned on state a previous test had left behind.
+Inserting a new test between them, which called the fixture builder, wiped that
+state and two tests failed for a reason that had nothing to do with the code
+they cover.
+
+This is D77 exactly, written by the person who wrote D77, four days later. The
+rule was known and still not applied, which says the rule needs to be a habit at
+the moment of writing rather than a thing recalled afterwards. Each test now
+builds what it needs.
+
 ## Interpretation notes
 
 Not decisions. Judgment calls made inside an existing decision, recorded so the
