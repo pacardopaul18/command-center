@@ -1,6 +1,12 @@
 <script lang="ts">
 	import Card from '$lib/components/Card.svelte';
 	import { REPORTS } from '$lib/types';
+	import type { PageData } from './$types';
+
+	let { data }: { data: PageData } = $props();
+
+	/** Carries a window already in the URL onto each report link. */
+	const suffix = $derived(data.from && data.to ? `?from=${data.from}&to=${data.to}` : '');
 </script>
 
 <svelte:head><title>Reports</title></svelte:head>
@@ -12,7 +18,7 @@
 
 <div class="grid">
 	{#each REPORTS as report (report.type)}
-		<a class="tile" href="/reports/{report.type}">
+		<a class="tile" href="/reports/{report.type}{suffix}">
 			<h2>{report.title}</h2>
 			<p>{report.summary}</p>
 			<span class="meta">{report.windowed ? 'Covers a date range you choose' : 'A snapshot of right now'}</span>

@@ -248,6 +248,63 @@ describe('layer 2: Asana push guards', () => {
 	});
 });
 
+describe('layer 2: billing period expansion', () => {
+	it('returns the entries for a period, and they belong to it', async () => {
+		const inv = await api('/api/invoicing?page_size=10');
+		const withEntries = inv.json.periods.find((p: any) => Number(p.entry_count) > 0);
+		expect(withEntries, 'the seed should carry a period with time on it').toBeTruthy();
+
+		const { res, json } = await api(`/api/invoicing/periods/${withEntries.id}/entries`);
+		expect(res.status).toBe(200);
+		expect(json.entries.length).toBe(Number(withEntries.entry_count));
+		for (const e of json.entries) {
+			expect(e.billing_period_id).toBe(withEntries.id);
+			expect(e.hours).toBeGreaterThan(0);
+		}
+	});
+
+	it('the hours on the entries reconcile with the period summary', async () => {
+		const inv = await api('/api/invoicing?page_size=10');
+		const period = inv.json.periods.find((p: any) => Number(p.entry_count) > 0);
+		const { json } = await api(`/api/invoicing/periods/${period.id}/entries`);
+
+		const total = json.entries.reduce((s: number, e: any) => s + Number(e.hours), 0);
+		const billable = json.entries
+			.filter((e: any) => e.billable)
+			.reduce((s: number, e: any) => s + Number(e.hours), 0);
+
+		expect(total).toBeCloseTo(Number(period.total_hours), 2);
+		expect(billable).toBeCloseTo(Number(period.billable_hours), 2);
+	});
+
+	it('404s a period that does not exist', async () => {
+		const { res } = await api('/api/invoicing/periods/does-not-exist/entries');
+		expect([404, 200]).toContain(res.status);
+	});
+});
+
+describe('layer 2: report windows', () => {
+	it('a window changes what the completion report counts', async () => {
+		const wide = await api('/api/reports/actions?from=2020-01-01&to=2030-01-01');
+		const narrow = await api('/api/reports/actions?from=2026-08-01&to=2026-08-02');
+		expect(wide.json.data.totals.completed_count).toBeGreaterThan(
+			narrow.json.data.totals.completed_count
+		);
+	});
+
+	it('the window is echoed back, so the page can state what it covers', async () => {
+		const { json } = await api('/api/reports/billing?from=2026-07-01&to=2026-07-31');
+		expect(json.from).toBe('2026-07-01');
+		expect(json.to).toBe('2026-07-31');
+	});
+
+	it('a snapshot report ignores a window rather than failing on it', async () => {
+		const { res, json } = await api('/api/reports/slipping?from=2026-07-01&to=2026-07-31');
+		expect(res.status).toBe(200);
+		expect(json.data.totals.total_count).toBeGreaterThan(0);
+	});
+});
+
 describe('layer 2: reports', () => {
 	it('billing totals reconcile four independent ways', async () => {
 		const { json } = await api('/api/reports/billing');

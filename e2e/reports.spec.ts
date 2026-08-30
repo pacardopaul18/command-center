@@ -121,6 +121,46 @@ test.describe('summary cards filter the list below', () => {
 	});
 });
 
+test.describe('the date range follows you', () => {
+	test('a window set on one report survives a trip to another', async ({ page }) => {
+		await page.goto('/reports/billing?from=2026-07-01&to=2026-07-31');
+		await ready(page);
+		await expect(page.getByText(/Covering .* to /)).toBeVisible();
+
+		await page.getByRole('link', { name: 'Action item completion' }).click();
+		await page.waitForURL(/from=2026-07-01/);
+		await expect(page).toHaveURL(/to=2026-07-31/);
+		await expect(page.getByText(/Covering .* to /)).toBeVisible();
+	});
+
+	test('the index carries a window onto every report link', async ({ page }) => {
+		await page.goto('/reports?from=2026-07-01&to=2026-07-31');
+		await ready(page);
+		await page.getByRole('link', { name: /Billing and aging/ }).click();
+		await page.waitForURL(/from=2026-07-01/);
+	});
+
+	test('the print link keeps the window', async ({ page }) => {
+		await page.goto('/reports/billing?from=2026-07-01&to=2026-07-31');
+		await ready(page);
+		const href = await page.getByRole('link', { name: /Print or save as PDF/ }).getAttribute('href');
+		expect(href).toContain('from=2026-07-01');
+		expect(href).toContain('to=2026-07-31');
+	});
+
+	test('running a reversed range corrects it rather than erroring', async ({ page }) => {
+		await page.goto('/reports/billing');
+		await ready(page);
+		const form = page.locator('form.window');
+		await form.locator('input[name="from"]').fill('2026-08-20');
+		await form.locator('input[name="to"]').fill('2026-08-01');
+		await form.getByRole('button', { name: 'Run' }).click();
+		await page.waitForURL(/from=2026-08-01/);
+		await expect(page).toHaveURL(/to=2026-08-20/);
+		await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+	});
+});
+
 test.describe('print views', () => {
 	for (const type of ['slipping', 'billing', 'projects', 'actions']) {
 		test(`${type} print view is a document, not a screen`, async ({ page }) => {

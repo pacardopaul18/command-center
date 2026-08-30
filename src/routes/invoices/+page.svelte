@@ -10,7 +10,7 @@
 		nextPeriodStatus,
 		parseMoneyToCents
 	} from '$lib/types';
-	import type { BillingPeriod, Invoice } from '$lib/types';
+	import type { BillingPeriod, Invoice, TimeEntry } from '$lib/types';
 	import { formatDay } from '$lib/format';
 	import Button from '$lib/components/Button.svelte';
 	import Card from '$lib/components/Card.svelte';
@@ -22,6 +22,48 @@
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
+
+	/**
+	 * Time entries for an expanded billing period.
+	 *
+	 * Fetched when a period is opened rather than shipped with the list. The
+	 * estimate said no round trip, and at Paul's real volume that would have been
+	 * right; at the volume the seed carries it is 3,200 entries attached to 320
+	 * periods, which would put the whole timesheet into every page load to save a
+	 * request nobody makes until they ask. One request per expansion, cached, is
+	 * the honest trade.
+	 */
+	let expanded = $state<string | null>(null);
+	let entries = $state<Record<string, TimeEntry[]>>({});
+	let entriesError = $state('');
+	let loadingEntries = $state<string | null>(null);
+
+	async function toggleEntries(periodId: string) {
+		if (expanded === periodId) {
+			expanded = null;
+			return;
+		}
+		expanded = periodId;
+		entriesError = '';
+		if (entries[periodId]) return;
+
+		loadingEntries = periodId;
+		try {
+			const res = await fetch(`/api/invoicing/periods/${periodId}/entries`);
+			const payload = (await res.json().catch(() => null)) as
+				| { entries?: TimeEntry[]; error?: string }
+				| null;
+			if (!res.ok || !payload) {
+				entriesError = payload?.error ?? 'Could not load the time entries.';
+				return;
+			}
+			entries[periodId] = payload.entries ?? [];
+		} catch {
+			entriesError = 'Could not reach the server.';
+		} finally {
+			loadingEntries = null;
+		}
+	}
 
 	let busy = $state(false);
 	let notice = $state('');
@@ -260,6 +302,16 @@
 				</p>
 
 				<div class="period-actions">
+					{#if (period.entry_count ?? 0) > 0}
+						<Button
+							variant="ghost"
+							size="sm"
+							aria-expanded={expanded === period.id}
+							onclick={() => toggleEntries(period.id)}
+						>
+							{expanded === period.id ? 'Hide time' : `Show ${period.entry_count} entr${(period.entry_count ?? 0) === 1 ? 'y' : 'ies'}`}
+						</Button>
+					{/if}
 					{#if period.status === 'open'}
 						<Button variant="secondary" size="sm" onclick={() => (entryFor = entryFor === period.id ? null : period.id)}>
 							{entryFor === period.id ? 'Close' : 'Add time'}
@@ -276,6 +328,43 @@
 						</Button>
 					{/if}
 				</div>
+
+				{#if expanded === period.id}
+					<div class="entries">
+						{#if loadingEntries === period.id}
+							<p class="entries-note">Loading time entries.</p>
+						{:else if entriesError}
+							<p class="entries-note error" role="alert">{entriesError}</p>
+						{:else if (entries[period.id] ?? []).length === 0}
+							<p class="entries-note">No time entries on this period.</p>
+						{:else}
+							<div class="entries-scroll">
+								<table>
+									<thead>
+										<tr>
+											<th scope="col">Date</th>
+											<th scope="col">Description</th>
+											<th scope="col">Project</th>
+											<th scope="col" class="num">Hours</th>
+											<th scope="col">Billable</th>
+										</tr>
+									</thead>
+									<tbody>
+										{#each entries[period.id] as entry (entry.id)}
+											<tr>
+												<td class="mono nowrap">{formatDay(entry.entry_date)}</td>
+												<td>{entry.description ?? 'No description'}</td>
+												<td class="muted-cell">{entry.project_name ?? 'No project'}</td>
+												<td class="num mono">{entry.hours.toFixed(2)}</td>
+												<td>{entry.billable ? 'Billable' : 'Not billable'}</td>
+											</tr>
+										{/each}
+									</tbody>
+								</table>
+							</div>
+						{/if}
+					</div>
+				{/if}
 
 				{#if entryFor === period.id}
 					<form class="inline-form" onsubmit={(e) => addEntry(e, period)}>
@@ -568,6 +657,48 @@
 	.period-stats {
 		margin-top: var(--space-2);
 	}
+	.entries {
+		margin-top: var(--space-3);
+		padding-top: var(--space-3);
+		border-top: 1px solid var(--border-thin);
+	}
+
+	.entries-note {
+		margin: 0;
+		font-size: var(--text-sm);
+		color: var(--text-secondary);
+	}
+
+	.entries-note.error {
+		color: var(--text-alarm);
+	}
+
+	/* Wide on a phone, so it scrolls in its own box rather than the page. D22. */
+	.entries-scroll {
+		overflow-x: auto;
+	}
+
+	.entries table {
+		width: 100%;
+		border-collapse: collapse;
+		font-size: var(--text-sm);
+	}
+
+	.entries th,
+	.entries td {
+		padding: var(--space-2) var(--space-3);
+		text-align: left;
+		border-bottom: 1px solid var(--border-thin);
+	}
+
+	.entries tbody tr:last-child td {
+		border-bottom: none;
+	}
+
+	.entries .num {
+		text-align: right;
+	}
+
 	.period-actions {
 		display: flex;
 		flex-wrap: wrap;

@@ -1,34 +1,17 @@
 <script lang="ts">
-	import Button from '$lib/components/Button.svelte';
 	import ReportBody from '$lib/components/ReportBody.svelte';
+	import ReportWindow from '$lib/components/ReportWindow.svelte';
 	import { formatDay } from '$lib/format';
-	import { reportMeta } from '$lib/types';
+	import { REPORTS, reportMeta } from '$lib/types';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
 
 	const meta = $derived(reportMeta(data.type));
 
-	/**
-	 * The window lives in the URL, so changing it is a navigation. That keeps a
-	 * report linkable and makes the browser back button do the obvious thing.
-	 *
-	 * The inputs are uncontrolled, holding their own value the way a plain form
-	 * does. Mirroring them into component state would mean keeping that state in
-	 * step with every navigation, and the only thing it would buy is live min and
-	 * max attributes.
-	 *
-	 * Instead a reversed range is swapped on submit. The API returns a 400 for
-	 * from after to, which would surface as an error page, and quietly reading a
-	 * backwards range the obvious way is kinder than that and never wrong.
-	 */
-	function onsubmit(event: SubmitEvent) {
-		const form = event.currentTarget as HTMLFormElement;
-		const a = form.elements.namedItem('from') as HTMLInputElement;
-		const b = form.elements.namedItem('to') as HTMLInputElement;
-		if (a.value && b.value && a.value > b.value) {
-			[a.value, b.value] = [b.value, a.value];
-		}
+	/** A link to another report that keeps the range the reader chose. */
+	function windowedHref(type: string): string {
+		return `/reports/${type}?from=${data.from}&to=${data.to}`;
 	}
 
 	const printHref = $derived(
@@ -59,18 +42,22 @@
 </header>
 
 {#if meta.windowed}
-	<form class="window" data-sveltekit-noscroll {onsubmit}>
-		<label>
-			<span>From</span>
-			<input type="date" name="from" value={data.from} />
-		</label>
-		<label>
-			<span>To</span>
-			<input type="date" name="to" value={data.to} />
-		</label>
-		<Button type="submit" variant="secondary">Run</Button>
-	</form>
+	<ReportWindow from={data.from} to={data.to} />
 {/if}
+
+<!--
+	Every other report, reachable without losing the window.
+
+	Setting a range and then having it evaporate on the way to the next report is
+	the friction that makes a date filter unused. A snapshot report ignores the
+	parameters, so carrying them costs nothing and means the range survives a
+	round trip through one.
+-->
+<nav class="siblings" aria-label="Other reports">
+	{#each REPORTS.filter((r) => r.type !== data.type) as other (other.type)}
+		<a href={windowedHref(other.type)}>{other.title}</a>
+	{/each}
+</nav>
 
 <ReportBody type={data.type} data={data.data} today={data.today} />
 
@@ -125,6 +112,35 @@
 		font-size: var(--text-xs);
 	}
 
+	.siblings {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--space-3);
+		margin-bottom: var(--space-5);
+		font-size: var(--text-sm);
+	}
+
+	.siblings a {
+		display: inline-flex;
+		align-items: center;
+		min-height: var(--tap);
+		padding: 0 var(--space-3);
+		border: 1px solid var(--border-thin);
+		border-radius: var(--radius-pill);
+		color: var(--text-link);
+		text-decoration: none;
+	}
+
+	.siblings a:hover {
+		background: var(--surface-hover);
+		border-color: var(--border-strong);
+	}
+
+	.siblings a:focus-visible {
+		outline: 2px solid var(--navy);
+		outline-offset: 2px;
+	}
+
 	.print {
 		display: inline-flex;
 		align-items: center;
@@ -149,46 +165,7 @@
 		outline-offset: 2px;
 	}
 
-	.window {
-		display: flex;
-		flex-wrap: wrap;
-		align-items: flex-end;
-		gap: var(--space-3);
-		margin-bottom: var(--space-5);
-		padding: var(--space-4);
-		border: 1px solid var(--border-thin);
-		border-radius: var(--radius-md);
-		background: var(--surface-card);
-	}
 
-	.window label {
-		display: flex;
-		flex-direction: column;
-		gap: var(--space-1);
-		font-size: var(--text-sm);
-		color: var(--text-secondary);
-	}
 
-	.window input {
-		/* 16px on touch so iOS does not zoom the page on focus. D23. */
-		min-height: 44px;
-		padding: 0 var(--space-3);
-		border: 1px solid var(--border-control);
-		border-radius: var(--radius-sm);
-		background: var(--white);
-		color: var(--text-body);
-		font-family: var(--font-sans);
-		font-size: 16px;
-	}
 
-	@media (min-width: 720px) {
-		.window input {
-			font-size: var(--text-sm);
-		}
-	}
-
-	.window input:focus-visible {
-		outline: 2px solid var(--navy);
-		outline-offset: 1px;
-	}
 </style>

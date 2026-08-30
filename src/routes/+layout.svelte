@@ -1,6 +1,8 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import '../app.css';
 	import { page } from '$app/state';
+	import { hydration } from '$lib/hydrated.svelte';
 	import favicon from '$lib/assets/favicon.svg';
 	import AppShell from '$lib/components/AppShell.svelte';
 	import type { LayoutData } from './$types';
@@ -15,6 +17,11 @@
 	 * a client called "print" cannot accidentally strip its own chrome.
 	 */
 	const bare = $derived(page.route.id?.endsWith('/print') ?? false);
+
+	// One place decides the whole app is live. onMount runs after hydration, so
+	// anything gated on this cannot be touched during the window where a keypress
+	// would be swallowed. See src/lib/hydrated.svelte.ts.
+	onMount(() => hydration.markReady());
 </script>
 
 <svelte:head>

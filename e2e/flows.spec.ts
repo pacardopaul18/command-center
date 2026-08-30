@@ -40,6 +40,65 @@ async function deleteItem(request: import('@playwright/test').APIRequestContext,
 	}
 }
 
+test.describe('typing before the client is ready', () => {
+	const TITLE = 'E2E pre-hydration probe';
+
+	test.afterEach(async ({ request }) => deleteItem(request, TITLE));
+
+	/**
+	 * Types into the server rendered markup before Svelte has hydrated, by
+	 * holding back the client entry module, then lets hydration finish and
+	 * submits.
+	 *
+	 * This was written to reproduce a reported loss of pre-hydration input and
+	 * does not reproduce it: the form submits correctly with the guard in Input
+	 * removed as well as with it present. It stays because the behaviour it
+	 * asserts is the behaviour anyone would want, and because a test that pins a
+	 * property is worth having whether or not it once caught something.
+	 */
+	test('text typed before hydration survives and submits', async ({ page }) => {
+		let released: () => void = () => {};
+		const gate = new Promise<void>((r) => (released = r));
+
+		// Dev serves the client entry from /@fs and a generated app module; a
+		// built site serves /_app/immutable/entry. Hold whichever applies, or the
+		// page hydrates before the typing and the test proves nothing.
+		const hydrationModules =
+			/(runtime\/client\/entry\.js|generated\/client\/app\.js|_app\/immutable\/entry\/)/;
+		await page.route(
+			(u) => hydrationModules.test(u.href),
+			async (route) => {
+				await gate;
+				await route.continue();
+			}
+		);
+
+		await page.goto('/actions?view=all', { waitUntil: 'commit' });
+
+		const form = captureForm(page);
+		const input = form.getByLabel('Title');
+		await input.waitFor({ state: 'visible' });
+
+		// Nothing has hydrated yet, which the shortcut proves: it is a client
+		// side keybinding and does nothing until the app is live.
+		await page.keyboard.press('n');
+		await expect(page.locator('dialog[open]')).toHaveCount(0);
+
+		await input.fill(TITLE);
+		expect(await input.inputValue()).toBe(TITLE);
+
+		// Let the client take over. The binding's first act is to write its own
+		// value into the element, which is where the text used to disappear.
+		released();
+		await page.waitForLoadState('networkidle');
+
+		await expect(input).toHaveValue(TITLE);
+
+		await form.getByRole('button', { name: 'Add item' }).click();
+		await expect(page.locator('.status-line')).toContainText('Action item added.');
+	});
+});
+
 test.describe('capture and track', () => {
 	const TITLE = 'E2E capture form probe';
 
@@ -229,6 +288,44 @@ test.describe('the nav says where you are', () => {
 		const current = page.locator('.nav-link[aria-current="page"]');
 		await expect(current).toHaveCount(1);
 		await expect(current).toHaveText('Reports');
+	});
+});
+
+test.describe('billing periods open to their time', () => {
+	test('expanding a period lists its entries and collapsing hides them', async ({ page }) => {
+		await page.goto('/invoices?page_size=10');
+		await ready(page);
+
+		const toggle = page.getByRole('button', { name: /^Show \d+ entr/ }).first();
+		await expect(toggle).toBeVisible();
+		await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+
+		await toggle.click();
+
+		// The button relabels itself, so the original locator now resolves to a
+		// different period's toggle. Assert on the opened control instead.
+		const opened = page.getByRole('button', { name: 'Hide time' });
+		await expect(opened).toHaveAttribute('aria-expanded', 'true');
+		await expect(page.locator('.entries tbody tr').first()).toBeVisible();
+
+		await opened.click();
+		await expect(page.locator('.entries')).toHaveCount(0);
+	});
+
+	test('the entries shown add up to the hours the period claims', async ({ page }) => {
+		await page.goto('/invoices?page_size=10');
+		await ready(page);
+		const toggle = page.getByRole('button', { name: /^Show \d+ entr/ }).first();
+		await toggle.click();
+
+		const panel = page.locator('.entries').first();
+		await expect(panel.locator('tbody tr').first()).toBeVisible();
+		const hours = await panel.locator('tbody tr td:nth-child(4)').allInnerTexts();
+		const sum = hours.reduce((s, h) => s + Number(h), 0);
+
+		const meta = await page.locator('li').filter({ has: panel }).first().innerText();
+		const claimed = Number(meta.match(/([0-9.]+) total h/)?.[1]);
+		expect(sum).toBeCloseTo(claimed, 1);
 	});
 });
 
