@@ -3617,3 +3617,44 @@ Neither table carries a `connection_id`. Every table added since multi-account
 has carried one and the habit is the risk: these are Paul's books, not
 per-mailbox records. A test asserts the absence, because a habit is not stopped
 by intending to stop it.
+
+### D132: an idempotency guard is keyed on the event it guards
+
+P3-E1 put a unique partial index on `ledger_transactions(source_invoice_id)` to
+stop a retried post from double counting. Self-caught in the E2 pre-audit,
+before anything posted, with no production rows affected.
+
+The guard was keyed on the invoice. The event it guards is a payment. One
+invoice can receive several, so the index did not make a retry safe: it made the
+second partial payment impossible to post. 110 of 900 seeded invoices are part
+paid, so the case it forbade is the ordinary one.
+
+The reason it happened is the part worth keeping. When E1 was written there was
+no payment record at all, only a cumulative `amount_paid_cents` on the invoice.
+A guard was designed for an event the schema could not name, so it attached
+itself to the nearest thing that had an id. The rule: the event has to exist as
+a record before a guard against repeating it can be designed, and if there is
+nothing to key it to, that absence is the finding rather than an inconvenience
+to work around.
+
+E2 fixes it properly. `invoice_payments` holds one row per payment with its own
+date and amount, the index moves to `source_payment_id`, and the invoice-level
+uniqueness is dropped because it now encodes the wrong invariant.
+
+### D133: a derived figure is derived in the database
+
+`invoices.amount_paid_cents` was set directly by a PATCH that trusted its
+caller. It is now recomputed by trigger from `invoice_payments` on every insert,
+update and delete, and the route that set it absolutely refuses with a pointer
+to the route that replaces it.
+
+In the database rather than in the route, because the route is not the only
+writer: an import, a correction by hand, or a future posting job all bypass it,
+and a paid total that has drifted from the payments behind it is wrong in a way
+no screen shows. The delete case is included deliberately, since a removed
+payment that left its money on the invoice would be revenue nothing supports.
+
+Recording a payment as an event rather than a new total also restores something
+cash basis needs and the old shape destroyed: the date the money arrived. A
+ledger entry dated when someone happened to edit an invoice is not a cash-basis
+record.

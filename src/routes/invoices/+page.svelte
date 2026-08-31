@@ -77,6 +77,8 @@
 	let entryDraft = $state({ entry_date: '', hours: '', description: '', project_id: '' });
 	let invoiceDraft = $state({ invoice_number: '', issue_date: '', due_date: '', amount: '' });
 	let payDraft = $state('');
+	/** The date money arrived. Under cash basis this is the ledger entry's date. */
+	let payDateDraft = $state(new Date().toISOString().slice(0, 10));
 
 	async function send(path: string, method: string, body: unknown, message: string) {
 		busy = true;
@@ -181,21 +183,31 @@
 		}
 	}
 
+	/**
+	 * Records a payment as an event.
+	 *
+	 * This used to send the new running total to a PATCH that set the paid
+	 * figure directly. It now sends the amount that arrived and the day it
+	 * arrived, and the invoice's paid figure follows from the payments rather
+	 * than being asserted over them. The ledger posts the same amount, once,
+	 * under cash basis.
+	 */
 	async function recordPayment(event: SubmitEvent, invoice: Invoice) {
 		event.preventDefault();
 		const cents = parseMoneyToCents(payDraft);
-		if (cents === null) {
+		if (cents === null || cents <= 0) {
 			errorMessage = 'The amount must look like 1234.56.';
 			return;
 		}
 		const ok = await send(
-			`/api/invoicing/invoices/${invoice.id}`,
-			'PATCH',
-			{ amount_paid_cents: cents },
-			'Payment recorded.'
+			`/api/invoicing/invoices/${invoice.id}/payments`,
+			'POST',
+			{ amount: payDraft, paid_on: payDateDraft },
+			'Payment recorded and posted to the ledger.'
 		);
 		if (ok) {
 			payDraft = '';
+			payDateDraft = new Date().toISOString().slice(0, 10);
 			payingId = null;
 		}
 	}
@@ -468,8 +480,11 @@
 						<tr>
 							<td colspan="8">
 								<form class="pay-form" onsubmit={(e) => recordPayment(e, invoice)}>
-									<FormField label="Total paid to date">
-										<Input bind:value={payDraft} mono placeholder={formatMoney(invoice.amount_cents)} required />
+									<FormField label="Amount received">
+										<Input bind:value={payDraft} mono placeholder={formatMoney(invoice.amount_cents - invoice.amount_paid_cents)} required />
+									</FormField>
+									<FormField label="Date received">
+										<Input type="date" bind:value={payDateDraft} required />
 									</FormField>
 									<Button type="submit" size="sm" disabled={busy}>Save</Button>
 								</form>
@@ -515,8 +530,11 @@
 					</Button>
 					{#if payingId === invoice.id}
 						<form class="pay-form" onsubmit={(e) => recordPayment(e, invoice)}>
-							<FormField label="Total paid to date">
-								<Input bind:value={payDraft} mono placeholder={formatMoney(invoice.amount_cents)} required />
+							<FormField label="Amount received">
+								<Input bind:value={payDraft} mono placeholder={formatMoney(invoice.amount_cents - invoice.amount_paid_cents)} required />
+							</FormField>
+							<FormField label="Date received">
+								<Input type="date" bind:value={payDateDraft} required />
 							</FormField>
 							<Button type="submit" size="sm" disabled={busy}>Save</Button>
 						</form>
