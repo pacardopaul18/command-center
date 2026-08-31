@@ -32,9 +32,17 @@ function money(text: string): number {
 	return Number(text.replace(/[^0-9.-]/g, ''));
 }
 
-/** The capture form, told apart from the quick add dialog by its submit button. */
-function captureForm(page: import('@playwright/test').Page) {
-	return page.locator('form').filter({ has: page.getByRole('button', { name: 'Add item' }) });
+/**
+ * The capture form, which the redesign moved into a dialog.
+ *
+ * Opened by name rather than by position, and told apart from the quick add
+ * dialog by its title. Both carry an "Add item" button.
+ */
+async function captureForm(page: import('@playwright/test').Page) {
+	await page.getByRole('button', { name: 'Capture an item' }).click();
+	const dialog = page.getByRole('dialog', { name: 'Capture an item' });
+	await dialog.waitFor({ state: 'visible' });
+	return dialog;
 }
 
 async function deleteItem(request: import('@playwright/test').APIRequestContext, title: string) {
@@ -80,8 +88,16 @@ test.describe('typing before the client is ready', () => {
 
 		await page.goto('/actions?view=all', { waitUntil: 'commit' });
 
-		const form = captureForm(page);
-		const input = form.getByLabel('Title');
+		/**
+		 * The search box, not the capture field.
+		 *
+		 * The redesign moved capture into a dialog, and a dialog cannot be opened
+		 * before the client runs, so there is no pre-hydration window there to
+		 * protect. The property this test exists for is unchanged and now belongs
+		 * to the field that is in the first HTML: text typed before hydration
+		 * must survive it.
+		 */
+		const input = page.locator('#q');
 		await input.waitFor({ state: 'visible' });
 
 		// Nothing has hydrated yet, which the shortcut proves: it is a client
@@ -143,8 +159,11 @@ test.describe('typing before the client is ready', () => {
 					: 'A non-empty mismatch means something else edited the field.')
 		).toBe(TITLE);
 
-		await form.getByRole('button', { name: 'Add item' }).click();
-		await expect(page.locator('.status-line')).toContainText('Action item added.');
+		// And it submits. The search runs as a client side navigation, so the
+		// assertion is on the URL it produced rather than on a load event that
+		// never fires.
+		await page.getByRole('button', { name: 'Search' }).click();
+		await expect(page).toHaveURL(/q=E2E/);
 	});
 });
 
@@ -156,13 +175,13 @@ test.describe('capture and track', () => {
 	test('the capture form creates an item and the list reflects it', async ({ page }) => {
 		await page.goto('/actions?view=all');
 		await ready(page);
-		const form = captureForm(page);
 
 		const before = Number(
 			(await page.getByRole('link', { name: /^All/ }).innerText()).replace(/\D/g, '')
 		);
 
-		await form.getByLabel('Title').pressSequentially(TITLE);
+		const form = await captureForm(page);
+		await form.getByLabel('What has to happen').pressSequentially(TITLE);
 		await form.getByRole('button', { name: 'Add item' }).click();
 
 		await expect(page.locator('.status-line')).toContainText('Action item added.');
@@ -178,7 +197,6 @@ test.describe('capture and track', () => {
 	test('a rejected save shows an error and keeps what was typed', async ({ page }) => {
 		await page.goto('/actions?view=all');
 		await ready(page);
-		const form = captureForm(page);
 
 		// The exact failure D66 was written for: 2xx with a body that is not JSON.
 		await page.route('**/api/action-items', async (route) => {
@@ -190,13 +208,14 @@ test.describe('capture and track', () => {
 			});
 		});
 
-		await form.getByLabel('Title').pressSequentially(TITLE);
+		const form = await captureForm(page);
+		await form.getByLabel('What has to happen').pressSequentially(TITLE);
 		await form.getByRole('button', { name: 'Add item' }).click();
 
 		await expect(page.getByRole('alert')).toBeVisible();
 		await expect(page.getByRole('alert')).toContainText(/session/i);
 		// The typed text must survive, or the user loses their work silently.
-		await expect(form.getByLabel('Title')).toHaveValue(TITLE);
+		await expect(form.getByLabel('What has to happen')).toHaveValue(TITLE);
 	});
 });
 
@@ -275,9 +294,9 @@ test.describe('navigation and filters at volume', () => {
 	test('search narrows the list', async ({ page }) => {
 		await page.goto('/actions?view=all');
 		await ready(page);
-		const filters = page.locator('form.filters');
+		const filters = page.locator('form.search');
 		await filters.getByLabel('Search').pressSequentially('invoice');
-		await filters.getByRole('button', { name: 'Apply' }).click();
+		await filters.getByRole('button', { name: 'Search' }).click();
 		await page.waitForURL(/q=invoice/);
 		const rows = await page.locator('tbody tr').count();
 		expect(rows).toBeGreaterThan(0);
@@ -497,7 +516,12 @@ test.describe('the dashboard', () => {
 
 	test('the Asana push is visibly unavailable, never silently broken', async ({ page }) => {
 		await page.goto('/actions?view=open');
-		const push = page.getByRole('button', { name: /^Push/ }).first();
+		await ready(page);
+		// The row actions live in the row, which opens. A control that is only
+		// reachable after a click is still a control that must say why it cannot
+		// be used.
+		await page.locator('button.row-open:visible').first().click();
+		const push = page.getByRole('button', { name: /^Push to Asana/ }).first();
 		await expect(push).toBeDisabled();
 	});
 });
@@ -586,6 +610,7 @@ test.describe('tickets: the worked unit under a project', () => {
 		await page.goto(`/actions?view=open&q=${encodeURIComponent(item.title)}`);
 		await ready(page);
 
+		await page.locator('button.row-open:visible').first().click();
 		await page.getByRole('button', { name: /To ticket/i }).first().click();
 		await expect(page.locator('main')).toContainText(/still here as the record/i);
 
