@@ -3910,3 +3910,46 @@ real class rather than a copy-paste. A row cannot be its own parent, and a paren
 cannot become a child while it still has children; neither is expressible at
 INSERT because the row does not exist yet. A guard set derived by mirroring the
 INSERT triggers would have missed both.
+
+### D140: the volume seed is reloadable, because the rehearsal starts by reloading it
+
+Found by accident, and it was a rehearsal blocker.
+
+The seed is date anchored and expires nightly, so the rehearsal's first step is a
+reload. That reload did not work. The generated SQL had no DELETE statements and
+plain INSERTs, so applying it over yesterday's rows aborted on the first UNIQUE
+violation, left the stale data in place, and printed a log file path rather than
+a failure anyone would notice. Every later step would have run against yesterday.
+
+Making it idempotent surfaced three guards doing their jobs, each of which had to
+be worked with rather than around:
+
+- `sop_versions` refuses UPDATE and DELETE by trigger, D33, so those rows are
+  inserted once and left alone on a reload. That is what immutable means.
+- `OR REPLACE` deletes the existing row before inserting. `sop_versions.author_id`
+  is ON DELETE SET NULL, so replacing a user updated an immutable row and was
+  refused. Users are static fixtures and are now inserted once.
+- `sops.current_version_id` moves forward only by trigger, and on a reload the
+  SOP already points at the version being set, so an unguarded UPDATE re-set it
+  to itself and was refused. The statement is now a no-op when nothing changes.
+
+None of those triggers were wrong. The seed was written for an empty database and
+never asked to run twice.
+
+The lesson generalises past this file: anything the process depends on running
+repeatedly gets run twice in testing, once against nothing and once against its
+own output. The second run is the one that finds this.
+
+### D141: I pushed on a red suite, and the gate was a shell operator
+
+Reported because the outcome was harmless and the process failure was not.
+
+The calendar views commit was chained as `npm test; git commit; git push` with
+semicolons, so the push happened regardless of the test result. The suite was
+red. The failure turned out to be the stale seed above, environmental and
+unrelated to the three calendar files in the commit, so nothing bad reached
+production. That is luck, not method.
+
+The rule: the suite result gates the push, and the gate is `&&` or a read of the
+exit code, never a chain that runs the next thing anyway. A green suite reported
+after a push is not evidence, it is a coincidence that has not failed yet.

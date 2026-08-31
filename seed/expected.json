@@ -27,7 +27,7 @@
   "time_entries": 3200,
   "users": 7
  },
- "fingerprint": "2449d640ce419123",
+ "fingerprint": "1ad173a124130a43",
  "invoice_bands": {
   "b0_30": 114,
   "b0_30_cents": 137129589,
@@ -241,7 +241,7 @@
   "v-sop-98": 2,
   "v-sop-99": 3
  },
- "today_mt": "2026-08-30",
+ "today_mt": "2026-08-31",
  "totals": {
   "action_items_open": 2543,
   "meetings_today": 6,
