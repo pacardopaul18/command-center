@@ -3887,3 +3887,26 @@ do" has to have been told that is what happened.
 
 Added to the review checklist for every new job: if this can return zeros, can
 the caller tell which zero it is.
+
+### D139: an INSERT-only guard is complete only until something can UPDATE
+
+0019 enforced the ledger's category rules with BEFORE INSERT triggers: one level
+of nesting, and a child matching its parent's kind. That was complete, because
+nothing could edit a category once written.
+
+The category editor made editing possible, and an UPDATE walks straight past an
+INSERT trigger. Without noticing it, the editor would have allowed a category to
+be re-parented two levels deep, or income to be filed under an expense, with the
+rules still sitting in the schema looking enforced.
+
+The review item, for every trigger-guarded table: when a table becomes editable,
+its guards cover UPDATE as well, and each one is proved by attempting the
+violation rather than by reading the SQL. Four were added here and all four were
+attempted: nesting depth, kind match, self-parenting, and nesting a category that
+has children of its own.
+
+Two guards exist only in the UPDATE direction, which is the tell that this is a
+real class rather than a copy-paste. A row cannot be its own parent, and a parent
+cannot become a child while it still has children; neither is expressible at
+INSERT because the row does not exist yet. A guard set derived by mirroring the
+INSERT triggers would have missed both.
