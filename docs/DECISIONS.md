@@ -4178,3 +4178,54 @@ those looks like a working feature on screen.
 Working hours are applied on the clock the reader is on, passed in from the
 browser, because the page has a firm-time toggle and nine to five has to mean
 nine to five wherever the page currently is.
+
+### D152: the scheduling assistant becomes a clash notice, and Join becomes a link
+
+The Meetings prototype puts a scheduling assistant beside Coming up. It reads
+the fortnight, spots that two calls overlap, offers a time everyone is free, and
+ends with a button: "Move demo to Tue, 1:00 PM". Moving an event is a write to
+Google. Same wall as D148 and the same shape of answer, except that here the
+useful half survives on its own.
+
+The clash detection is local arithmetic over events already cached, so it stays.
+What it produces is a notice naming both calls and the day, with one line saying
+that moving a call happens in Google and this app only reads calendars, and a
+link to the later call in Google Calendar where it can actually be moved. The
+suggestion of a better time is dropped from this screen because it already
+exists on Calendar as Find a time, which reads live free and busy, D151. Two
+answers to the same question computed two different ways is worse than one.
+
+Join becomes Open in Google Calendar, and the reason is D27 rather than D70. A
+Meet link is a real thing an event can have, and this app does not store it:
+`calendar_events` has no conference column and no ALTER may be made to an
+existing table before Thursday. So the row links to the event in Google, one
+press from the Join button that actually exists, rather than to a URL guessed
+out of the location field.
+
+New meeting needed no translation. It creates a record in this app and pushes
+nothing, which is what it already did and what the prototype's own footnote
+says.
+
+### D153: a meeting's state is what is left to do, not what it is missing
+
+The three tabs are computed from `summary` and `summary_reviewed_at`, never
+stored. The first version asked about the transcript first, on the reasoning
+that a meeting with no transcript cannot have been summarised, and it filed four
+hundred and fifty records under "needs a transcript" because a summary can be
+written by hand and had been. The order is now reviewed, then drafted-not-read,
+then everything else, and the third bucket's chip says "No transcript" or "Not
+summarised" depending on which is true, because the bucket is honest and the
+label has to be too.
+
+The counting is asserted rather than eyeballed: the three tabs must add up to
+the whole log, which is the property that catches a fourth state appearing or
+one row falling between two conditions.
+
+The link itself uses `calendar_events.meeting_id`, which has existed since 0011
+with a comment saying nothing sets it automatically because guessing which
+calendar entry became which record would be wrong often enough to be worse than
+not guessing. A side table was written first and thrown away: the column is the
+right shape, and the sync's upsert lists its columns explicitly and never
+touches this one, so a person's filing survives every refresh. That last
+property is asserted by replaying the upsert in a test rather than trusted to
+stay true.

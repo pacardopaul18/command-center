@@ -1085,7 +1085,8 @@
 		color: var(--text-muted);
 		font: inherit;
 		font-size: var(--text-xs);
-		min-height: 32px;
+		/* 44px, D22. The row around it being 44 tall does not help a thumb. */
+		min-height: 44px;
 		padding: 0 var(--space-2);
 		cursor: pointer;
 		flex: none;

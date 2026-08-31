@@ -107,6 +107,51 @@
 		);
 		if (ok) editingProposal = null;
 	}
+
+	/* ---------------------------------------------------------------------
+	 * The call this record is filed against
+	 * ------------------------------------------------------------------ */
+
+	const RESPONSE_LABEL: Record<string, string> = {
+		accepted: 'Going',
+		declined: 'Not going',
+		tentative: 'Maybe',
+		needsAction: 'No answer yet'
+	};
+
+	/** The clock the call ran on, from the event rather than from the date field. */
+	const callTime = $derived.by(() => {
+		if (!data.call) return '';
+		if (data.call.all_day === 1) return 'All day';
+		const fmt = (value: string) =>
+			new Date(value).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+		return data.call.ends_at
+			? `${fmt(data.call.starts_at)} to ${fmt(data.call.ends_at)}`
+			: fmt(data.call.starts_at);
+	});
+
+	/**
+	 * The guest list count, taken from the list actually shown.
+	 *
+	 * `attendee_count` on the event is what Google reported and can be larger
+	 * than the names read so far, so showing it above a shorter list would have
+	 * the panel contradict itself.
+	 */
+	const attendeeCount = $derived(
+		data.attendees.length > 0 ? String(data.attendees.length) : meeting.attendees ? 'typed' : '0'
+	);
+
+	async function unlink() {
+		busy = true;
+		const res = await apiWrite(`/api/meetings/${meeting.id}/link`, 'DELETE', null);
+		busy = false;
+		if (res.ok) {
+			notice = 'Unfiled from that call.';
+			await invalidateAll();
+		} else {
+			errorMessage = res.error ?? 'Could not unfile that call.';
+		}
+	}
 </script>
 
 <svelte:head>
@@ -154,6 +199,9 @@
 {#if errorMessage}
 	<p class="error-banner" role="alert">{errorMessage}</p>
 {/if}
+
+<div class="board">
+	<div class="main">
 
 <!-- Transcript -->
 <div class="block">
@@ -391,7 +439,284 @@
 	</div>
 {/if}
 
+	</div>
+
+	<aside class="side">
+		<Card title="Details">
+			<dl class="facts">
+				<div><dt>Date</dt><dd>{formatDay(meeting.meeting_date)}</dd></div>
+				{#if data.call}
+					<div><dt>Time</dt><dd>{callTime}</dd></div>
+				{/if}
+				<div>
+					<dt>Client</dt>
+					<dd>
+						{#if meeting.client_id}
+							<a href="/clients/{meeting.client_id}">{meeting.client_name}</a>
+						{:else}
+							No client
+						{/if}
+					</dd>
+				</div>
+				<div>
+					<dt>Project</dt>
+					<dd>
+						{#if meeting.project_id}
+							<a href="/projects/{meeting.project_id}">{meeting.project_name}</a>
+						{:else}
+							No project
+						{/if}
+					</dd>
+				</div>
+				<div>
+					<dt>Transcript</dt>
+					<dd>
+						{#if hasTranscript}
+							{(meeting.transcript_chars ?? 0).toLocaleString('en-US')} characters
+						{:else}
+							Not imported yet
+						{/if}
+					</dd>
+				</div>
+				<div>
+					<dt>Summary</dt>
+					<dd>
+						{#if meeting.summary_reviewed_at}
+							Reviewed {formatDay(meeting.summary_reviewed_at.slice(0, 10))}
+						{:else if meeting.summary}
+							Drafted, not reviewed
+						{:else}
+							None
+						{/if}
+					</dd>
+				</div>
+			</dl>
+		</Card>
+
+		<!--
+			The call, when this record is filed against one.
+			`calendar_events.meeting_id` has existed since 0011 for exactly this and
+			nothing set it until now. Nothing here changes the event: the only
+			control is a link into Google, where a call can actually be moved. D152.
+		-->
+		<Card title="The call">
+			{#if data.call}
+				<p class="call-name">{data.call.summary ?? '(no title)'}</p>
+				<p class="fine mono">{data.call.account_email ?? data.call.account_id}</p>
+				{#if data.call.location}<p class="fine">{data.call.location}</p>{/if}
+				<div class="call-actions">
+					{#if data.call.html_link}
+						<a
+							class="ghost"
+							href={data.call.html_link}
+							target="_blank"
+							rel="noopener noreferrer"
+						>
+							Open in Google Calendar
+						</a>
+					{/if}
+					<button type="button" class="ghost" disabled={busy} onclick={unlink}>
+						Unfile from this call
+					</button>
+				</div>
+			{:else}
+				<p class="fine">
+					Not filed against a calendar entry. File one from the Meetings page, beside the
+					call in Coming up.
+				</p>
+			{/if}
+		</Card>
+
+		<Card title="Attendees">
+			{#snippet actions()}
+				<span class="fine mono">{attendeeCount}</span>
+			{/snippet}
+
+			{#if data.attendees.length > 0}
+				<!--
+					From the calendar's guest list, which knows who organised it and who
+					accepted. Shown instead of the typed line rather than merged with
+					it: "five people" from a guest list and "five people" from a
+					sentence somebody typed are not the same claim.
+				-->
+				<ul class="people">
+					{#each data.attendees as person (person.email ?? person.display_name)}
+						<li>
+							<span class="person-name">{person.display_name ?? person.email}</span>
+							<span class="person-note mono">
+								{#if person.is_self}You{:else if person.is_organizer}Organiser{/if}
+								{#if person.response_status}
+									{person.is_self || person.is_organizer ? ', ' : ''}{RESPONSE_LABEL[
+										person.response_status
+									] ?? person.response_status}
+								{/if}
+							</span>
+						</li>
+					{/each}
+				</ul>
+				<p class="fine">From the calendar entry.</p>
+			{:else if meeting.attendees}
+				<p>{meeting.attendees}</p>
+				<p class="fine">As typed on the record. File this against a call to read the guest list.</p>
+			{:else}
+				<p class="fine">Nobody recorded.</p>
+			{/if}
+		</Card>
+
+		{#if meeting.recording_url}
+			<Card title="Recording">
+				<a
+					class="recording mono"
+					href={meeting.recording_url}
+					target="_blank"
+					rel="noopener noreferrer"
+				>
+					{meeting.recording_url.replace(/^https?:\/\//, '')}
+				</a>
+			</Card>
+		{/if}
+	</aside>
+
+</div>
+
 <style>
+
+	/*
+	 * The record and its facts, side by side at a desk and stacked on a phone
+	 * with the record first: a reader opening a meeting wants the summary and
+	 * the transcript, and who was on it is context.
+	 */
+	.board {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr);
+		gap: var(--space-4);
+		align-items: start;
+		margin-top: var(--space-4);
+	}
+
+	@media (min-width: 1100px) {
+		.board {
+			grid-template-columns: minmax(0, 5fr) minmax(0, 2fr);
+		}
+	}
+
+	.main,
+	.side {
+		min-width: 0;
+	}
+
+	.side {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-4);
+	}
+
+	.facts {
+		margin: 0;
+		display: flex;
+		flex-direction: column;
+	}
+
+	.facts > div {
+		display: flex;
+		justify-content: space-between;
+		gap: var(--space-3);
+		padding: var(--space-2) 0;
+	}
+
+	.facts > div + div {
+		border-top: 1px solid var(--border-hairline);
+	}
+
+	.facts dt {
+		font-family: var(--font-mono);
+		font-size: var(--text-xs);
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+		color: var(--text-muted);
+	}
+
+	.facts dd {
+		margin: 0;
+		font-size: var(--text-sm);
+		text-align: right;
+		overflow-wrap: anywhere;
+	}
+
+	.call-name {
+		margin: 0;
+		font-size: var(--text-sm);
+		color: var(--text-heading);
+	}
+
+	.fine {
+		margin: var(--space-1) 0 0;
+		font-size: var(--text-xs);
+		color: var(--text-muted);
+	}
+
+	.call-actions {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--space-2);
+		margin-top: var(--space-3);
+	}
+
+	.ghost {
+		display: inline-flex;
+		align-items: center;
+		/* 44px, D22. */
+		min-height: 44px;
+		padding: 0 var(--space-2);
+		border: 1px solid var(--border-thin);
+		border-radius: var(--radius-sm);
+		background: transparent;
+		color: var(--text-muted);
+		font: inherit;
+		font-size: var(--text-xs);
+		text-decoration: none;
+		cursor: pointer;
+	}
+
+	.ghost:hover:not(:disabled) {
+		color: var(--text-body);
+		border-color: var(--navy-600);
+	}
+
+	.people {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+	}
+
+	.people li {
+		display: flex;
+		justify-content: space-between;
+		gap: var(--space-2);
+		padding: var(--space-2) 0;
+		min-height: 44px;
+		align-items: center;
+	}
+
+	.people li + li {
+		border-top: 1px solid var(--border-hairline);
+	}
+
+	.person-name {
+		font-size: var(--text-sm);
+		overflow-wrap: anywhere;
+	}
+
+	.person-note {
+		font-size: var(--text-xs);
+		color: var(--text-muted);
+		flex: none;
+	}
+
+	.recording {
+		font-size: var(--text-xs);
+		overflow-wrap: anywhere;
+	}
 	.crumbs {
 		display: flex;
 		flex-wrap: wrap;
