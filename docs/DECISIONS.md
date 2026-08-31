@@ -3863,3 +3863,27 @@ Same class as D113 and D124: a real condition reported with the vocabulary of
 nothing having happened. It keeps recurring in this app because the honest
 report and the empty one look identical at the call site, and only the caller
 can tell them apart.
+
+### D138: success with all-zero counts must say why it is zero
+
+The third appearance of one class, so it becomes a review item rather than a
+lesson learned again. D113 reported an empty precondition with the vocabulary of
+a broken system. D124 reported the inbox total as the archive total. D137
+reported a hard refusal as a successful run with nothing to do.
+
+The rule, stated once for every job written from here:
+
+A refusal, an outage, and a genuinely empty result are three different answers
+and must be distinguishable at every call site. Any path that returns success
+with all counts at zero states why they are zero.
+
+The reason this keeps happening is worth naming, because intending not to do it
+has now failed three times. At the point where the counters are returned, all
+three cases look identical: a loop ran and incremented nothing. The information
+that separates them exists only where the loop stopped, and it is thrown away by
+returning a bare number. So the fix is structural rather than careful: the
+outcome type carries the reason, and a caller that wants to report "nothing to
+do" has to have been told that is what happened.
+
+Added to the review checklist for every new job: if this can return zeros, can
+the caller tell which zero it is.
