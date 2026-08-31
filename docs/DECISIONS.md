@@ -3993,3 +3993,101 @@ was wrong.
 This is the same family as D138. A step that reports nothing when it did nothing
 is indistinguishable from a step that succeeded, and the person reading the
 terminal is the one who pays for the difference.
+
+### D144: invoicing is client first, and every figure on it is computed over every invoice
+
+The old screen listed billing periods, then every invoice in the firm, paginated.
+That answers one question, "what is outstanding", and the screen is opened to ask
+a different one: what does this client owe, what have they paid, what is late,
+and what goes out next. Those are questions about a client, and a list of nine
+hundred invoices is the wrong shape for all four.
+
+So the rail picks a client and everything to the right is that client. The
+selected client lives in the URL, which makes it linkable and makes the back
+button work, the same reasoning the pager and the report windows already use.
+
+The four headline figures are computed over every invoice rather than over the
+rows on screen. A total that only counts what is visible is a different number
+wearing the same label, which is the mistake the aging bands were built to avoid
+and the reason they were never computed from a page.
+
+Invoicing no longer paginates, and the e2e test that asserted it does now asserts
+the opposite: every client appears in the rail. A client missing from the rail is
+a client whose money is invisible, which is a worse failure than a long list.
+
+### D145: a total is the sum of its lines, computed by one function both sides import
+
+Line items arrived with migration 0024, and with them the first chance for this
+app to hold two different numbers for the same invoice: one previewed in the form
+while the user types, one stored by the server on save.
+
+`invoiceTotals` in src/lib/types.ts is the only implementation. The form imports
+it to preview, the API imports it to write, and there is no second place where
+the order of operations could drift. The order is fixed and stated: subtotal,
+then discount off the subtotal, then tax on what is left.
+
+Rounding happens once per line, at write, and the rounded figure is stored on the
+line. The alternative is rounding on read, where two readers that round
+differently produce two totals for one invoice. Three lines of 0.333 hours at
+100.00 are 9,990 cents when each line is rounded and 10,000 when the sum is,
+which is a cent in the firm's favour on every invoice, in the direction nobody
+checks.
+
+The API also ignores `amount_cents` when line items are given, rather than
+comparing the two and complaining. A caller cannot store a total its own
+breakdown disagrees with, because it never gets to state one.
+
+### D146: kind and voided_at, not more invoice statuses
+
+The redesign asks for estimates, credit notes and voids beside sent and paid. All
+three arrived as something other than a status, for two reasons.
+
+The first is meaning. `status` tracks how much of an invoice has been paid, and it
+is derived from the payments by trigger. A voided invoice is not a payment state,
+and an estimate has no payments to have a state about. Putting them in the same
+column would mean one column answering two unrelated questions, which is how a
+column ends up with a comment explaining which values are real.
+
+The second is that neither is a receivable. An estimate has not been agreed and a
+credit note is money owed the other way. Every balance, band and total filters on
+`kind = 'invoice' AND voided_at IS NULL`, so counting either as an invoice would
+overstate what the firm is owed, silently, in the direction that feels good.
+
+There is a mechanical reason too, recorded because it looks like an oversight
+otherwise. SQLite cannot add a CHECK to an existing table without a rebuild, and
+`invoices` is depended on by three triggers and a ledger foreign key. `kind` ships
+without a CHECK and is validated in the API against a constant the page shares.
+The constraint is real, it just lives in code and is named where it lives.
+
+### D147: automation stops exactly where the send surface stops
+
+The mock's automation tab has four switches: recurring invoices, email reminders
+on a cadence, copy me on every send, and CC. Three of them describe this app
+sending mail to a client, which it cannot do. Not "does not yet": it holds no
+scope that could and registers no route that could try, asserted by
+tests/layer2-no-send-surface.test.ts rather than promised.
+
+Shipping the switches anyway would have been the worst option available. A toggle
+that is on and does nothing is indistinguishable from one that is working, and
+the person who finds out is the client who was never chased.
+
+So each became the honest version of itself:
+
+- Recurring invoices raise a **draft**, from the last invoice, on the schedule.
+  Real, and wired into the 07:00 Mountain cron firing before the digest is built,
+  so a draft raised this morning appears in this morning's email. One
+  implementation in src/lib/server/recurring.ts, called by both the button and
+  the cron, because a screen and a scheduled job that each decide what is due
+  will eventually bill a client twice.
+- Email reminders became a flag that sorts a client to the top of the start of
+  day digest and marks the line. A prompt to Paul, which is the only kind of
+  reminder this app can send.
+- Copy me on every send was dropped. It described a send that does not exist.
+- CC stayed, because it prefills the Gmail compose window the screen builds, and
+  that window is a link rather than a send.
+
+The same rule reshaped the row actions. Send became Mark as sent, which records
+what Paul did. Send reminder became Log a reminder, which records a chase that
+happened in Gmail. Recording what was done outside the app is the other half of
+the boundary: the alternative is a screen that knows nothing about the chasing
+that actually gets invoices paid.

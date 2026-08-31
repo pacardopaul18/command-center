@@ -448,6 +448,10 @@ batched_insert("time_entries", ["id","client_id","project_id","billing_period_id
 # --- invoices ---------------------------------------------------------------
 N_INVOICES = 900
 invoices = []
+# What each invoice is made of, filled in after the loop. Held rather than
+# generated inline so the detail below can draw from its own random stream and
+# leave every existing value in this file byte for byte where it was.
+inv_plan = []
 for i in range(1, N_INVOICES + 1):
     ci = random.randint(1, N_CLIENTS)
     issue = -random.randint(0, 340)
@@ -484,9 +488,121 @@ for i in range(1, N_INVOICES + 1):
         f"V-{2000 + i}", day(issue), day(due), amount, paid, status,
         ts(issue), ts(issue + 1),
     ))
+    inv_plan.append((f"v-in-{i}", issue, due, amount, paid, status))
 batched_insert("invoices", ["id","client_id","billing_period_id","invoice_number","issue_date",
                             "due_date","amount_cents","amount_paid_cents","status",
                             "created_at","updated_at"], invoices)
+
+# --- what each invoice is made of, migration 0024 ---------------------------
+#
+# Line items, payments and the trail. Added when the invoicing screen was
+# rebuilt around the client: the redesign shows what an invoice is for, when it
+# was paid and what happened to it, and none of the three existed as rows.
+#
+# Its own random stream, seeded separately. Drawing from the global one would
+# shift every value generated after this point, and the whole dataset would
+# churn to add three tables to it.
+#
+# No DELETE line for these tables at the top of the file. All three are
+# ON DELETE CASCADE from invoices, which is already cleared, so a reload takes
+# them with it. Stated because their absence from that list otherwise reads as
+# an oversight.
+detail = random.Random(20260901)
+
+# One rate, one hundred dollars, so a line's quantity times its rate lands on an
+# exact number of cents and the line items sum to the invoice total that was
+# already generated above. A seed that produced a breakdown disagreeing with the
+# total it belongs to would be a fixture teaching the app a lie.
+SEED_RATE_CENTS = 10000
+
+WORK = [
+    ("Consulting", ["Contract renewal", "Policy drafting", "Diligence support",
+                    "Vendor consolidation"], "Consulting hours"),
+    ("Operations", ["Monthly retainer", "Internal admin", "Onboarding programme"],
+     "Operations retainer"),
+    ("Advisory", ["Quarterly review", "Board pack", "Partner workshop"],
+     "Advisory session"),
+]
+
+line_items, payments, events, invoice_detail_updates = [], [], [], []
+
+for (inv_id, issue, due, amount, paid, status) in inv_plan:
+    category, subs, service = detail.choice(WORK)
+    subcategory = detail.choice(subs)
+
+    # Quantity in tenths of an hour. amount is always a multiple of 1000 cents,
+    # so amount / 10000 has one decimal place and multiplies back exactly.
+    qty = amount / SEED_RATE_CENTS
+    if qty >= 8 and detail.random() < 0.45:
+        first = round(qty * detail.choice([0.4, 0.5, 0.6]), 1)
+        parts = [(service, subcategory, first),
+                 ("Review", "Second pass on the same work", round(qty - first, 1))]
+    else:
+        parts = [(service, subcategory, qty)]
+
+    for pos, (svc, desc, line_qty) in enumerate(parts, start=1):
+        cents = round(line_qty * SEED_RATE_CENTS)
+        line_items.append((f"{inv_id}-li-{pos}", inv_id, pos, svc, desc, line_qty,
+                           SEED_RATE_CENTS, cents, ts(issue), ts(issue)))
+        bump("counts", "invoice_line_items")
+
+    invoice_detail_updates.append((inv_id, category, subcategory, amount))
+
+    events.append((f"{inv_id}-ev-1", inv_id, ts(issue), "created",
+                   f"Raised for {len(parts)} line item{'' if len(parts) == 1 else 's'}, "
+                   f"{qty:.2f} hours at $100.00.", ts(issue)))
+    bump("counts", "invoice_events")
+    if status != "draft":
+        events.append((f"{inv_id}-ev-2", inv_id, ts(issue + 1), "issued",
+                       "Marked as sent to the billing contact.", ts(issue + 1)))
+        bump("counts", "invoice_events")
+
+    if paid <= 0:
+        continue
+
+    # When the money arrived. After the invoice was issued, never in the future,
+    # and usually near the due date. Under cash basis this date is the whole
+    # point: it is the date the ledger entry would carry.
+    lo, hi = issue + 2, min(0, due + 15)
+    if hi < lo:
+        hi = lo if lo <= 0 else 0
+    slices = [paid] if (status != "paid" or detail.random() < 0.7) else None
+    if slices is None:
+        first = round(paid * detail.uniform(0.3, 0.6) / 1000) * 1000
+        slices = [first, paid - first] if 0 < first < paid else [paid]
+
+    for n, part in enumerate(slices, start=1):
+        when = day(detail.randint(lo, hi)) if hi >= lo else day(hi)
+        method = detail.choice(["Wire transfer", "ACH", "Check", "Card"])
+        payments.append((f"{inv_id}-pay-{n}", inv_id, when, part, method, None, None,
+                         ts(issue + 2), ts(issue + 2)))
+        bump("counts", "invoice_payments")
+        bump("totals", "payments_cents", part)
+        events.append((f"{inv_id}-ev-p{n}", inv_id, when + "T17:00:00Z", "payment",
+                       f"Payment recorded, {method.lower()}.", when + "T17:00:00Z"))
+        bump("counts", "invoice_events")
+
+batched_insert("invoice_line_items", ["id","invoice_id","position","service","description",
+                                      "quantity","unit_rate_cents","amount_cents",
+                                      "created_at","updated_at"], line_items)
+
+# Category, subcategory and subtotal, set by UPDATE rather than carried in the
+# INSERT above so the invoice tuple keeps the exact column list it has always
+# had. The subtotal equals the total because these invoices carry no discount
+# and no tax, which is a fact about the fixture, not a shortcut.
+for inv_id, category, subcategory, amount in invoice_detail_updates:
+    w(f'UPDATE "invoices" SET "category" = {q(category)}, "subcategory" = {q(subcategory)}, '
+      f'"subtotal_cents" = {amount} WHERE id = {q(inv_id)};')
+w()
+
+# Payments go in after the invoices they belong to. The triggers from migration
+# 0020 recompute amount_paid_cents and status from these rows, and they arrive at
+# the same figures the invoice was generated with, which is the check worth
+# knowing: if the two ever disagree, one of them is wrong and the suite says so.
+batched_insert("invoice_payments", ["id","invoice_id","paid_on","amount_cents","method",
+                                    "reference","notes","created_at","updated_at"], payments)
+batched_insert("invoice_events", ["id","invoice_id","occurred_at","kind","detail",
+                                  "created_at"], events)
 
 # --- SOPs and versions ------------------------------------------------------
 # sops.current_version_id references sop_versions, and sop_versions.sop_id

@@ -17,6 +17,9 @@
   "action_items": 3000,
   "billing_periods": 320,
   "clients": 60,
+  "invoice_events": 2264,
+  "invoice_line_items": 1316,
+  "invoice_payments": 542,
   "invoices": 900,
   "meeting_action_proposals": 700,
   "meetings": 450,
@@ -27,7 +30,7 @@
   "time_entries": 3200,
   "users": 7
  },
- "fingerprint": "1ad173a124130a43",
+ "fingerprint": "e024f7275d331c94",
  "invoice_bands": {
   "b0_30": 114,
   "b0_30_cents": 137129589,
@@ -247,6 +250,7 @@
   "meetings_today": 6,
   "outstanding_cents": 712250371,
   "overdue_invoices": 502,
+  "payments_cents": 532452629,
   "projects_needing_attention": 65,
   "proposals_accepted": 217,
   "proposals_pending": 307,

@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import type { ApiEnv } from './env';
 import { nowUtc, todayInWorkingZone } from '../dates';
-import { INVOICE_SELECT } from './invoicing';
+import { INVOICE_SELECT, RECEIVABLE } from './invoicing';
 import { ApiError, oneOf, optionalDate, optionalText, readJsonObject, requiredText } from './validate';
 import {
 	CONTRACT_BASES,
@@ -366,7 +366,8 @@ client360.get('/clients/:id/overview', async (c) => {
 		).bind(id).all(),
 
 		c.env.DB.prepare(
-			`${INVOICE_SELECT} WHERE i.client_id = ?2 ORDER BY is_overdue DESC, i.due_date ASC`
+			`${INVOICE_SELECT} WHERE i.client_id = ?2 AND ${RECEIVABLE}
+       ORDER BY is_overdue DESC, i.due_date ASC`
 		).bind(today, id).all(),
 
 		c.env.DB.prepare(

@@ -144,6 +144,9 @@ today.get('/', async (c) => {
        JOIN clients cl ON cl.id = i.client_id
        WHERE i.amount_paid_cents < i.amount_cents
          AND julianday(?1) > julianday(i.due_date)
+         -- Receivables only. An estimate, a credit note or a voided invoice is
+         -- not money past due. Migration 0024.
+         AND i.kind = 'invoice' AND i.voided_at IS NULL
        ORDER BY days_overdue DESC`
 		)
 		.bind(day)
@@ -199,11 +202,13 @@ today.get('/', async (c) => {
            WHERE status != 'done' AND deadline > ?1 AND deadline <= ?2) AS week,
          (SELECT COUNT(*) FROM meetings WHERE meeting_date = ?1) AS meetings,
          (SELECT COUNT(*) FROM invoices
-           WHERE amount_paid_cents < amount_cents AND julianday(?1) > julianday(due_date)) AS alerts,
+           WHERE amount_paid_cents < amount_cents AND julianday(?1) > julianday(due_date)
+             AND kind = 'invoice' AND voided_at IS NULL) AS alerts,
          (SELECT COUNT(*) FROM meeting_action_proposals WHERE status = 'pending') AS proposals,
          (SELECT COUNT(*) FROM action_items WHERE status = 'ambiguous') AS ambiguous,
          (SELECT COALESCE(SUM(amount_cents - amount_paid_cents), 0) FROM invoices
-           WHERE amount_paid_cents < amount_cents AND julianday(?1) > julianday(due_date)) AS past_due_cents`
+           WHERE amount_paid_cents < amount_cents AND julianday(?1) > julianday(due_date)
+             AND kind = 'invoice' AND voided_at IS NULL) AS past_due_cents`
 		)
 		.bind(day, soon)
 		.first<Record<string, number>>();

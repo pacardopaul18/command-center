@@ -47,6 +47,7 @@ const BUNDLE_INPUTS = [
 	'src/lib/server/scheduled.ts',
 	'src/lib/server/backup.ts',
 	'src/lib/server/digest.ts',
+	'src/lib/server/recurring.ts',
 	'src/lib/server/dates.ts',
 	'src/lib/server/house-style.ts',
 	'scripts/wrap-worker.js'
