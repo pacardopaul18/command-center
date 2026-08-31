@@ -4431,3 +4431,42 @@ dashboard quietly starts lying.
 The same reasoning applies to `next_milestone`: the typed column stays because
 every existing project has one, but a real milestone row beats it, so the fact
 has one answer even though two places hold it.
+
+### D162: the SOP library gets a hierarchy, and two of the tables it was scoped for are not built
+
+Shelves hold books, books hold chapters, chapters hold pages. Four tables in
+migration 0030, where the audit sketched six. The two that are missing are
+missing on purpose and both absences are asserted by name in the guarantee test,
+so adding one is a deliberate act with the reasoning in view.
+
+**There is no access or roles table.** The prototype draws role-based access
+inherited from the shelf. This is a single-user application behind Cloudflare
+Access: a roles table would enforce nothing and would exist only to make the
+screen look like it enforced something, which is the exact failure D27 names at
+the size of a module. Ownership is a name on a shelf and a book, and the page
+says out loud that it is a record of who looks after this, not a permission
+system. When there are several users this becomes a real table, and until then
+the screen is honest rather than aspirational.
+
+**There is no activity table.** Book activity is edits, reviews and rollbacks
+across a book, all of which are already rows in `sop_versions` with an author
+and a change note. A second table would be a second home for facts that already
+exist and would drift the first time a version was written without remembering
+to log it. It is a join. D155 in a second module.
+
+Where a page lives is a side table, because `sops` takes no ALTER before
+Thursday. The consequence is real and is handled rather than glossed: a
+placement can go missing in a way a NOT NULL column cannot, so a page with no
+chapter is a state the reads expect. They list it as unfiled rather than hiding
+it, which is also the right behaviour for a page whose chapter was deleted, and
+is the state all one hundred and eleven existing procedures were in the moment
+the shelves arrived. A library that only showed filed pages would have lost
+them all on day one.
+
+One placement per page, by unique constraint. A procedure appearing in two books
+is two procedures that will drift.
+
+The next review date is computed from the cycle and the last reading rather than
+stored. Changing a cycle from quarterly to monthly then moves every book at
+once, instead of needing every row rewritten. A book with no cycle has no next
+date, which the screen shows as "no cycle" rather than as an overdue review.

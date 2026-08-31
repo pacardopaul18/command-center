@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import type { Context } from 'hono';
 import type { ApiEnv } from './env';
-import { nowUtc } from '../dates';
+import { nowUtc, todayInWorkingZone } from '../dates';
 import {
 	ApiError,
 	oneOf,
@@ -96,6 +96,399 @@ sops.get('/', async (c) => {
 	});
 });
 
+/* -------------------------------------------------------------------------
+ * Shelves, books and chapters
+ * ---------------------------------------------------------------------- */
+
+/**
+ * When a book is next due to be reread.
+ *
+ * Computed from the cycle and the last reading rather than stored, so changing
+ * a cycle from quarterly to monthly moves every book at once instead of needing
+ * every row rewritten. A book with no cycle has no next date, which is a real
+ * answer and not a missing one.
+ */
+const BOOK_NEXT_REVIEW = `
+  CASE
+    WHEN b.review_cycle_days IS NULL THEN NULL
+    ELSE DATE(COALESCE(b.last_reviewed_at, b.created_at), '+' || b.review_cycle_days || ' days')
+  END
+`;
+
+/**
+ * The whole shelf list, with what is on each one counted.
+ *
+ * Counted through the placements, so a page whose chapter was deleted does not
+ * inflate a shelf it no longer belongs to. Books and pages are separate
+ * subqueries rather than one join, because a join to chapters multiplies the
+ * book row per chapter and the book count then reads plausibly and is wrong.
+ */
+sops.get('/shelves', async (c) => {
+	const { results } = await c.env.DB.prepare(
+		`SELECT sh.*,
+        (SELECT COUNT(*) FROM sop_books b WHERE b.shelf_id = sh.id) AS book_count,
+        (SELECT COUNT(*) FROM sop_placements p
+         JOIN sop_chapters ch ON ch.id = p.chapter_id
+         JOIN sop_books b ON b.id = ch.book_id
+         WHERE b.shelf_id = sh.id) AS page_count
+     FROM sop_shelves sh
+     ORDER BY sh.position, sh.name COLLATE NOCASE`
+	).all();
+
+	/**
+	 * Pages with nowhere to live, counted once for the whole library.
+	 *
+	 * Every existing SOP is one of these until somebody files it, and a library
+	 * that simply did not show them would have lost a hundred and twenty
+	 * procedures on the day the shelves arrived.
+	 */
+	const unfiled = await c.env.DB.prepare(
+		`SELECT COUNT(*) AS n FROM sops s
+     WHERE s.status = 'active'
+       AND NOT EXISTS (SELECT 1 FROM sop_placements p WHERE p.sop_id = s.id)`
+	).first<{ n: number }>();
+
+	const counts = await c.env.DB.prepare(
+		`SELECT
+       SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) AS pages,
+       SUM(CASE WHEN status = 'archived' THEN 1 ELSE 0 END) AS archived
+     FROM sops`
+	).first<Record<string, number | null>>();
+
+	const overdue = await c.env.DB.prepare(
+		`SELECT COUNT(*) AS n FROM sops
+     WHERE status = 'active' AND review_due IS NOT NULL AND review_due < ?`
+	)
+		.bind(todayInWorkingZone())
+		.first<{ n: number }>();
+
+	return c.json({
+		shelves: results ?? [],
+		unfiled: Number(unfiled?.n ?? 0),
+		counts: {
+			pages: counts?.pages ?? 0,
+			archived: counts?.archived ?? 0,
+			review_overdue: Number(overdue?.n ?? 0)
+		}
+	});
+});
+
+sops.post('/shelves', async (c) => {
+	const body = await readJsonObject(c.req.raw);
+	const now = nowUtc();
+	const id = crypto.randomUUID();
+
+	const last = await c.env.DB.prepare('SELECT MAX(position) AS n FROM sop_shelves').first<{
+		n: number | null;
+	}>();
+
+	try {
+		await c.env.DB.prepare(
+			`INSERT INTO sop_shelves (id, name, description, owner, position, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
+		)
+			.bind(
+				id,
+				requiredText(body.name, 'Name', 120),
+				optionalText(body.description, 'Description', 500),
+				optionalText(body.owner, 'Owner', 120),
+				Number(last?.n ?? 0) + 1,
+				now,
+				now
+			)
+			.run();
+	} catch (err) {
+		// Two shelves called Finance is a filing error, not a situation to
+		// support: a reader would have no way to know which one to open.
+		if (String(err).includes('UNIQUE')) {
+			throw new ApiError(409, 'There is already a shelf with that name.');
+		}
+		throw err;
+	}
+
+	const created = await c.env.DB.prepare('SELECT * FROM sop_shelves WHERE id = ?')
+		.bind(id)
+		.first();
+	return c.json({ shelf: created }, 201);
+});
+
+/** One shelf, its books, and when each is next due to be read. */
+sops.get('/shelves/:id', async (c) => {
+	const id = c.req.param('id');
+
+	const shelf = await c.env.DB.prepare('SELECT * FROM sop_shelves WHERE id = ?')
+		.bind(id)
+		.first();
+	if (!shelf) throw new ApiError(404, 'Shelf not found.');
+
+	const { results } = await c.env.DB.prepare(
+		`SELECT b.*,
+        COALESCE(b.owner, sh.owner) AS owner_shown,
+        ${BOOK_NEXT_REVIEW} AS next_review,
+        (SELECT COUNT(*) FROM sop_chapters ch WHERE ch.book_id = b.id) AS chapter_count,
+        (SELECT COUNT(*) FROM sop_placements p
+         JOIN sop_chapters ch ON ch.id = p.chapter_id
+         WHERE ch.book_id = b.id) AS page_count,
+        (SELECT MAX(v.created_at) FROM sop_versions v
+         JOIN sop_placements p ON p.sop_id = v.sop_id
+         JOIN sop_chapters ch ON ch.id = p.chapter_id
+         WHERE ch.book_id = b.id) AS last_edited_at
+     FROM sop_books b
+     JOIN sop_shelves sh ON sh.id = b.shelf_id
+     WHERE b.shelf_id = ?
+     ORDER BY b.position, b.title COLLATE NOCASE`
+	)
+		.bind(id)
+		.all();
+
+	return c.json({ shelf, books: results ?? [] });
+});
+
+sops.post('/shelves/:id/books', async (c) => {
+	const db = c.env.DB;
+	const shelfId = c.req.param('id');
+	const shelf = await db.prepare('SELECT id FROM sop_shelves WHERE id = ?').bind(shelfId).first();
+	if (!shelf) throw new ApiError(404, 'Shelf not found.');
+
+	const body = await readJsonObject(c.req.raw);
+	const now = nowUtc();
+	const id = crypto.randomUUID();
+
+	const last = await db
+		.prepare('SELECT MAX(position) AS n FROM sop_books WHERE shelf_id = ?')
+		.bind(shelfId)
+		.first<{ n: number | null }>();
+
+	const cycle = body.review_cycle_days;
+	const cycleDays =
+		cycle === undefined || cycle === null || cycle === '' ? null : Number(cycle);
+	if (cycleDays !== null && (!Number.isInteger(cycleDays) || cycleDays <= 0)) {
+		throw new ApiError(400, 'A review cycle is a whole number of days.');
+	}
+
+	await db
+		.prepare(
+			`INSERT INTO sop_books
+       (id, shelf_id, title, description, owner, review_cycle_days, last_reviewed_at,
+        status, position, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?)`
+		)
+		.bind(
+			id,
+			shelfId,
+			requiredText(body.title, 'Title', 200),
+			optionalText(body.description, 'Description', 500),
+			optionalText(body.owner, 'Owner', 120),
+			cycleDays,
+			oneOf<'draft' | 'published' | 'archived'>(
+				body.status,
+				['draft', 'published', 'archived'],
+				'status',
+				'draft'
+			),
+			Number(last?.n ?? 0) + 1,
+			now,
+			now
+		)
+		.run();
+
+	const created = await db.prepare('SELECT * FROM sop_books WHERE id = ?').bind(id).first();
+	return c.json({ book: created }, 201);
+});
+
+/**
+ * One book: its chapters, the pages in each, and what has happened to them.
+ *
+ * The activity is a join over `sop_versions` rather than a table of its own.
+ * Every edit already writes a version with an author and a change note, so a
+ * second home for the same facts would drift the first time a version was
+ * written without remembering to log it. D155 in a second module.
+ */
+sops.get('/books/:id', async (c) => {
+	const db = c.env.DB;
+	const id = c.req.param('id');
+
+	const book = await db
+		.prepare(
+			`SELECT b.*, sh.id AS shelf_id, sh.name AS shelf_name,
+          COALESCE(b.owner, sh.owner) AS owner_shown,
+          ${BOOK_NEXT_REVIEW} AS next_review
+       FROM sop_books b JOIN sop_shelves sh ON sh.id = b.shelf_id
+       WHERE b.id = ?`
+		)
+		.bind(id)
+		.first();
+	if (!book) throw new ApiError(404, 'Book not found.');
+
+	const chapters = await db
+		.prepare('SELECT * FROM sop_chapters WHERE book_id = ? ORDER BY position, title')
+		.bind(id)
+		.all();
+
+	const pages = await db
+		.prepare(
+			`SELECT s.id, s.title, s.status, s.review_due, p.chapter_id, p.position,
+          v.version_number, v.created_at AS last_edited_at
+       FROM sop_placements p
+       JOIN sops s ON s.id = p.sop_id
+       JOIN sop_chapters ch ON ch.id = p.chapter_id
+       LEFT JOIN sop_versions v ON v.id = s.current_version_id
+       WHERE ch.book_id = ?
+       ORDER BY p.position, s.title COLLATE NOCASE`
+		)
+		.bind(id)
+		.all();
+
+	const activity = await db
+		.prepare(
+			`SELECT v.id, v.version_number, v.change_note, v.created_at,
+          s.id AS sop_id, s.title AS sop_title, u.display_name AS author
+       FROM sop_versions v
+       JOIN sop_placements p ON p.sop_id = v.sop_id
+       JOIN sop_chapters ch ON ch.id = p.chapter_id
+       JOIN sops s ON s.id = v.sop_id
+       LEFT JOIN users u ON u.id = v.author_id
+       WHERE ch.book_id = ?
+       ORDER BY v.created_at DESC
+       LIMIT 30`
+		)
+		.bind(id)
+		.all();
+
+	return c.json({
+		book,
+		chapters: chapters.results ?? [],
+		pages: pages.results ?? [],
+		activity: activity.results ?? []
+	});
+});
+
+sops.post('/books/:id/chapters', async (c) => {
+	const db = c.env.DB;
+	const bookId = c.req.param('id');
+	const book = await db.prepare('SELECT id FROM sop_books WHERE id = ?').bind(bookId).first();
+	if (!book) throw new ApiError(404, 'Book not found.');
+
+	const body = await readJsonObject(c.req.raw);
+	const now = nowUtc();
+	const id = crypto.randomUUID();
+
+	const last = await db
+		.prepare('SELECT MAX(position) AS n FROM sop_chapters WHERE book_id = ?')
+		.bind(bookId)
+		.first<{ n: number | null }>();
+
+	await db
+		.prepare(
+			`INSERT INTO sop_chapters (id, book_id, title, position, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?)`
+		)
+		.bind(id, bookId, requiredText(body.title, 'Title', 200), Number(last?.n ?? 0) + 1, now, now)
+		.run();
+
+	const created = await db.prepare('SELECT * FROM sop_chapters WHERE id = ?').bind(id).first();
+	return c.json({ chapter: created }, 201);
+});
+
+/**
+ * Marks a book as read through, which is what a review is.
+ *
+ * Sets the date it happened; the next date follows from the cycle. Setting the
+ * next date directly would have to be redone every time the cycle changed.
+ */
+sops.post('/books/:id/reviewed', async (c) => {
+	const result = await c.env.DB.prepare(
+		'UPDATE sop_books SET last_reviewed_at = ?, updated_at = ? WHERE id = ?'
+	)
+		.bind(nowUtc(), nowUtc(), c.req.param('id'))
+		.run();
+	if (!result.meta.changes) throw new ApiError(404, 'Book not found.');
+	return c.json({ ok: true });
+});
+
+/* -------------------------------------------------------------------------
+ * Where a page lives
+ * ---------------------------------------------------------------------- */
+
+/**
+ * Files a page into a chapter, or moves it.
+ *
+ * One placement per page, enforced by the unique index and expressed here as an
+ * upsert: filing a page that is already filed moves it rather than failing. A
+ * procedure that appeared in two books would be two procedures that drift.
+ */
+sops.put('/:id/placement', async (c) => {
+	const db = c.env.DB;
+	const sopId = c.req.param('id');
+
+	const sop = await db.prepare('SELECT id FROM sops WHERE id = ?').bind(sopId).first();
+	if (!sop) throw new ApiError(404, 'SOP not found.');
+
+	const body = await readJsonObject(c.req.raw);
+	const chapterId = requiredText(body.chapter_id, 'chapter_id', 64);
+
+	const chapter = await db
+		.prepare('SELECT id FROM sop_chapters WHERE id = ?')
+		.bind(chapterId)
+		.first();
+	if (!chapter) throw new ApiError(404, 'No chapter with that id.');
+
+	const last = await db
+		.prepare('SELECT MAX(position) AS n FROM sop_placements WHERE chapter_id = ?')
+		.bind(chapterId)
+		.first<{ n: number | null }>();
+
+	await db
+		.prepare(
+			`INSERT INTO sop_placements (id, sop_id, chapter_id, position, created_at)
+       VALUES (?1, ?2, ?3, ?4, ?5)
+       ON CONFLICT (sop_id) DO UPDATE SET chapter_id = ?3, position = ?4`
+		)
+		.bind(crypto.randomUUID(), sopId, chapterId, Number(last?.n ?? 0) + 1, nowUtc())
+		.run();
+
+	return c.json({ ok: true });
+});
+
+sops.delete('/:id/placement', async (c) => {
+	const result = await c.env.DB.prepare('DELETE FROM sop_placements WHERE sop_id = ?')
+		.bind(c.req.param('id'))
+		.run();
+	if (!result.meta.changes) throw new ApiError(404, 'That page is not filed anywhere.');
+	return c.json({ ok: true });
+});
+
+/**
+ * Every chapter in the library, for the picker that files a page.
+ *
+ * Flat, with the shelf and book names alongside, because a three-level cascade
+ * of selects to choose one chapter is three decisions where the reader has one.
+ */
+sops.get('/chapters', async (c) => {
+	const { results } = await c.env.DB.prepare(
+		`SELECT ch.id, ch.title, b.id AS book_id, b.title AS book_title,
+        sh.id AS shelf_id, sh.name AS shelf_name
+     FROM sop_chapters ch
+     JOIN sop_books b ON b.id = ch.book_id
+     JOIN sop_shelves sh ON sh.id = b.shelf_id
+     ORDER BY sh.position, b.position, ch.position`
+	).all();
+	return c.json({ chapters: results ?? [] });
+});
+
+/** Pages with no chapter, which is every page until somebody files it. */
+sops.get('/unfiled', async (c) => {
+	const { results } = await c.env.DB.prepare(
+		`SELECT s.id, s.title, s.category, s.status, s.review_due
+     FROM sops s
+     WHERE s.status = 'active'
+       AND NOT EXISTS (SELECT 1 FROM sop_placements p WHERE p.sop_id = s.id)
+     ORDER BY s.category COLLATE NOCASE, s.title COLLATE NOCASE
+     LIMIT 200`
+	).all();
+	return c.json({ pages: results ?? [] });
+});
+
 /**
  * A SOP, its history, and exactly one body.
  *
@@ -133,7 +526,26 @@ sops.get('/:id', async (c) => {
 
 	if (!viewing) throw new ApiError(404, 'Version not found for this SOP.');
 
-	return c.json({ sop, versions: results ?? [], viewing });
+	/**
+	 * Where this page lives, when it lives anywhere.
+	 *
+	 * Null is a real answer, not a missing one: every page was unfiled until the
+	 * shelves arrived, and a page whose chapter was deleted goes back to being
+	 * unfiled rather than disappearing.
+	 */
+	const placement = await c.env.DB.prepare(
+		`SELECT p.chapter_id, ch.title AS chapter_title, b.id AS book_id, b.title AS book_title,
+        sh.id AS shelf_id, sh.name AS shelf_name
+     FROM sop_placements p
+     JOIN sop_chapters ch ON ch.id = p.chapter_id
+     JOIN sop_books b ON b.id = ch.book_id
+     JOIN sop_shelves sh ON sh.id = b.shelf_id
+     WHERE p.sop_id = ?`
+	)
+		.bind(id)
+		.first();
+
+	return c.json({ sop, versions: results ?? [], viewing, placement });
 });
 
 /**
