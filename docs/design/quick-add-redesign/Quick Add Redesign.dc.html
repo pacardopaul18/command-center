@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="../support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/tokens/fonts.css">
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/tokens/colors.css">
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/tokens/typography.css">
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/tokens/spacing.css">
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/tokens/effects.css">
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/tokens/base.css">
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/styles.css">
+  <script src="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/_ds_bundle.js"></script>
+  <style>
+    body{margin:0;background:var(--surface-page);}
+    a{color:var(--text-link);} a:hover{color:var(--navy);}
+  </style>
+</helmet>
+<div style="display:flex;min-height:100vh;font-family:var(--font-sans);color:var(--text-body)">
+  <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Sidebar" items="{{ navItems }}" active-id="dashboard" on-quick-add="{{ openQa }}" hint-size="224px,100%" style="height:100vh;position:sticky;top:0"></x-import>
+  <main style="flex:1;height:100vh;overflow-y:auto;box-sizing:border-box">
+  <div style="padding:32px 48px 64px;box-sizing:border-box">
+    <h1 style="font-size:var(--text-2xl);font-weight:700;margin:0 0 6px">Quick add</h1>
+    <div style="font-size:var(--text-sm);color:var(--text-secondary)">One capture point for every department. Press N anywhere, pick where it goes, fill the short form, done.</div>
+    <div style="margin-top:16px"><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="primary" on-click="{{ openQa }}" hint-size="auto,38px">Open quick add</x-import></div>
+    <sc-for list="{{ log }}" as="lg" hint-placeholder-count="1">
+      <div style="display:flex;align-items:center;gap:12px;margin-top:12px;padding:12px 16px;background:var(--chip-done-bg);border:1px solid var(--border-thin);border-radius:var(--radius-md);max-width:720px">
+        <span style="width:8px;height:8px;border-radius:50%;background:#2E7D5B;flex-shrink:0"></span>
+        <span style="flex:1;font-size:var(--text-sm);color:var(--chip-done-fg)">{{ lg.msg }}</span>
+        <a href="#" sc-camel-on-click="{{ noop2 }}" style="font-size:var(--text-sm);font-weight:500;white-space:nowrap">Open it</a>
+      </div>
+    </sc-for>
+  </div>
+  </main>
+
+  <sc-if value="{{ qaOpen }}" hint-placeholder-val="{{ true }}">
+    <div sc-camel-on-click="{{ closeQa }}" style="position:fixed;inset:0;z-index:80;background:rgba(16,42,76,.38)"></div>
+    <div style="position:fixed;top:5vh;left:50%;transform:translateX(-50%);z-index:90;width:min(760px,94vw);max-height:88vh;overflow-y:auto;background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-lg);box-shadow:var(--shadow-pop);box-sizing:border-box">
+      <div style="display:flex;align-items:center;gap:10px;padding:20px 28px 0">
+        <h2 style="font-size:var(--text-lg);font-weight:700;margin:0">Quick add</h2>
+        <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary)">press N anywhere</span>
+        <span style="flex:1"></span>
+        <button sc-camel-on-click="{{ closeQa }}" title="Close" style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;background:transparent;border:none;border-radius:var(--radius-sm);cursor:pointer;color:var(--muted);transition:background-color var(--transition-fast)" style-hover="background:var(--surface-hover)"><svg width="15" height="15" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"></path></svg></button>
+      </div>
+      <div style="padding:14px 28px 0;font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary)">Where it goes</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;padding:8px 28px 0">
+        <sc-for list="{{ kinds }}" as="kd" hint-placeholder-count="10">
+          <button sc-camel-on-click="{{ kd.pick }}" style="display:inline-flex;align-items:center;gap:7px;padding:6px 13px;background:{{ kd.bg }};border:1px solid {{ kd.border }};border-radius:var(--radius-pill);cursor:pointer;font-family:var(--font-sans);font-size:var(--text-sm);font-weight:500;color:{{ kd.fg }};transition:background-color var(--transition-fast)" style-hover="background:{{ kd.hoverBg }}">
+            <span style="width:7px;height:7px;border-radius:50%;background:{{ kd.dot }}"></span>{{ kd.label }}
+          </button>
+        </sc-for>
+      </div>
+      <div style="padding:6px 28px 0;font-size:var(--text-xs);color:var(--text-secondary)">{{ kindNote }}</div>
+
+      <div style="padding:14px 28px 0">
+        <div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">{{ titleLabel }}</div>
+        <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Input" value="{{ qTitle }}" sc-camel-on-change="{{ setQTitle }}" placeholder="{{ titlePh }}" hint-size="100%,38px"></x-import>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px 16px;padding:14px 28px 0">
+        <sc-for list="{{ fields }}" as="f" hint-placeholder-count="6">
+          <div style="grid-column:span {{ f.span }};min-width:0">
+            <div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">{{ f.label }}</div>
+            <sc-if value="{{ f.isSelect }}" hint-placeholder-val="{{ false }}">
+              <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Select" options="{{ f.opts }}" value="{{ f.value }}" sc-camel-on-change="{{ f.set }}" hint-size="100%,38px"></x-import>
+            </sc-if>
+            <sc-if value="{{ f.isText }}" hint-placeholder-val="{{ true }}">
+              <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Input" value="{{ f.value }}" sc-camel-on-change="{{ f.set }}" placeholder="{{ f.ph }}" mono="{{ f.mono }}" hint-size="100%,38px"></x-import>
+            </sc-if>
+          </div>
+        </sc-for>
+      </div>
+      <div style="padding:14px 28px 0">
+        <div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">{{ areaLabel }}</div>
+        <textarea value="{{ qArea }}" sc-camel-on-change="{{ setQArea }}" placeholder="{{ areaPh }}" style="width:100%;box-sizing:border-box;min-height:60px;padding:10px 12px;font-family:var(--font-sans);font-size:var(--text-sm);line-height:1.5;color:var(--ink);background:var(--surface-card);border:1px solid var(--border-strong);border-radius:var(--radius-sm);resize:vertical"></textarea>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;padding:16px 28px 24px">
+        <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="primary" size="sm" on-click="{{ saveQa }}" hint-size="auto,34px">{{ saveLabel }}</x-import>
+        <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="secondary" size="sm" on-click="{{ saveAnother }}" hint-size="auto,34px">Save and add another</x-import>
+        <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="ghost" size="sm" on-click="{{ closeQa }}" hint-size="auto,34px">Cancel</x-import>
+        <span style="font-size:var(--text-sm);color:var(--text-secondary)">{{ qHint }}</span>
+      </div>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script="" data-props="{}">
+class Component extends DCLogic {
+  sel(label, opts, span) { return { label, kind: 'select', opts, span: span || 1 }; }
+  txt(label, ph, span, mono) { return { label, kind: 'text', ph, span: span || 1, mono: !!mono }; }
+
+  KINDS = {
+    'Action item': { dot: '#2E4E7E', dest: 'Action items', note: 'A commitment tracked to done. Lands in the Action items tracker.',
+      titleLabel: 'What has to happen', titlePh: 'Collect the revised timeline for Dovecote',
+      areaLabel: 'Context', areaPh: 'One line so the item still makes sense later.',
+      fields: [this.sel('Owner', ['Paul', 'Dana Okafor', 'Sofia Okafor', 'Rue Mbeki', 'Unassigned']), this.txt('Deadline', 'Sep 2', 1, true), this.sel('Priority', ['Medium', 'High', 'Low']), this.sel('Project', ['No project', 'Dunmore site build', 'Fairwater cost review']), this.sel('Source', ['Manual', 'Meeting', 'Mail'])] },
+    'Ticket': { dot: '#A2311F', dest: 'the project board', note: 'Something broken or needed on a project. Lands in that project, in the stage you pick.',
+      titleLabel: 'What is wrong or needed', titlePh: 'Portal login fails for the Beacon PoC',
+      areaLabel: 'Description', areaPh: 'Steps to reproduce, expected and actual.',
+      fields: [this.sel('Project', ['Beacon quarterly review', 'Dunmore data warehouse', 'Fairwater reporting pack']), this.sel('Stage', ['Initiating', 'Planning', 'Executing', 'Monitoring', 'Closing']), this.sel('Type', ['Task', 'Bug', 'Story', 'Epic', 'Sub task']), this.sel('Assignee', ['Unassigned', 'Paul', 'Dana Okafor', 'Ethan Lindqvist']), this.sel('Priority', ['Normal', 'High', 'Medium', 'Low']), this.txt('Due', 'Sep 14', 1, true)] },
+    'Project': { dot: '#2E7D5B', dest: 'Projects', note: 'A new engagement. Lands on the projects board in Initiating.',
+      titleLabel: 'Project name', titlePh: 'Caldera systems integration',
+      areaLabel: 'Brief', areaPh: 'What the engagement covers, in a paragraph.',
+      fields: [this.sel('Client', ['Caldera', 'Beacon Analytics', 'Brightmoor Logistics', 'New client']), this.sel('Owner', ['Paul', 'Sofia Okafor']), this.txt('Target close', 'Nov 30', 1, true), this.sel('Billing', ['Hourly', 'Fixed fee', 'Retainer'])] },
+    'Meeting': { dot: '#8A6D1E', dest: 'Meetings', note: 'A call to log. Lands in the meetings log, transcript imported later.',
+      titleLabel: 'What the call was', titlePh: 'Caldera scoping call',
+      areaLabel: 'Agenda or notes', areaPh: 'What it needs to cover.',
+      fields: [this.txt('Date', 'Aug 31', 1, true), this.txt('Time', '10:00 AM', 1, true), this.sel('Client', ['No client', 'Caldera', 'Lyndhurst Collective']), this.sel('Project', ['No project', 'Castlereagh market study']), this.txt('Attendees', 'Comma separated', 2)] },
+    'Calendar invite': { dot: '#4E2E7E', dest: 'Calendar', note: 'Sent through the Google Calendar API, with a Meet link unless it is blocked time.',
+      titleLabel: 'Title', titlePh: 'Vendor demo',
+      areaLabel: 'Description', areaPh: 'Goes into the invite body.',
+      fields: [this.sel('Type', ['Meeting invite', 'Blocked time', 'Out of office', 'Note']), this.txt('Day', 'Tue, Sep 1', 1, true), this.txt('Start', '1:00 PM', 1, true), this.sel('Duration', ['30 minutes', '1 hour', '90 minutes']), this.txt('Guests', 'Emails, comma separated', 2)] },
+    'Client': { dot: '#C9A84C', dest: 'Clients', note: 'A new client record with contacts and billing defaults.',
+      titleLabel: 'Client name', titlePh: 'Caldera Systems',
+      areaLabel: 'Notes', areaPh: 'Anything worth remembering.',
+      fields: [this.txt('Contact person', 'Jane Smith'), this.txt('Email', 'billing@caldera.com', 1, true), this.txt('Phone', '+1 (555) 000-0000', 1, true), this.sel('Payment terms', ['Net 15', 'Net 7', 'Net 30']), this.txt('Website', 'caldera.com', 1, true), this.txt('Hourly rate (USD)', '100', 1, true)] },
+    'Invoice': { dot: '#2E7D5B', dest: 'Invoicing', note: 'A draft invoice. Lands on the client dashboard, sent from there.',
+      titleLabel: 'What it covers', titlePh: 'August retainer',
+      areaLabel: 'Message on invoice', areaPh: 'Thank you. Payment details are below.',
+      fields: [this.sel('Client', ['Marlowe & Finch', 'Uppingham Systems', 'Quenington Capital']), this.txt('Date', 'Aug 31', 1, true), this.txt('Due', 'Sep 15', 1, true), this.sel('Category', ['Consulting', 'Retainer', 'Advisory']), this.txt('Qty, hours', '8', 1, true), this.txt('Rate (USD)', '110', 1, true)] },
+    'Ledger line': { dot: '#77590F', dest: 'the Ledger', note: 'Money in or out. The category decides the direction.',
+      titleLabel: 'Notes', titlePh: 'Wise incoming wire fee',
+      areaLabel: 'Anything else', areaPh: 'Optional.',
+      fields: [this.txt('Date', 'Aug 31', 1, true), this.sel('Category', ['Consulting fees', 'Retainers', 'Contractor costs', 'Software subscriptions', 'Banking and fees', 'Travel and meals']), this.sel('Client', ['None', 'Marlowe & Finch', 'Uppingham Systems']), this.txt('Amount (USD)', '1250.00', 1, true)] },
+    'SOP page': { dot: '#A2311F', dest: 'the SOP library', note: 'A new page, created as a draft in the shelf and book you pick.',
+      titleLabel: 'Page title', titlePh: 'Weekly billing run',
+      areaLabel: 'First steps', areaPh: 'Rough steps, tidied later in the editor.',
+      fields: [this.sel('Shelf', ['Finance', 'Delivery', 'Compliance', 'Operations', 'People']), this.txt('Book', 'Billing and collections'), this.txt('Chapter', 'Invoicing'), this.sel('Owner', ['Paul', 'Rue Mbeki', 'Mei Bianchi'])] },
+    'Template': { dot: '#2E4E7E', dest: 'Templates', note: 'A reusable skeleton. Square brackets become fill-in holes.',
+      titleLabel: 'Template name', titlePh: 'Monthly client performance report',
+      areaLabel: 'Skeleton', areaPh: 'Write it with [holes] like [client] or [period].',
+      fields: [this.sel('Category', ['Replies', 'PM reports', 'Financial reports', 'Performance', 'Time tracking', 'Tickets', 'Clients']), this.sel('Output', ['Document', 'Email', 'Sheet', 'Dashboard']), this.sel('Owner', ['Paul', 'Sofia Okafor'])] }
+  };
+
+  state = { qaOpen: true, kind: 'Action item', vals: {}, title: '', area: '', hint: '', log: [] };
+
+  save(keepOpen) {
+    const s = this.state;
+    if (!s.title.trim()) { this.setState({ hint: 'A title is required.' }); return; }
+    const k = this.KINDS[s.kind];
+    const msg = s.kind + ' saved to ' + k.dest + ': ' + s.title.trim() + '.';
+    this.setState(x => ({ log: [{ msg }].concat(x.log).slice(0, 3), title: '', area: '', vals: {}, hint: '', qaOpen: !!keepOpen }));
+  }
+
+  renderVals() {
+    const s = this.state;
+    const navItems = ['Dashboard', 'Action items', 'Projects', 'Meetings', 'Calendar', 'SOPs', 'Templates', 'Clients', 'Mail', 'Invoicing', 'Ledger', 'Reports', 'Settings']
+      .map(l => ({ id: l.toLowerCase().replace(' ', '-'), label: l }));
+    const k = this.KINDS[s.kind];
+    return {
+      navItems, noop2: (e) => e.preventDefault(),
+      qaOpen: s.qaOpen,
+      openQa: () => this.setState({ qaOpen: true, hint: '' }),
+      closeQa: () => this.setState({ qaOpen: false }),
+      log: s.log,
+      kinds: Object.keys(this.KINDS).map(name => {
+        const active = s.kind === name;
+        return { label: name, dot: this.KINDS[name].dot,
+          bg: active ? 'var(--navy)' : 'var(--surface-card)', fg: active ? '#FFFFFF' : 'var(--ink)',
+          border: active ? 'var(--navy)' : 'var(--border-strong)', hoverBg: active ? 'var(--navy)' : 'var(--navy-50)',
+          pick: () => this.setState({ kind: name, vals: {}, title: '', area: '', hint: '' }) };
+      }),
+      kindNote: k.note,
+      titleLabel: k.titleLabel, titlePh: k.titlePh,
+      qTitle: s.title, setQTitle: (e) => this.setState({ title: e.target.value }),
+      areaLabel: k.areaLabel, areaPh: k.areaPh,
+      qArea: s.area, setQArea: (e) => this.setState({ area: e.target.value }),
+      fields: k.fields.map(f => ({
+        label: f.label, span: String(f.span), isSelect: f.kind === 'select', isText: f.kind === 'text',
+        opts: f.opts || [], ph: f.ph || '', mono: !!f.mono,
+        value: s.vals[f.label] != null ? s.vals[f.label] : (f.kind === 'select' ? f.opts[0] : ''),
+        set: (e) => { const v = e.target.value; this.setState(x => ({ vals: { ...x.vals, [f.label]: v } })); }
+      })),
+      saveLabel: 'Save to ' + k.dest,
+      saveQa: () => this.save(false),
+      saveAnother: () => this.save(true),
+      qHint: s.hint
+    };
+  }
+}
+</script>
+
+
+</body></html>

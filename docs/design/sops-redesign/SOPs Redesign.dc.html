@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="../support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/tokens/fonts.css">
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/tokens/colors.css">
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/tokens/typography.css">
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/tokens/spacing.css">
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/tokens/effects.css">
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/tokens/base.css">
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/styles.css">
+  <script src="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/_ds_bundle.js"></script>
+  <style>
+    body{margin:0;background:var(--surface-page);}
+    a{color:var(--text-link);} a:hover{color:var(--navy);}
+  </style>
+</helmet>
+<div style="display:flex;min-height:100vh;font-family:var(--font-sans);color:var(--text-body)">
+  <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Sidebar" items="{{ navItems }}" active-id="sops" on-quick-add="{{ noop }}" hint-size="224px,100%" style="height:100vh;position:sticky;top:0"></x-import>
+  <main style="flex:1;height:100vh;overflow-y:auto;box-sizing:border-box">
+  <div style="padding:32px 48px 64px;box-sizing:border-box">
+
+  <sc-if value="{{ isLibrary }}" hint-placeholder-val="{{ true }}">
+    <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap">
+      <div>
+        <h1 style="font-size:var(--text-2xl);font-weight:700;margin:0 0 6px">SOPs</h1>
+        <div style="font-size:var(--text-sm);color:var(--text-secondary)">How the work gets done, written down and current. Shelves hold books, books hold chapters, chapters hold pages.</div>
+      </div>
+      <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="primary" on-click="{{ newBook }}" hint-size="auto,38px">Create new book</x-import>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-top:20px">
+      <sc-for list="{{ kpis }}" as="k" hint-placeholder-count="4">
+        <div style="min-width:0;padding:13px 16px;background:var(--surface-card);border:1px solid var(--border-thin);border-left:3px solid {{ k.accent }};border-radius:var(--radius-md);box-shadow:var(--shadow-card)">
+          <div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ k.label }}</div>
+          <div style="font-family:var(--font-mono);font-size:var(--text-xl);margin:6px 0 4px">{{ k.value }}</div>
+          <div style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ k.sub }}</div>
+        </div>
+      </sc-for>
+    </div>
+
+    <div style="margin-top:16px">
+      <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Input" value="{{ search }}" sc-camel-on-change="{{ setSearch }}" placeholder="Search shelves, books, chapters and page text. Filters as you type." hint-size="100%,38px"></x-import>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px;margin-top:20px">
+      <sc-for list="{{ deptCards }}" as="dc" hint-placeholder-count="5">
+        <div sc-camel-on-click="{{ dc.open }}" style="padding:20px 22px;background:var(--surface-card);border:1px solid var(--border-thin);border-top:4px solid {{ dc.color }};border-radius:var(--radius-lg);box-shadow:var(--shadow-card);cursor:pointer;transition:background-color var(--transition-fast)" style-hover="background:var(--surface-hover)">
+          <div style="display:flex;align-items:center;gap:10px">
+            <h2 style="flex:1;font-size:var(--text-lg);font-weight:700;margin:0;color:var(--text-link)">{{ dc.name }}</h2>
+            <sc-if value="{{ dc.hasOverdue }}" hint-placeholder-val="{{ false }}">
+              <span style="background:var(--chip-overdue-bg);color:var(--chip-overdue-fg);font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;padding:1px 8px;border-radius:var(--radius-pill)">{{ dc.overdue }} overdue</span>
+            </sc-if>
+          </div>
+          <div style="font-size:var(--text-sm);color:var(--text-secondary);margin-top:4px">{{ dc.blurb }}</div>
+          <div style="display:flex;gap:14px;margin-top:14px;padding-top:12px;border-top:1px solid var(--border-thin);font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary)">
+            <span>{{ dc.books }} books</span><span>{{ dc.pages }} pages</span><span style="flex:1"></span><span>Owner {{ dc.owner }}</span>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+    <sc-if value="{{ shelvesEmpty }}" hint-placeholder-val="{{ false }}">
+      <div style="margin-top:24px;padding:40px;text-align:center;font-size:var(--text-base);color:var(--text-secondary);background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-lg)">Nothing matches. Clear the search.</div>
+    </sc-if>
+  </sc-if>
+
+  <sc-if value="{{ isShelf }}" hint-placeholder-val="{{ false }}">
+    <div style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary)"><a href="#" sc-camel-on-click="{{ backToLib }}" style="color:var(--text-link);text-decoration:none">SOPs</a> / {{ shd.name }}</div>
+    <div style="display:flex;align-items:center;gap:12px;margin-top:8px;flex-wrap:wrap">
+      <span style="width:12px;height:12px;border-radius:3px;background:{{ shd.color }}"></span>
+      <h1 style="font-size:var(--text-2xl);font-weight:700;margin:0">{{ shd.name }}</h1>
+      <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary)">{{ shd.meta }} · owner {{ shd.owner }}</span>
+      <span style="flex:1"></span>
+      <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="primary" size="sm" on-click="{{ newBook }}" hint-size="auto,32px">Create new book</x-import>
+    </div>
+    <div style="margin-top:16px;background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-lg);box-shadow:var(--shadow-card);overflow:hidden">
+      <div style="display:grid;grid-template-columns:minmax(220px,1.4fr) 90px 90px 130px 150px 120px;gap:12px;padding:10px 20px;background:var(--surface-row-alt);font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary)">
+        <span>Book</span><span style="text-align:right">Chapters</span><span style="text-align:right">Pages</span><span>Last edited</span><span>Next review</span><span>Status</span>
+      </div>
+      <sc-for list="{{ shelfBooks }}" as="bk" hint-placeholder-count="3">
+        <div sc-camel-on-click="{{ bk.open }}" style="display:grid;grid-template-columns:minmax(220px,1.4fr) 90px 90px 130px 150px 120px;gap:12px;align-items:center;padding:12px 20px;border-top:1px solid var(--border-thin);cursor:pointer;transition:background-color var(--transition-fast)" style-hover="background:var(--surface-hover)">
+          <span style="min-width:0">
+            <span style="display:block;font-weight:600;font-size:var(--text-md);color:var(--text-link);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ bk.title }}</span>
+            <span style="display:block;font-size:var(--text-xs);color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px">{{ bk.blurb }}</span>
+          </span>
+          <span style="font-family:var(--font-mono);font-size:var(--text-sm);text-align:right">{{ bk.chapters }}</span>
+          <span style="font-family:var(--font-mono);font-size:var(--text-sm);text-align:right">{{ bk.pages }}</span>
+          <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary)">{{ bk.lastEdit }}</span>
+          <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:{{ bk.reviewColor }}">{{ bk.review }}</span>
+          <span><span style="background:{{ bk.chipBg }};color:{{ bk.chipFg }};font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;padding:2px 8px;border-radius:var(--radius-pill)">{{ bk.chip }}</span></span>
+        </div>
+      </sc-for>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ isBook }}" hint-placeholder-val="{{ false }}">
+    <div style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary)"><a href="#" sc-camel-on-click="{{ backToLib }}" style="color:var(--text-link);text-decoration:none">SOPs</a> / <a href="#" sc-camel-on-click="{{ backToShelf }}" style="color:var(--text-link);text-decoration:none">{{ b.shelf }}</a> / {{ b.title }} / {{ pg.title }}</div>
+    <div style="display:flex;align-items:center;gap:12px;margin-top:8px;flex-wrap:wrap">
+      <h1 style="font-size:var(--text-2xl);font-weight:700;margin:0">{{ b.title }}</h1>
+      <span style="background:{{ b.chipBg }};color:{{ b.chipFg }};font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;padding:3px 10px;border-radius:var(--radius-pill)">{{ b.chip }}</span>
+      <span style="flex:1"></span>
+      <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="ghost" size="sm" on-click="{{ newChapter }}" hint-size="auto,32px">Create new chapter</x-import>
+      <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="secondary" size="sm" on-click="{{ newPage }}" hint-size="auto,32px">Create new page</x-import>
+      <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="primary" size="sm" on-click="{{ markReviewed }}" hint-size="auto,32px">{{ reviewLabel }}</x-import>
+    </div>
+
+    <div style="display:flex;gap:16px;margin-top:20px;align-items:flex-start;flex-wrap:wrap">
+      <div style="width:270px;flex-shrink:0;background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-lg);box-shadow:var(--shadow-card);overflow:hidden">
+        <div style="padding:14px 18px;font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary)">Contents</div>
+        <sc-for list="{{ toc }}" as="ch" hint-placeholder-count="3">
+          <div style="border-top:1px solid var(--border-thin)">
+            <div style="padding:10px 18px 6px;font-size:var(--text-sm);font-weight:700">{{ ch.n }}. {{ ch.title }}</div>
+            <sc-for list="{{ ch.pages }}" as="pgl" hint-placeholder-count="2">
+              <div sc-camel-on-click="{{ pgl.open }}" style="display:flex;align-items:center;gap:8px;padding:7px 18px 7px 28px;cursor:pointer;background:{{ pgl.bg }};border-left:3px solid {{ pgl.edge }};transition:background-color var(--transition-fast)" style-hover="background:var(--surface-hover)">
+                <span style="flex:1;min-width:0;font-size:var(--text-sm);font-weight:{{ pgl.w }};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ pgl.title }}</span>
+                <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:{{ pgl.dotColor }}">{{ pgl.v }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </sc-for>
+        <div style="padding:12px 18px;border-top:1px solid var(--border-thin);display:flex;gap:8px">
+          <button sc-camel-on-click="{{ prevPage }}" style="flex:1;padding:6px 0;background:var(--surface-card);border:1px solid var(--border-strong);border-radius:var(--radius-sm);cursor:pointer;font-family:var(--font-sans);font-size:var(--text-sm);font-weight:500;color:var(--ink);transition:background-color var(--transition-fast)" style-hover="background:var(--surface-hover)">Previous</button>
+          <button sc-camel-on-click="{{ nextPage }}" style="flex:1;padding:6px 0;background:var(--surface-card);border:1px solid var(--border-strong);border-radius:var(--radius-sm);cursor:pointer;font-family:var(--font-sans);font-size:var(--text-sm);font-weight:500;color:var(--ink);transition:background-color var(--transition-fast)" style-hover="background:var(--surface-hover)">Next</button>
+        </div>
+      </div>
+
+      <div style="flex:1;min-width:400px;display:flex;flex-direction:column;gap:16px">
+        <div style="padding:24px 28px;background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-lg);box-shadow:var(--shadow-card)">
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <h2 style="font-size:var(--text-xl);font-weight:700;margin:0">{{ pg.title }}</h2>
+            <span style="background:{{ pg.stBg }};color:{{ pg.stFg }};font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;padding:2px 8px;border-radius:var(--radius-pill)">{{ pg.status }}</span>
+          </div>
+          <div style="display:flex;gap:16px;margin-top:8px;flex-wrap:wrap;font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary)">
+            <span>{{ pg.v }}</span><span>owner {{ pg.owner }}</span><span>last edited by {{ pg.lastBy }}, {{ pg.updated }}</span><span style="color:{{ pg.reviewColor }}">review {{ pg.review }}</span>
+          </div>
+          <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">
+            <sc-for list="{{ pg.tags }}" as="tg" hint-placeholder-count="3">
+              <span style="background:var(--navy-50);color:var(--navy-500);font-family:var(--font-mono);font-size:var(--text-xs);padding:1px 8px;border-radius:var(--radius-pill)">{{ tg }}</span>
+            </sc-for>
+          </div>
+          <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border-thin);font-size:var(--text-sm);line-height:1.6">{{ pageBody }}</div>
+          <sc-if value="{{ hasSteps }}" hint-placeholder-val="{{ true }}">
+          <div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin:18px 0 6px">Steps</div>
+          <sc-for list="{{ steps }}" as="st" hint-placeholder-count="4">
+            <div style="display:flex;gap:12px;padding:9px 0;border-top:1px solid var(--border-thin)">
+              <button sc-camel-on-click="{{ st.toggle }}" title="Mark done for this run" style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;flex-shrink:0;margin-top:1px;background:{{ st.boxBg }};border:1.5px solid {{ st.boxBorder }};border-radius:5px;cursor:pointer;padding:0">
+                <sc-if value="{{ st.done }}" hint-placeholder-val="{{ false }}"><svg width="11" height="11" sc-camel-view-box="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"></path></svg></sc-if>
+              </button>
+              <span style="flex:1;font-size:var(--text-sm);line-height:1.6;color:{{ st.fg }};text-decoration:{{ st.deco }}">{{ st.text }}</span>
+            </div>
+          </sc-for>
+          <div style="margin-top:10px;font-size:var(--text-xs);color:var(--text-secondary)">Checkboxes are a working copy for this run. The SOP itself is unchanged.</div>
+          </sc-if>
+        </div>
+
+        <div style="padding:20px 24px;background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-lg);box-shadow:var(--shadow-card)">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
+            <h2 style="font-size:var(--text-md);font-weight:700;margin:0">Book activity</h2>
+            <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary)">edits, reviews and rollbacks across this book</span>
+          </div>
+          <sc-for list="{{ bookActivity }}" as="ba" hint-placeholder-count="4">
+            <div style="display:flex;gap:12px;padding:8px 0;border-top:1px solid var(--border-thin);font-size:var(--text-sm)">
+              <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary);width:64px;flex-shrink:0">{{ ba.when }}</span>
+              <span style="flex:1;min-width:0"><span style="font-weight:600">{{ ba.who }}</span> {{ ba.what }} <span style="color:var(--text-link)">{{ ba.page }}</span> <span style="color:var(--text-secondary)">{{ ba.note }}</span></span>
+              <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary)">{{ ba.v }}</span>
+            </div>
+          </sc-for>
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px;align-items:start">
+          <div style="padding:20px 24px;background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-lg);box-shadow:var(--shadow-card)">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
+              <h2 style="font-size:var(--text-md);font-weight:700;margin:0">Version history</h2>
+              <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary)">{{ pg.vCount }}</span>
+            </div>
+            <sc-for list="{{ versions }}" as="vr" hint-placeholder-count="3">
+              <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--border-thin)">
+                <span style="font-family:var(--font-mono);font-size:var(--text-xs);width:24px;flex-shrink:0;font-weight:{{ vr.w }}">{{ vr.v }}</span>
+                <span style="flex:1;min-width:0">
+                  <span style="display:block;font-size:var(--text-sm);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ vr.note }}</span>
+                  <span style="display:block;font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary)">{{ vr.meta }}</span>
+                </span>
+                <sc-if value="{{ vr.current }}" hint-placeholder-val="{{ false }}">
+                  <span style="background:var(--chip-done-bg);color:var(--chip-done-fg);font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;padding:1px 8px;border-radius:var(--radius-pill)">Current</span>
+                </sc-if>
+                <sc-if value="{{ vr.old }}" hint-placeholder-val="{{ false }}">
+                  <button sc-camel-on-click="{{ vr.rollback }}" style="padding:3px 10px;background:var(--surface-card);border:1px solid var(--border-strong);border-radius:var(--radius-pill);cursor:pointer;font-family:var(--font-sans);font-size:var(--text-xs);font-weight:500;color:var(--navy-700);transition:background-color var(--transition-fast)" style-hover="background:var(--navy-50)">Roll back</button>
+                </sc-if>
+              </div>
+            </sc-for>
+          </div>
+          <div style="padding:20px 24px;background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-lg);box-shadow:var(--shadow-card)">
+            <h2 style="font-size:var(--text-md);font-weight:700;margin:0 0 4px">Access</h2>
+            <div style="font-size:var(--text-xs);color:var(--text-secondary);margin-bottom:6px">Role based, inherited from the shelf unless overridden here.</div>
+            <sc-for list="{{ acl }}" as="ac" hint-placeholder-count="3">
+              <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--border-thin)">
+                <span style="background:{{ ac.chipBg }};color:{{ ac.chipFg }};font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;padding:1px 8px;border-radius:var(--radius-pill);width:64px;text-align:center;flex-shrink:0">{{ ac.role }}</span>
+                <span style="flex:1;font-size:var(--text-sm)">{{ ac.who }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ modalOpen }}" hint-placeholder-val="{{ false }}">
+    <div sc-camel-on-click="{{ closeModal }}" style="position:fixed;inset:0;z-index:80;background:rgba(16,42,76,.38)"></div>
+    <div style="position:fixed;top:6vh;left:50%;transform:translateX(-50%);z-index:90;width:min(680px,92vw);max-height:86vh;overflow-y:auto;background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-lg);box-shadow:var(--shadow-pop);padding:24px 28px;box-sizing:border-box">
+      <div style="display:flex;align-items:center;gap:10px">
+        <h2 style="font-size:var(--text-lg);font-weight:700;margin:0">{{ modalTitle }}</h2>
+        <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary)">{{ modalCtx }}</span>
+        <span style="flex:1"></span>
+        <button sc-camel-on-click="{{ closeModal }}" title="Close" style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;background:transparent;border:none;border-radius:var(--radius-sm);cursor:pointer;color:var(--muted);transition:background-color var(--transition-fast)" style-hover="background:var(--surface-hover)"><svg width="15" height="15" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"></path></svg></button>
+      </div>
+      <div style="margin-top:16px">
+        <div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Title</div>
+        <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Input" value="{{ mfTitle }}" sc-camel-on-change="{{ setMfTitle }}" placeholder="{{ titlePh }}" hint-size="100%,38px"></x-import>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px 16px;margin-top:14px">
+        <sc-if value="{{ mIsBook }}" hint-placeholder-val="{{ false }}">
+          <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Shelf</div><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Select" options="{{ shelfOpts }}" value="{{ mfShelf }}" sc-camel-on-change="{{ setMfShelf }}" hint-size="100%,38px"></x-import></div>
+          <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">First chapter</div><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Input" value="{{ mfChapter }}" sc-camel-on-change="{{ setMfChapter }}" placeholder="Getting started" hint-size="100%,38px"></x-import></div>
+          <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Default access</div><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Select" options="{{ aclOpts }}" value="{{ mfAcl }}" sc-camel-on-change="{{ setMfAcl }}" hint-size="100%,38px"></x-import></div>
+        </sc-if>
+        <sc-if value="{{ mIsChapter }}" hint-placeholder-val="{{ false }}">
+          <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Position</div><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Select" options="{{ posOpts }}" value="{{ mfPos }}" sc-camel-on-change="{{ setMfPos }}" hint-size="100%,38px"></x-import></div>
+        </sc-if>
+        <sc-if value="{{ mIsPage }}" hint-placeholder-val="{{ true }}">
+          <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Chapter</div><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Select" options="{{ chapterOpts }}" value="{{ mfChapter }}" sc-camel-on-change="{{ setMfChapter }}" hint-size="100%,38px"></x-import></div>
+          <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Tags</div><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Input" value="{{ mfTags }}" sc-camel-on-change="{{ setMfTags }}" placeholder="billing, monthly" hint-size="100%,38px"></x-import></div>
+        </sc-if>
+        <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Owner</div><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Select" options="{{ ownerOpts }}" value="{{ mfOwner }}" sc-camel-on-change="{{ setMfOwner }}" hint-size="100%,38px"></x-import></div>
+        <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Status</div><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Select" options="{{ statusOpts }}" value="{{ mfStatus }}" sc-camel-on-change="{{ setMfStatus }}" hint-size="100%,38px"></x-import></div>
+        <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Review cycle</div><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Select" options="{{ cycleOpts }}" value="{{ mfCycle }}" sc-camel-on-change="{{ setMfCycle }}" hint-size="100%,38px"></x-import></div>
+      </div>
+      <div style="margin-top:14px">
+        <div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">{{ bodyLabel }}</div>
+        <div style="border:1px solid var(--border-strong);border-radius:var(--radius-sm);overflow:hidden">
+          <div style="display:flex;gap:2px;padding:6px 8px;background:var(--surface-row-alt);border-bottom:1px solid var(--border-thin)">
+            <sc-for list="{{ fmtButtons }}" as="fb" hint-placeholder-count="8">
+              <button sc-camel-on-click="{{ fb.pick }}" title="{{ fb.tip }}" style="display:inline-flex;align-items:center;justify-content:center;min-width:28px;height:26px;padding:0 7px;background:transparent;border:none;border-radius:var(--radius-sm);cursor:pointer;font-family:var(--font-mono);font-size:var(--text-sm);font-weight:{{ fb.w }};font-style:{{ fb.fs }};color:var(--ink);transition:background-color var(--transition-fast)" style-hover="background:var(--navy-50)">{{ fb.label }}</button>
+            </sc-for>
+            <span style="flex:1"></span>
+            <span style="align-self:center;font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary)">Rich text</span>
+          </div>
+          <div id="sop-desc" sc-camel-content-editable="{{ true }}" style="display:block;width:100%;box-sizing:border-box;min-height:150px;padding:12px 14px;font-family:var(--font-sans);font-size:var(--text-sm);line-height:1.6;color:var(--ink);background:var(--surface-card);outline:none"></div>
+        </div>
+        <div style="margin-top:6px;font-size:var(--text-xs);color:var(--text-secondary)">{{ bodyHint }}</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:18px">
+        <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="primary" size="sm" on-click="{{ createGo }}" hint-size="auto,32px">{{ modalSaveLabel }}</x-import>
+        <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="ghost" size="sm" on-click="{{ closeModal }}" hint-size="auto,32px">Cancel</x-import>
+        <span style="font-size:var(--text-sm);color:var(--text-secondary)">{{ mfHint }}</span>
+      </div>
+    </div>
+  </sc-if>
+
+  </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script="" data-props="{}">
+class Component extends DCLogic {
+  ST = { published: ['var(--chip-done-bg)', 'var(--chip-done-fg)'], draft: ['var(--gold-100)', 'var(--gold-600)'], archived: ['var(--chip-waiting-bg)', 'var(--chip-waiting-fg)'], current: ['var(--chip-ontrack-bg)', 'var(--chip-ontrack-fg)'], 'review due': ['var(--chip-overdue-bg)', 'var(--chip-overdue-fg)'] };
+  ACL_CHIP = { Admin: ['var(--navy-100)', 'var(--navy)'], Editor: ['var(--gold-100)', 'var(--gold-600)'], Reader: ['var(--chip-waiting-bg)', 'var(--chip-waiting-fg)'] };
+  OWNERS = ['Paul', 'Rue Mbeki', 'Sofia Okafor', 'Ethan Lindqvist', 'Mei Bianchi'];
+
+  page(title, status, v, owner, updated, review, late, tags, purpose, steps, versions) {
+    return { title, status, v, owner, updated, review, late, tags, purpose, steps, versions };
+  }
+
+  SHELVES = [
+    { name: 'Finance', color: '#2E7D5B', owner: 'Paul', books: [
+      { title: 'Billing and collections', blurb: 'Raising, sending and chasing every invoice.', status: 'published', reviewNote: 'next review Sep 14', late: false, chapters: [
+        { title: 'Invoicing', pages: [
+          this.page('Weekly billing run', 'published', 'v4', 'Paul', 'Aug 12', 'Mon, Sep 14', false, ['billing', 'weekly'],
+            'Turns tracked hours into sent invoices every Friday. Covers the export, the review pass, and sending from the invoicing page. Takes about 40 minutes for a normal week.',
+            ['Export tracked hours for the week from Reports, grouped by client.', 'Open Invoicing and raise a draft per client from the billing period.', 'Check rates and line descriptions against the client record. Mixed rates need a line per rate.', 'Apply any agreed discount before tax, never after.', 'Send from the client dashboard and confirm the trail shows the send.', 'Log the run in the ledger under Consulting fees when payments land.'],
+            [['v4', 'Aug 12, Paul', 'Added the discount ordering rule after the Ashcombe dispute.'], ['v3', 'Jun 2, Paul', 'Switched to raising drafts from billing periods.'], ['v2', 'Mar 18, Rue Mbeki', 'Added the mixed rate rule.'], ['v1', 'Jan 9, Paul', 'First written version.']]),
+          this.page('Recording payments', 'published', 'v2', 'Rue Mbeki', 'Jul 30', 'Fri, Oct 2', false, ['billing', 'payments'],
+            'How a payment moves from the bank feed to a paid invoice, including partial payments.',
+            ['Match the bank line to an open invoice by amount, then by client.', 'Record the payment on the invoice. A short amount goes in as partial.', 'Partial payments keep the invoice open with the balance shown.', 'Note wire fees as Banking and fees in the ledger, never netted off.'],
+            [['v2', 'Jul 30, Rue Mbeki', 'Added partial payment handling.'], ['v1', 'Feb 2, Paul', 'First written version.']]) ] },
+        { title: 'Collections', pages: [
+          this.page('Chasing overdue invoices', 'published', 'v3', 'Paul', 'Aug 20', 'Tue, Dec 1', false, ['collections'],
+            'The reminder ladder for overdue invoices, from the first nudge to pausing work.',
+            ['Day 3 overdue, plain reminder from the invoice with the PDF attached.', 'Day 10, second reminder copying the billing contact.', 'Day 21, call the PoC and note the call in the client record.', 'Day 30, flag to pause new work and tell the client before pausing.'],
+            [['v3', 'Aug 20, Paul', 'Added the pause rule.'], ['v2', 'May 5, Paul', 'Tightened day counts.'], ['v1', 'Jan 9, Paul', 'First written version.']]) ] } ] },
+      { title: 'Ledger hygiene', blurb: 'Monthly close, categories and receipts.', status: 'published', reviewNote: 'next review Sep 30', late: false, chapters: [
+        { title: 'Monthly close', pages: [
+          this.page('Month end close', 'published', 'v2', 'Paul', 'Aug 1', 'Wed, Sep 30', false, ['close', 'monthly'],
+            'Closing the ledger within three working days of month end.',
+            ['Reconcile every ledger line against the bank feed.', 'Chase missing receipts, everything over $25 needs one.', 'Check overhead share, over 40% of money out needs a note.', 'Export the month to CSV and file it in the drive.'],
+            [['v2', 'Aug 1, Paul', 'Added the overhead check.'], ['v1', 'Apr 3, Paul', 'First written version.']]) ] } ] } ] },
+    { name: 'Delivery', color: '#2E4E7E', owner: 'Sofia Okafor', books: [
+      { title: 'Client engagement handbook', blurb: 'Kickoff to closeout for every engagement.', status: 'published', reviewNote: 'next review Sep 21', late: false, chapters: [
+        { title: 'Kickoff', pages: [
+          this.page('Client onboarding', 'published', 'v2', 'Sofia Okafor', 'Aug 8', 'Fri, Nov 6', false, ['onboarding'],
+            'Everything between a signed contract and the first working session.',
+            ['Create the client record with contacts, terms and rate.', 'Upload the signed contract to the client page.', 'Create the project with milestones from the SOW.', 'Book the kickoff call and send the pre-read two days ahead.'],
+            [['v2', 'Aug 8, Sofia Okafor', 'Added the pre-read rule.'], ['v1', 'Feb 20, Paul', 'First written version.']]),
+          this.page('Project kickoff call', 'draft', 'v1', 'Sofia Okafor', 'Aug 28', 'Fri, Sep 25', false, ['kickoff'],
+            'Draft. Agenda and follow-through for the first call.',
+            ['Walk the milestones and confirm dates.', 'Agree the single point of contact each side.', 'File the meeting notes and extract action items the same day.'],
+            [['v1', 'Aug 28, Sofia Okafor', 'First draft.']]) ] },
+        { title: 'Closeout', pages: [
+          this.page('Project closeout', 'published', 'v3', 'Paul', 'Jul 15', 'Fri, Nov 20', false, ['closeout'],
+            'Shutting an engagement down cleanly, from final invoice to archive.',
+            ['Confirm every milestone is done or explicitly dropped.', 'Raise the final invoice and note the closure in the trail.', 'Write the closure note from the template.', 'Archive the project and the client if no further work is planned.'],
+            [['v3', 'Jul 15, Paul', 'Added the archive step.'], ['v2', 'Apr 2, Paul', 'New closure note template.'], ['v1', 'Jan 12, Paul', 'First written version.']]) ] } ] },
+      { title: 'Incident response', blurb: 'When something a client relies on breaks.', status: 'published', reviewNote: 'next review Nov 6', late: false, chapters: [
+        { title: 'Triage', pages: [
+          this.page('Incident triage', 'published', 'v2', 'Ethan Lindqvist', 'Aug 6', 'Fri, Nov 6', false, ['incident'],
+            'First thirty minutes after a client reports something broken.',
+            ['Open a ticket on the affected project with priority set honestly.', 'Tell the client what you know within the hour, even if it is little.', 'Fix or hand off. Log time on the ticket either way.', 'Close with a one paragraph cause note in the ticket.'],
+            [['v2', 'Aug 6, Ethan Lindqvist', 'Added the one hour rule.'], ['v1', 'Mar 3, Paul', 'First written version.']]) ] } ] } ] },
+    { name: 'Compliance', color: '#8A6D1E', owner: 'Mei Bianchi', books: [
+      { title: 'Data and access', blurb: 'Access provisioning, retention and backups.', status: 'published', reviewNote: 'next review Nov 13', late: false, chapters: [
+        { title: 'Access', pages: [
+          this.page('Access provisioning', 'published', 'v5', 'Mei Bianchi', 'Aug 15', 'Fri, Nov 13', false, ['access', 'security'],
+            'Granting and revoking access to client systems and internal tools.',
+            ['Access is requested on a ticket, never in chat.', 'Grant the narrowest role that does the job.', 'Record the grant in the access register with an expiry date.', 'Revoke on the expiry date or the day an engagement closes, whichever is first.'],
+            [['v5', 'Aug 15, Mei Bianchi', 'Expiry dates are now mandatory.'], ['v4', 'Jun 10, Mei Bianchi', 'Added the register.'], ['v3', 'Apr 1, Paul', 'Narrowest role rule.'], ['v2', 'Feb 12, Paul', 'Ticket requirement.'], ['v1', 'Jan 5, Paul', 'First written version.']]) ] },
+        { title: 'Retention', pages: [
+          this.page('Data retention review', 'published', 'v4', 'Mei Bianchi', 'Jul 22', 'Mon, Nov 16', false, ['retention'],
+            'Quarterly review of what is stored, where, and what gets deleted.',
+            ['List every store holding client data.', 'Delete anything past its retention date, log the deletion.', 'Confirm backups exclude deleted data on the next cycle.'],
+            [['v4', 'Jul 22, Mei Bianchi', 'Added backup exclusion check.'], ['v3', 'Apr 20, Paul', 'Quarterly cadence.'], ['v2', 'Feb 2, Paul', 'Deletion log.'], ['v1', 'Jan 5, Paul', 'First written version.']]) ] } ] } ] },
+    { name: 'Operations', color: '#A2311F', owner: 'Paul', books: [
+      { title: 'Internal running of the firm', blurb: 'The weekly rhythm, tools and vendors.', status: 'published', reviewNote: 'next review Oct 5', late: false, chapters: [
+        { title: 'Rhythm', pages: [
+          this.page('Weekly review', 'published', 'v3', 'Paul', 'Aug 25', 'Mon, Oct 5', false, ['weekly'],
+            'The Monday morning pass over the whole command center.',
+            ['Clear the dashboard overdue list first.', 'Triage new mail down to zero urgent.', 'Reprioritize the week from the project board.', 'Check money past due and fire the reminder ladder where due.'],
+            [['v3', 'Aug 25, Paul', 'Reordered, overdue first.'], ['v2', 'May 11, Paul', 'Added the money pass.'], ['v1', 'Jan 19, Paul', 'First written version.']]) ] },
+        { title: 'Vendors', pages: [
+          this.page('Vendor renewal check', 'draft', 'v1', 'Paul', 'Aug 29', 'Thu, Dec 10', false, ['vendors'],
+            'Draft. What to check before a subscription renews.',
+            ['List renewals due in the next 60 days.', 'Check usage, cancel anything unused for a quarter.', 'Negotiate annual pricing on anything kept.'],
+            [['v1', 'Aug 29, Paul', 'First draft.']]) ] } ] } ] },
+    { name: 'People', color: '#4E2E7E', owner: 'Rue Mbeki', books: [
+      { title: 'Working with contractors', blurb: 'Bringing help in and paying them right.', status: 'published', reviewNote: 'next review Oct 19', late: false, chapters: [
+        { title: 'Onboarding', pages: [
+          this.page('New starter setup', 'published', 'v4', 'Rue Mbeki', 'Aug 3', 'Mon, Oct 19', false, ['starters'],
+            'Accounts, access and context for a new contractor, done in one day.',
+            ['Contract signed before any access, no exceptions.', 'Provision accounts from the access provisioning SOP.', 'Share the relevant shelf of this library, reader role.', 'Book a 30 minute walkthrough of the project they join.'],
+            [['v4', 'Aug 3, Rue Mbeki', 'Library access is now reader by default.'], ['v3', 'Jun 1, Paul', 'One day rule.'], ['v2', 'Mar 8, Paul', 'Added walkthrough.'], ['v1', 'Jan 26, Paul', 'First written version.']]) ] },
+        { title: 'Offboarding', pages: [
+          this.page('Contractor offboarding', 'published', 'v2', 'Rue Mbeki', 'Jul 8', 'Sat, Sep 26', false, ['offboarding'],
+            'Ending a contractor engagement without loose ends.',
+            ['Revoke access the final day, confirm against the register.', 'Pay the final invoice within terms.', 'Note in the people record whether you would rehire.'],
+            [['v2', 'Jul 8, Rue Mbeki', 'Added rehire note.'], ['v1', 'Feb 16, Paul', 'First written version.']]) ] } ] } ] }
+  ];
+
+  state = { shelves: this.SHELVES, view: 'library', shelfIdx: null, sel: null, search: '', doneSteps: {}, rolled: {},
+    modal: null, mf: {}, mfHint: '' };
+
+  BLURBS = { Finance: 'Money in, money out, and the monthly close.', Delivery: 'Running engagements from kickoff to closeout.', Compliance: 'Access, retention and what auditors ask for.', Operations: 'The weekly rhythm and the tools behind it.', People: 'Contractors, onboarding and offboarding.' };
+
+  chip(k) { return this.ST[k] || this.ST.published; }
+  flatPages(b) { return b.chapters.flatMap((ch, ci) => ch.pages.map((pg, pi) => ({ ci, pi, pg }))); }
+  lastEditOf(b) {
+    const flat = this.flatPages(b);
+    if (!flat.length) return ['', 'nobody yet'];
+    const v = flat[0].pg.versions[0];
+    return [v[1].split(', ')[0], v[1].split(', ')[1] || 'Paul'];
+  }
+  execCmd(cmd, val) {
+    const el = document.getElementById('sop-desc');
+    if (!el) return;
+    el.focus();
+    document.execCommand(cmd, false, val);
+  }
+
+  renderVals() {
+    const s = this.state;
+    const navItems = ['Dashboard', 'Action items', 'Projects', 'Meetings', 'Calendar', 'SOPs', 'Templates', 'Clients', 'Mail', 'Invoicing', 'Ledger', 'Reports', 'Settings']
+      .map(l => ({ id: l.toLowerCase().replace(' ', '-'), label: l }));
+    const allPages = s.shelves.flatMap(sh => sh.books.flatMap(b => this.flatPages(b).map(x => x.pg)));
+    const kpis = [
+      { label: 'Pages', value: String(allPages.length), sub: s.shelves.length + ' shelves, ' + s.shelves.reduce((a, sh) => a + sh.books.length, 0) + ' books', accent: 'var(--navy-500)' },
+      { label: 'Published', value: String(allPages.filter(p => p.status === 'published').length), sub: 'current and in force', accent: '#2E7D5B' },
+      { label: 'Drafts', value: String(allPages.filter(p => p.status === 'draft').length), sub: 'not yet in force', accent: 'var(--gold-600)' },
+      { label: 'Review overdue', value: String(allPages.filter(p => p.late).length), sub: allPages.some(p => p.late) ? 'start there' : 'nothing waiting', accent: allPages.some(p => p.late) ? '#A2311F' : '#2E7D5B' }
+    ];
+    const q = s.search.trim().toLowerCase();
+    const deptCards = s.shelves.map((sh, si) => {
+      const pages = sh.books.flatMap(b => this.flatPages(b).map(x => x.pg));
+      const hit = !q || (sh.name + ' ' + sh.books.map(b => b.title + ' ' + b.blurb + ' ' + this.flatPages(b).map(x => x.pg.title + ' ' + x.pg.steps.join(' ')).join(' ')).join(' ')).toLowerCase().includes(q);
+      if (!hit) return null;
+      const overdue = pages.filter(p => p.late).length;
+      return { name: sh.name, color: sh.color, owner: sh.owner, blurb: this.BLURBS[sh.name] || '',
+        books: String(sh.books.length), pages: String(pages.length),
+        hasOverdue: overdue > 0, overdue: String(overdue),
+        open: () => this.setState({ view: 'shelf', shelfIdx: si }) };
+    }).filter(Boolean);
+    const vals = { navItems, kpis, deptCards, shelvesEmpty: deptCards.length === 0,
+      isLibrary: s.view === 'library', isShelf: s.view === 'shelf', isBook: s.view === 'book',
+      search: s.search, setSearch: (e) => this.setState({ search: e.target.value }),
+      noop: () => {}, backToLib: (e) => { e.preventDefault(); this.setState({ view: 'library' }); },
+      backToShelf: (e) => { e.preventDefault(); this.setState({ view: 'shelf' }); },
+      shelfOpts: s.shelves.map(x => x.name),
+      ownerOpts: this.OWNERS, cycleOpts: ['Monthly', 'Quarterly', 'Twice a year', 'Yearly'],
+      statusOpts: ['Draft', 'Published'], aclOpts: ['Readers, everyone', 'Editors and admins only', 'Admins only'],
+      posOpts: ['At the end of the book', 'At the start of the book'],
+      newBook: () => this.setState({ modal: 'book', mf: { title: '', shelf: s.shelfIdx != null ? s.shelves[s.shelfIdx].name : 'Finance', chapter: 'Getting started', acl: 'Readers, everyone', owner: 'Paul', status: 'Draft', cycle: 'Quarterly' }, mfHint: '' }),
+      modalOpen: !!s.modal,
+      closeModal: () => this.setState({ modal: null })
+    };
+    if (s.view === 'shelf' && s.shelfIdx != null) {
+      const sh = s.shelves[s.shelfIdx];
+      vals.shd = { name: sh.name, color: sh.color, owner: sh.owner,
+        meta: sh.books.length + ' books · ' + sh.books.reduce((a, b) => a + this.flatPages(b).length, 0) + ' pages' };
+      vals.shelfBooks = sh.books.map((b, bi) => {
+        const [cb, cf] = this.chip(b.status);
+        const [when, who] = this.lastEditOf(b);
+        return { title: b.title, blurb: b.blurb, chip: b.status, chipBg: cb, chipFg: cf,
+          chapters: String(b.chapters.length), pages: String(this.flatPages(b).length),
+          lastEdit: when ? when + ', ' + who : 'nobody yet',
+          review: b.reviewNote, reviewColor: b.late ? 'var(--text-warn)' : 'var(--text-secondary)',
+          open: () => this.setState({ view: 'book', sel: { si: s.shelfIdx, bi, ci: 0, pi: 0 }, doneSteps: {} }) };
+      });
+    }
+    if (s.modal) {
+      const kind = s.modal;
+      const curShelf = s.shelves.find(x => x.name === s.mf.shelf) || (s.sel ? s.shelves[s.sel.si] : s.shelves[0]);
+      const curBook = s.sel ? s.shelves[s.sel.si].books[s.sel.bi] : curShelf.books[0];
+      Object.assign(vals, {
+        mIsBook: kind === 'book', mIsChapter: kind === 'chapter', mIsPage: kind === 'page',
+        modalTitle: kind === 'book' ? 'Create new book' : kind === 'chapter' ? 'Create new chapter' : 'Create new page',
+        modalSaveLabel: kind === 'page' ? 'Create page' : kind === 'chapter' ? 'Create chapter' : 'Create book',
+        modalCtx: kind === 'book' ? 'on the ' + (s.mf.shelf || curShelf.name) + ' shelf' : 'in ' + curBook.title,
+        titlePh: kind === 'book' ? 'Client engagement handbook' : kind === 'chapter' ? 'Kickoff' : 'Weekly billing run',
+        chapterOpts: curBook.chapters.map(c => c.title),
+        bodyLabel: kind === 'page' ? 'Page content' : 'Description',
+        bodyHint: kind === 'page' ? 'The page body. Write the purpose, then the steps as a numbered list.' : 'Shown under the title so people know what lives here.',
+        mfHint: s.mfHint,
+        fmtButtons: [
+          { label: 'B', tip: 'Bold', w: 700, fs: 'normal', pick: () => this.execCmd('bold') },
+          { label: 'I', tip: 'Italic', w: 400, fs: 'italic', pick: () => this.execCmd('italic') },
+          { label: 'U', tip: 'Underline', w: 400, fs: 'normal', pick: () => this.execCmd('underline') },
+          { label: 'H2', tip: 'Heading', w: 700, fs: 'normal', pick: () => this.execCmd('formatBlock', 'h3') },
+          { label: '• list', tip: 'Bullet list', w: 400, fs: 'normal', pick: () => this.execCmd('insertUnorderedList') },
+          { label: '1. list', tip: 'Numbered list', w: 400, fs: 'normal', pick: () => this.execCmd('insertOrderedList') },
+          { label: '<>', tip: 'Code block', w: 400, fs: 'normal', pick: () => this.execCmd('formatBlock', 'pre') },
+          { label: 'link', tip: 'Link', w: 400, fs: 'normal', pick: () => { const u = prompt('Link URL'); if (u) this.execCmd('createLink', u); } },
+          { label: 'clear', tip: 'Clear formatting', w: 400, fs: 'normal', pick: () => this.execCmd('removeFormat') }
+        ],
+        createGo: () => {
+          const m = this.state.mf;
+          if (!m.title || !m.title.trim()) { this.setState({ mfHint: 'A title is required.' }); return; }
+          const el = document.getElementById('sop-desc');
+          const html = el && el.textContent.trim() ? el.innerHTML : '';
+          const status = (m.status || 'Draft').toLowerCase();
+          const stamp = [['v1', 'Aug 31, ' + m.owner, 'Created as a ' + status + '.']];
+          const mkPage = (title, tags, body) => ({ ...this.page(title, status, 'v1', m.owner, 'Aug 31', 'Set by the ' + (m.cycle || 'Quarterly').toLowerCase() + ' cycle', false, tags, '', [], stamp), html: body || '<p>Write the page here.</p>' });
+          const shelves = JSON.parse(JSON.stringify(this.state.shelves));
+          if (kind === 'book') {
+            const sh2 = shelves.find(x => x.name === m.shelf);
+            sh2.books.push({ title: m.title.trim(), blurb: html.replace(/<[^>]+>/g, ' ').trim().slice(0, 90) || 'New book.', status, reviewNote: 'next review by the ' + (m.cycle || 'Quarterly').toLowerCase() + ' cycle', late: false,
+              chapters: [{ title: m.chapter || 'Getting started', pages: [mkPage('Overview', [], html)] }] });
+            this.setState({ shelves, modal: null, view: 'shelf', shelfIdx: shelves.indexOf(sh2) });
+          } else if (kind === 'chapter') {
+            const b2 = shelves[this.state.sel.si].books[this.state.sel.bi];
+            const ch = { title: m.title.trim(), pages: [mkPage('Overview', [], html)] };
+            if (m.pos === 'At the start of the book') b2.chapters.unshift(ch); else b2.chapters.push(ch);
+            this.setState({ shelves, modal: null });
+          } else {
+            const b2 = shelves[this.state.sel.si].books[this.state.sel.bi];
+            const ci2 = Math.max(0, b2.chapters.findIndex(c => c.title === m.chapter));
+            b2.chapters[ci2].pages.push(mkPage(m.title.trim(), m.tags ? m.tags.split(',').map(t => t.trim()).filter(Boolean) : [], html));
+            this.setState({ shelves, modal: null, sel: { ...this.state.sel, ci: ci2, pi: b2.chapters[ci2].pages.length - 1 }, doneSteps: {} });
+          }
+        }
+      });
+      ['title', 'shelf', 'chapter', 'owner', 'status', 'cycle', 'tags', 'acl', 'pos'].forEach(k => {
+        const K = k.charAt(0).toUpperCase() + k.slice(1);
+        vals['mf' + K] = s.mf[k];
+        vals['setMf' + K] = (e) => this.setState(x => ({ mf: { ...x.mf, [k]: e.target.value } }));
+      });
+    }
+    if (s.view !== 'book' || !s.sel) return vals;
+    const { si, bi, ci, pi } = s.sel;
+    const sh = s.shelves[si]; const b = sh.books[bi];
+    const pg = b.chapters[ci].pages[pi];
+    const [bcB, bcF] = this.chip(b.status);
+    const [pB, pF] = this.chip(pg.status);
+    const flat = this.flatPages(b);
+    const flatIdx = flat.findIndex(x => x.ci === ci && x.pi === pi);
+    const goto = (x) => this.setState({ sel: { si, bi, ci: x.ci, pi: x.pi }, doneSteps: {} });
+    const rolledV = s.rolled[si + ':' + bi + ':' + ci + ':' + pi];
+    Object.assign(vals, {
+      b: { shelf: sh.name, title: b.title, chip: b.status, chipBg: bcB, chipFg: bcF },
+      pg: { title: pg.title, status: pg.status, stBg: pB, stFg: pF, v: rolledV || pg.v, owner: pg.owner, updated: pg.updated,
+        review: pg.review, reviewColor: pg.late ? 'var(--text-warn)' : 'var(--text-secondary)', tags: pg.tags,
+        lastBy: (pg.versions[0][1].split(', ')[1]) || pg.owner, vCount: pg.versions.length + ' versions' },
+      pageBody: pg.html
+        ? React.createElement('div', { dangerouslySetInnerHTML: { __html: pg.html } })
+        : pg.purpose,
+      hasSteps: pg.steps.length > 0,
+      newChapter: () => this.setState({ modal: 'chapter', mf: { title: '', owner: 'Paul', status: 'Draft', cycle: 'Quarterly', pos: 'At the end of the book' }, mfHint: '' }),
+      newPage: () => this.setState({ modal: 'page', mf: { title: '', chapter: b.chapters[ci].title, owner: 'Paul', status: 'Draft', cycle: 'Quarterly', tags: '' }, mfHint: '' }),
+      bookActivity: this.flatPages(b).flatMap(x => x.pg.versions.map(v => ({ page: x.pg.title, v: v[0],
+        when: v[1].split(', ')[0], who: v[1].split(', ')[1] || 'Paul',
+        what: v[0] === 'v1' ? 'created' : 'edited', note: v[2] }))).slice(0, 8),
+      reviewLabel: pg.late ? 'Mark reviewed' : 'Reviewed, on cycle',
+      markReviewed: () => {
+        const shelves = JSON.parse(JSON.stringify(s.shelves));
+        const p2 = shelves[si].books[bi].chapters[ci].pages[pi];
+        p2.late = false; p2.review = 'Mon, Nov 30'; shelves[si].books[bi].late = false; shelves[si].books[bi].reviewNote = 'next review Nov 30';
+        this.setState({ shelves });
+      },
+      toc: b.chapters.map((ch, c2) => ({ n: String(c2 + 1), title: ch.title,
+        pages: ch.pages.map((p2, p3) => {
+          const active = c2 === ci && p3 === pi;
+          return { title: p2.title, v: p2.v, w: active ? 700 : 400,
+            bg: active ? 'var(--navy-50)' : 'transparent', edge: active ? 'var(--navy)' : 'transparent',
+            dotColor: p2.late ? 'var(--text-warn)' : 'var(--text-secondary)',
+            open: () => goto({ ci: c2, pi: p3 }) };
+        }) })),
+      prevPage: () => { if (flatIdx > 0) goto(flat[flatIdx - 1]); },
+      nextPage: () => { if (flatIdx < flat.length - 1) goto(flat[flatIdx + 1]); },
+      steps: pg.steps.map((text, i) => {
+        const done = !!s.doneSteps[i];
+        return { text, done, boxBg: done ? 'var(--navy)' : 'var(--surface-card)', boxBorder: done ? 'var(--navy)' : 'var(--border-strong)',
+          fg: done ? 'var(--text-secondary)' : 'var(--ink)', deco: done ? 'line-through' : 'none',
+          toggle: () => this.setState(x => ({ doneSteps: { ...x.doneSteps, [i]: !done } })) };
+      }),
+      versions: pg.versions.map(([v, meta, note], i) => {
+        const cur = (rolledV || pg.v) === v;
+        return { v, meta, note, current: cur, old: !cur, w: cur ? 700 : 400,
+          rollback: () => this.setState(x => ({ rolled: { ...x.rolled, [si + ':' + bi + ':' + ci + ':' + pi]: v } })) };
+      }),
+      acl: [
+        { role: 'Admin', who: 'Paul, system manager' },
+        { role: 'Editor', who: sh.owner + ', shelf owner, and ' + pg.owner + ', page owner' },
+        { role: 'Reader', who: 'Everyone with library access' }
+      ].map(a => { const [cb, cf] = this.ACL_CHIP[a.role]; return { ...a, chipBg: cb, chipFg: cf }; })
+    });
+    return vals;
+  }
+}
+</script>
+
+
+</body></html>

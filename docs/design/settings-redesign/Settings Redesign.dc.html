@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="../support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/tokens/fonts.css">
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/tokens/colors.css">
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/tokens/typography.css">
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/tokens/spacing.css">
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/tokens/effects.css">
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/tokens/base.css">
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/styles.css">
+  <script src="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/_ds_bundle.js"></script>
+  <style>
+    body{margin:0;background:var(--surface-page);}
+    a{color:var(--text-link);} a:hover{color:var(--navy);}
+  </style>
+</helmet>
+<div style="display:flex;min-height:100vh;font-family:var(--font-sans);color:var(--text-body)">
+  <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Sidebar" items="{{ navItems }}" active-id="settings" on-quick-add="{{ noop }}" hint-size="224px,100%" style="height:100vh;position:sticky;top:0"></x-import>
+  <main style="flex:1;height:100vh;overflow-y:auto;box-sizing:border-box">
+  <div style="padding:32px 48px 64px;box-sizing:border-box">
+    <h1 style="font-size:var(--text-2xl);font-weight:700;margin:0 0 6px">Settings</h1>
+    <div style="font-size:var(--text-sm);color:var(--text-secondary)">Configuration that lives outside the code.</div>
+
+    <div style="display:flex;gap:32px;align-items:flex-start;margin-top:24px">
+      <nav style="width:220px;flex-shrink:0;position:sticky;top:24px;display:flex;flex-direction:column;gap:20px">
+        <sc-for list="{{ navGroups }}" as="g" hint-placeholder-count="3">
+          <div>
+            <div style="font-family:var(--font-mono);font-size:var(--text-xs);font-weight:700;letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--ink);padding:0 12px;margin-bottom:6px;border-bottom:1px solid var(--border-thin);padding-bottom:6px">{{ g.label }}</div>
+            <div style="display:flex;flex-direction:column;gap:2px">
+              <sc-for list="{{ g.items }}" as="it" hint-placeholder-count="3">
+                <button sc-camel-on-click="{{ it.pick }}" style="display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;text-align:left;padding:8px 12px;background:{{ it.bg }};border:none;border-radius:var(--radius-sm);cursor:pointer;font-family:var(--font-sans);font-size:var(--text-base);font-weight:{{ it.weight }};color:{{ it.fg }};transition:background-color var(--transition-fast)" style-hover="background:{{ it.hoverBg }}">
+                  {{ it.label }}
+                  <sc-if value="{{ it.attention }}" hint-placeholder-val="{{ false }}">
+                    <span style="background:var(--gold-100);color:var(--gold-600);font-family:var(--font-mono);font-size:var(--text-xs);padding:1px 8px;border-radius:var(--radius-pill)">{{ it.attention }}</span>
+                  </sc-if>
+                </button>
+              </sc-for>
+            </div>
+          </div>
+        </sc-for>
+      </nav>
+
+      <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:16px;max-width:960px">
+
+      <sc-if value="{{ showGeneral }}" hint-placeholder-val="{{ true }}">
+        <div style="padding:24px;background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-lg);box-shadow:var(--shadow-card)">
+          <h2 style="font-size:var(--text-lg);font-weight:700;margin:0 0 4px">General</h2>
+          <div style="font-size:var(--text-sm);color:var(--text-secondary);margin-bottom:20px">Workspace basics. These apply everywhere.</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px 24px">
+            <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Workspace name</div><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Input" default-value="Command Center" hint-size="100%,38px"></x-import></div>
+            <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Owner email</div><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Input" default-value="pacardopaul18@gmail.com" mono="{{ true }}" hint-size="100%,38px"></x-import></div>
+            <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Timezone</div><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Select" options="{{ tzOptions }}" hint-size="100%,38px"></x-import></div>
+            <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Date format</div><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Select" options="{{ dateOptions }}" hint-size="100%,38px"></x-import></div>
+            <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Currency</div><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Select" options="{{ currencyOptions }}" hint-size="100%,38px"></x-import></div>
+            <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Week starts on</div><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Select" options="{{ weekOptions }}" hint-size="100%,38px"></x-import></div>
+          </div>
+          <div style="display:flex;align-items:center;gap:12px;margin-top:20px">
+            <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="primary" size="sm" on-click="{{ save }}" hint-size="auto,32px">{{ saveLabel }}</x-import>
+            <span style="font-size:var(--text-sm);color:var(--text-secondary)">Changes apply on save. Nothing saves on its own.</span>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ showNotifications }}" hint-placeholder-val="{{ false }}">
+        <div style="padding:24px;background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-lg);box-shadow:var(--shadow-card)">
+          <h2 style="font-size:var(--text-lg);font-weight:700;margin:0 0 4px">Notifications</h2>
+          <div style="font-size:var(--text-sm);color:var(--text-secondary);margin-bottom:8px">Alerts appear inside the app. Nothing is ever emailed or pushed to your phone.</div>
+          <sc-for list="{{ notifToggles }}" as="t" hint-placeholder-count="4">
+            <div style="display:flex;align-items:center;gap:16px;padding:14px 0;border-top:1px solid var(--border-thin)">
+              <div style="flex:1"><div style="font-size:var(--text-base);font-weight:500">{{ t.label }}</div><div style="font-size:var(--text-sm);color:var(--text-secondary);margin-top:2px">{{ t.desc }}</div></div>
+              <button sc-camel-on-click="{{ t.toggle }}" title="Toggle" style="width:38px;height:22px;flex-shrink:0;border-radius:var(--radius-pill);border:none;cursor:pointer;background:{{ t.bg }};position:relative;transition:background-color var(--transition-base)">
+                <span style="position:absolute;top:3px;left:{{ t.knob }}px;width:16px;height:16px;border-radius:50%;background:#FFFFFF;box-shadow:0 1px 2px rgba(0,0,0,.2);transition:left var(--transition-base)"></span>
+              </button>
+            </div>
+          </sc-for>
+          <div style="display:flex;align-items:center;gap:12px;padding:14px 0 0;border-top:1px solid var(--border-thin)">
+            <div style="flex:1"><div style="font-size:var(--text-base);font-weight:500">Quiet hours</div><div style="font-size:var(--text-sm);color:var(--text-secondary);margin-top:2px">No alert badges between these times.</div></div>
+            <div style="width:110px"><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Select" options="{{ quietFrom }}" hint-size="110px,38px"></x-import></div>
+            <span style="font-size:var(--text-sm);color:var(--text-secondary)">to</span>
+            <div style="width:110px"><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Select" options="{{ quietTo }}" hint-size="110px,38px"></x-import></div>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ showAppearance }}" hint-placeholder-val="{{ false }}">
+        <div style="padding:24px;background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-lg);box-shadow:var(--shadow-card)">
+          <h2 style="font-size:var(--text-lg);font-weight:700;margin:0 0 4px">Appearance</h2>
+          <div style="font-size:var(--text-sm);color:var(--text-secondary);margin-bottom:20px">How lists and tables render. One theme, no dark mode.</div>
+          <div style="display:flex;align-items:center;gap:16px;padding:14px 0;border-top:1px solid var(--border-thin)">
+            <div style="flex:1"><div style="font-size:var(--text-base);font-weight:500">Density</div><div style="font-size:var(--text-sm);color:var(--text-secondary);margin-top:2px">Compact tightens tables and lists.</div></div>
+            <div style="display:inline-flex;gap:4px;padding:4px;background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-md)">
+              <sc-for list="{{ densityOpts }}" as="d" hint-placeholder-count="2">
+                <button sc-camel-on-click="{{ d.pick }}" style="padding:6px 14px;border:none;border-radius:var(--radius-sm);cursor:pointer;font-family:var(--font-sans);font-size:var(--text-sm);font-weight:500;white-space:nowrap;background:{{ d.bg }};color:{{ d.fg }};transition:background-color var(--transition-fast)">{{ d.label }}</button>
+              </sc-for>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:16px;padding:14px 0;border-top:1px solid var(--border-thin)">
+            <div style="flex:1"><div style="font-size:var(--text-base);font-weight:500">Start page</div><div style="font-size:var(--text-sm);color:var(--text-secondary);margin-top:2px">Where the app opens.</div></div>
+            <div style="width:200px"><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Select" options="{{ startPages }}" hint-size="200px,38px"></x-import></div>
+          </div>
+          <sc-for list="{{ apprToggles }}" as="t" hint-placeholder-count="1">
+            <div style="display:flex;align-items:center;gap:16px;padding:14px 0;border-top:1px solid var(--border-thin)">
+              <div style="flex:1"><div style="font-size:var(--text-base);font-weight:500">{{ t.label }}</div><div style="font-size:var(--text-sm);color:var(--text-secondary);margin-top:2px">{{ t.desc }}</div></div>
+              <button sc-camel-on-click="{{ t.toggle }}" title="Toggle" style="width:38px;height:22px;flex-shrink:0;border-radius:var(--radius-pill);border:none;cursor:pointer;background:{{ t.bg }};position:relative;transition:background-color var(--transition-base)">
+                <span style="position:absolute;top:3px;left:{{ t.knob }}px;width:16px;height:16px;border-radius:50%;background:#FFFFFF;box-shadow:0 1px 2px rgba(0,0,0,.2);transition:left var(--transition-base)"></span>
+              </button>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ showSecurity }}" hint-placeholder-val="{{ false }}">
+        <div style="padding:24px;background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-lg);box-shadow:var(--shadow-card)">
+          <h2 style="font-size:var(--text-lg);font-weight:700;margin:0 0 4px">Security</h2>
+          <div style="font-size:var(--text-sm);color:var(--text-secondary);margin-bottom:8px">One person, one account. Nothing here is shared.</div>
+          <div style="display:flex;align-items:center;gap:16px;padding:14px 0;border-top:1px solid var(--border-thin)">
+            <div style="flex:1"><div style="font-size:var(--text-base);font-weight:500">Signed in as</div><div style="font-family:var(--font-mono);font-size:var(--text-sm);color:var(--text-secondary);margin-top:2px">pacardopaul18@gmail.com</div></div>
+            <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="secondary" size="sm" on-click="{{ noop }}" hint-size="auto,32px">Sign out</x-import>
+          </div>
+          <div style="display:flex;align-items:center;gap:16px;padding:14px 0;border-top:1px solid var(--border-thin)">
+            <div style="flex:1"><div style="font-size:var(--text-base);font-weight:500">Session length</div><div style="font-size:var(--text-sm);color:var(--text-secondary);margin-top:2px">Signs you out after this long without activity.</div></div>
+            <div style="width:160px"><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Select" options="{{ sessionOpts }}" hint-size="160px,38px"></x-import></div>
+          </div>
+          <div style="display:flex;align-items:center;gap:16px;padding:14px 0;border-top:1px solid var(--border-thin)">
+            <div style="flex:1"><div style="font-size:var(--text-base);font-weight:500">Other devices</div><div style="font-size:var(--text-sm);color:var(--text-secondary);margin-top:2px">Ends every session except this one.</div></div>
+            <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="secondary" size="sm" on-click="{{ noop }}" hint-size="auto,32px">Sign out everywhere else</x-import>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ showInvoicing }}" hint-placeholder-val="{{ false }}">
+        <div style="padding:24px;background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-lg);box-shadow:var(--shadow-card)">
+          <h2 style="font-size:var(--text-lg);font-weight:700;margin:0 0 4px">Invoicing</h2>
+          <div style="font-size:var(--text-sm);color:var(--text-secondary);margin-bottom:20px">Defaults for new invoices. Any invoice can override them.</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px 24px">
+            <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Number prefix</div><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Input" default-value="INV-" mono="{{ true }}" hint-size="100%,38px"></x-import></div>
+            <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Next number</div><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Input" default-value="2042" mono="{{ true }}" hint-size="100%,38px"></x-import></div>
+            <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Payment terms</div><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Select" options="{{ termsOpts }}" hint-size="100%,38px"></x-import></div>
+            <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Tax rate</div><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Input" default-value="12% VAT" mono="{{ true }}" hint-size="100%,38px"></x-import></div>
+            <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Default hourly rate</div><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Input" default-value="PHP 2,500" mono="{{ true }}" hint-size="100%,38px"></x-import></div>
+            <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Bank details on invoice</div><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Select" options="{{ bankOpts }}" hint-size="100%,38px"></x-import></div>
+          </div>
+          <sc-for list="{{ invToggles }}" as="t" hint-placeholder-count="2">
+            <div style="display:flex;align-items:center;gap:16px;padding:14px 0;margin-top:6px;border-top:1px solid var(--border-thin)">
+              <div style="flex:1"><div style="font-size:var(--text-base);font-weight:500">{{ t.label }}</div><div style="font-size:var(--text-sm);color:var(--text-secondary);margin-top:2px">{{ t.desc }}</div></div>
+              <button sc-camel-on-click="{{ t.toggle }}" title="Toggle" style="width:38px;height:22px;flex-shrink:0;border-radius:var(--radius-pill);border:none;cursor:pointer;background:{{ t.bg }};position:relative;transition:background-color var(--transition-base)">
+                <span style="position:absolute;top:3px;left:{{ t.knob }}px;width:16px;height:16px;border-radius:50%;background:#FFFFFF;box-shadow:0 1px 2px rgba(0,0,0,.2);transition:left var(--transition-base)"></span>
+              </button>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ showProjects }}" hint-placeholder-val="{{ false }}">
+        <div style="padding:24px;background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-lg);box-shadow:var(--shadow-card)">
+          <h2 style="font-size:var(--text-lg);font-weight:700;margin:0 0 4px">Projects</h2>
+          <div style="font-size:var(--text-sm);color:var(--text-secondary);margin-bottom:8px">How projects are watched. Status vocabulary is fixed: on track, at risk, blocked, done.</div>
+          <div style="display:flex;align-items:center;gap:16px;padding:14px 0;border-top:1px solid var(--border-thin)">
+            <div style="flex:1"><div style="font-size:var(--text-base);font-weight:500">Mark at risk after</div><div style="font-size:var(--text-sm);color:var(--text-secondary);margin-top:2px">Days without an update before a project turns at risk.</div></div>
+            <div style="width:140px"><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Select" options="{{ riskOpts }}" hint-size="140px,38px"></x-import></div>
+          </div>
+          <div style="display:flex;align-items:center;gap:16px;padding:14px 0;border-top:1px solid var(--border-thin)">
+            <div style="flex:1"><div style="font-size:var(--text-base);font-weight:500">Weekly capacity</div><div style="font-size:var(--text-sm);color:var(--text-secondary);margin-top:2px">Hours per week. What will slip is measured against this.</div></div>
+            <div style="width:140px"><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Input" default-value="40 h" mono="{{ true }}" hint-size="140px,38px"></x-import></div>
+          </div>
+          <sc-for list="{{ projToggles }}" as="t" hint-placeholder-count="2">
+            <div style="display:flex;align-items:center;gap:16px;padding:14px 0;border-top:1px solid var(--border-thin)">
+              <div style="flex:1"><div style="font-size:var(--text-base);font-weight:500">{{ t.label }}</div><div style="font-size:var(--text-sm);color:var(--text-secondary);margin-top:2px">{{ t.desc }}</div></div>
+              <button sc-camel-on-click="{{ t.toggle }}" title="Toggle" style="width:38px;height:22px;flex-shrink:0;border-radius:var(--radius-pill);border:none;cursor:pointer;background:{{ t.bg }};position:relative;transition:background-color var(--transition-base)">
+                <span style="position:absolute;top:3px;left:{{ t.knob }}px;width:16px;height:16px;border-radius:50%;background:#FFFFFF;box-shadow:0 1px 2px rgba(0,0,0,.2);transition:left var(--transition-base)"></span>
+              </button>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ showActions }}" hint-placeholder-val="{{ false }}">
+        <div style="padding:24px;background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-lg);box-shadow:var(--shadow-card)">
+          <h2 style="font-size:var(--text-lg);font-weight:700;margin:0 0 4px">Action items</h2>
+          <div style="font-size:var(--text-sm);color:var(--text-secondary);margin-bottom:8px">Defaults for quick add and daily rollover.</div>
+          <div style="display:flex;align-items:center;gap:16px;padding:14px 0;border-top:1px solid var(--border-thin)">
+            <div style="flex:1"><div style="font-size:var(--text-base);font-weight:500">Default due date</div><div style="font-size:var(--text-sm);color:var(--text-secondary);margin-top:2px">Applied when quick add gets no date.</div></div>
+            <div style="width:160px"><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Select" options="{{ dueOpts }}" hint-size="160px,38px"></x-import></div>
+          </div>
+          <div style="display:flex;align-items:center;gap:16px;padding:14px 0;border-top:1px solid var(--border-thin)">
+            <div style="flex:1"><div style="font-size:var(--text-base);font-weight:500">Snooze presets</div><div style="font-size:var(--text-sm);color:var(--text-secondary);margin-top:2px">Offered when an item is pushed back.</div></div>
+            <div style="width:220px"><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Select" options="{{ snoozeOpts }}" hint-size="220px,38px"></x-import></div>
+          </div>
+          <sc-for list="{{ actionToggles }}" as="t" hint-placeholder-count="2">
+            <div style="display:flex;align-items:center;gap:16px;padding:14px 0;border-top:1px solid var(--border-thin)">
+              <div style="flex:1"><div style="font-size:var(--text-base);font-weight:500">{{ t.label }}</div><div style="font-size:var(--text-sm);color:var(--text-secondary);margin-top:2px">{{ t.desc }}</div></div>
+              <button sc-camel-on-click="{{ t.toggle }}" title="Toggle" style="width:38px;height:22px;flex-shrink:0;border-radius:var(--radius-pill);border:none;cursor:pointer;background:{{ t.bg }};position:relative;transition:background-color var(--transition-base)">
+                <span style="position:absolute;top:3px;left:{{ t.knob }}px;width:16px;height:16px;border-radius:50%;background:#FFFFFF;box-shadow:0 1px 2px rgba(0,0,0,.2);transition:left var(--transition-base)"></span>
+              </button>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ showConnections }}" hint-placeholder-val="{{ false }}">
+        <div style="padding:24px;background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-lg);box-shadow:var(--shadow-card)">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
+            <h2 style="font-size:var(--text-lg);font-weight:700;margin:0">Connections</h2>
+            <span style="background:#F0EFEA;color:var(--muted);font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;padding:3px 10px;border-radius:var(--radius-pill)">Not connected</span>
+          </div>
+          <div style="font-size:var(--text-sm);color:var(--text-secondary);margin-bottom:12px">Google, read only. Paul's own account only.</div>
+          <p style="margin:0 0 10px;font-size:var(--text-base);line-height:1.6">This reads a calendar and reads mail. It never writes anything: no sending, no replying, no drafts, no labels, no calendar changes. That is not a promise about how the code behaves, it is a consequence of which permissions were requested. The permission to send was never asked for, so it cannot be used by mistake.</p>
+          <p style="margin:0 0 10px;font-size:var(--text-base);line-height:1.6"><strong>Your own account only.</strong> Connecting a partner or firm account is a conversation that has not happened yet, and this app is not the place to shortcut it. Do not sign in here with an account that is not yours.</p>
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 14px;background:var(--surface-callout);border:1px solid var(--border-thin);border-radius:var(--radius-sm);font-size:var(--text-sm)">
+            Not configured yet. <code style="font-family:var(--font-mono);font-size:var(--text-xs);background:var(--navy-50);padding:2px 6px;border-radius:4px">GOOGLE_CLIENT_ID</code> is missing from wrangler.toml. <code style="font-family:var(--font-mono);font-size:var(--text-xs);background:var(--navy-50);padding:2px 6px;border-radius:4px">GOOGLE_CLIENT_SECRET</code> is not set on the Worker.
+          </div>
+          <div style="margin-top:16px"><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="primary" disabled="{{ true }}" on-click="{{ noop }}" hint-size="auto,38px">Connect Google</x-import></div>
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-top:20px;padding-top:16px;border-top:1px solid var(--border-thin)">
+            <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:4px">Account</div><div style="font-size:var(--text-md);font-weight:600">Not connected</div></div>
+            <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:4px">State</div><div style="font-size:var(--text-md);font-weight:600">Not connected</div></div>
+            <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:4px">Calendar last read</div><div style="font-family:var(--font-mono);font-size:var(--text-md)">Never</div></div>
+            <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:4px">Writes anything</div><div style="font-size:var(--text-md);font-weight:600;color:var(--text-positive)">No</div></div>
+          </div>
+          <div style="margin-top:16px">
+            <div style="font-size:var(--text-sm);font-weight:600;margin-bottom:6px">What it asks for</div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap">
+              <sc-for list="{{ scopes }}" as="s" hint-placeholder-count="4">
+                <span style="font-family:var(--font-mono);font-size:var(--text-xs);background:var(--navy-50);color:var(--navy-500);padding:3px 10px;border-radius:var(--radius-pill)">{{ s }}</span>
+              </sc-for>
+            </div>
+          </div>
+          <div style="margin-top:12px;font-size:var(--text-sm);color:var(--text-secondary)">Google expires the refresh token every seven days while the app is in Testing mode. Reconnecting takes a few seconds and is expected, not a fault.</div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ showAsana }}" hint-placeholder-val="{{ false }}">
+        <div style="padding:24px;background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-lg);box-shadow:var(--shadow-card)">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
+            <h2 style="font-size:var(--text-lg);font-weight:700;margin:0">Asana</h2>
+            <span style="background:var(--gold-100);color:var(--gold-600);font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;padding:3px 10px;border-radius:var(--radius-pill)">Token not set</span>
+          </div>
+          <div style="font-size:var(--text-sm);color:var(--text-secondary);margin-bottom:16px">Push on demand, and pull changes back by running a sync.</div>
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px">
+            <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:4px">Token</div><div style="font-size:var(--text-md);font-weight:600">Not set</div></div>
+            <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:4px">Workspace</div><div style="font-size:var(--text-md);font-weight:600">Not chosen</div></div>
+            <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:4px">Project</div><div style="font-size:var(--text-md);font-weight:600">None</div></div>
+            <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:4px">Pushing</div><div style="font-size:var(--text-md);font-weight:600;color:var(--text-warn)">Unavailable</div></div>
+          </div>
+          <div style="margin-top:16px;padding:10px 14px;background:var(--surface-callout);border:1px solid var(--border-thin);border-radius:var(--radius-sm);font-size:var(--text-sm);line-height:1.6">No Asana token is configured. Set one with <code style="font-family:var(--font-mono);font-size:var(--text-xs);background:var(--navy-50);padding:2px 6px;border-radius:4px">wrangler secret put ASANA_TOKEN</code>, redeploy, then reload this page. Everything else in the app works without it; only the push is unavailable.</div>
+        </div>
+        <div style="padding:24px;background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-lg);box-shadow:var(--shadow-card)">
+          <h2 style="font-size:var(--text-lg);font-weight:700;margin:0 0 4px">Asana sync</h2>
+          <div style="font-size:var(--text-sm);color:var(--text-secondary);margin-bottom:16px">Polling only. Run it when you want it; nothing runs on a schedule.</div>
+          <div style="display:flex;align-items:center;gap:12px">
+            <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="primary" disabled="{{ true }}" on-click="{{ noop }}" hint-size="auto,38px">Sync now</x-import>
+            <span style="font-size:var(--text-sm);color:var(--text-secondary)">ASANA_TOKEN is not set on the Worker.</span>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-top:20px;padding-top:16px;border-top:1px solid var(--border-thin)">
+            <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:4px">Linked items</div><div style="font-family:var(--font-mono);font-size:var(--text-lg)">0</div></div>
+            <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:4px">Last sync</div><div style="font-family:var(--font-mono);font-size:var(--text-lg)">Never</div></div>
+            <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:4px">Never reconciled</div><div style="font-family:var(--font-mono);font-size:var(--text-lg)">0</div></div>
+            <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:4px">Needing a look</div><div style="font-family:var(--font-mono);font-size:var(--text-lg)">0</div></div>
+          </div>
+          <div style="margin-top:12px;font-size:var(--text-sm);color:var(--text-secondary)">A poll asks Asana what changed. It cannot report a task that is gone, so links Asana has not confirmed in 7 days are checked one by one.</div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ showMail }}" hint-placeholder-val="{{ false }}">
+        <div style="padding:24px;background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-lg);box-shadow:var(--shadow-card)">
+          <h2 style="font-size:var(--text-lg);font-weight:700;margin:0 0 4px">Mail</h2>
+          <div style="font-size:var(--text-sm);color:var(--text-secondary);margin-bottom:12px">Reading only. Nothing is ever sent, drafted or labelled.</div>
+          <div style="font-size:var(--text-base)">Connect a Google account to read mail.</div>
+          <div style="display:flex;align-items:center;gap:12px;margin-top:16px;padding:12px 16px;background:var(--surface-callout);border:1px solid var(--border-thin);border-radius:var(--radius-md)">
+            <span style="flex:1;font-size:var(--text-sm)">192 threads have no triage yet. Summarise reads them and sorts them into Urgent, Important, Routine and Noise.</span>
+            <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="primary" size="sm" on-click="{{ summarise }}" hint-size="auto,32px">{{ summariseLabel }}</x-import>
+          </div>
+          <div style="display:flex;align-items:center;gap:16px;padding:14px 0;margin-top:8px;border-top:1px solid var(--border-thin)">
+            <div style="flex:1"><div style="font-size:var(--text-base);font-weight:500">Default tab</div><div style="font-size:var(--text-sm);color:var(--text-secondary);margin-top:2px">Which view the Mail page opens on.</div></div>
+            <div style="width:200px"><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Select" options="{{ mailTabs }}" hint-size="200px,38px"></x-import></div>
+          </div>
+          <sc-for list="{{ mailToggles }}" as="t" hint-placeholder-count="2">
+            <div style="display:flex;align-items:center;gap:16px;padding:14px 0;border-top:1px solid var(--border-thin)">
+              <div style="flex:1"><div style="font-size:var(--text-base);font-weight:500">{{ t.label }}</div><div style="font-size:var(--text-sm);color:var(--text-secondary);margin-top:2px">{{ t.desc }}</div></div>
+              <button sc-camel-on-click="{{ t.toggle }}" title="Toggle" style="width:38px;height:22px;flex-shrink:0;border-radius:var(--radius-pill);border:none;cursor:pointer;background:{{ t.bg }};position:relative;transition:background-color var(--transition-base)">
+                <span style="position:absolute;top:3px;left:{{ t.knob }}px;width:16px;height:16px;border-radius:50%;background:#FFFFFF;box-shadow:0 1px 2px rgba(0,0,0,.2);transition:left var(--transition-base)"></span>
+              </button>
+            </div>
+          </sc-for>
+        </div>
+        <div style="padding:24px;background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-lg);box-shadow:var(--shadow-card)">
+          <h2 style="font-size:var(--text-lg);font-weight:700;margin:0 0 4px">Calendars</h2>
+          <div style="font-size:var(--text-sm);color:var(--text-secondary);margin-bottom:16px">Nothing syncs until you choose it.</div>
+          <div style="display:flex;align-items:center;gap:12px">
+            <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="secondary" on-click="{{ noop }}" hint-size="auto,38px">Find calendars</x-import>
+            <span style="font-size:var(--text-sm);color:var(--text-secondary)">No calendars found yet. Press Find calendars.</span>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ showAi }}" hint-placeholder-val="{{ false }}">
+        <div style="padding:24px;background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-lg);box-shadow:var(--shadow-card)">
+          <h2 style="font-size:var(--text-lg);font-weight:700;margin:0 0 4px">What the AI has spent</h2>
+          <div style="font-size:var(--text-sm);color:var(--text-secondary);margin-bottom:16px">Measured, not estimated.</div>
+          <div style="padding:12px 16px;background:var(--surface-callout);border:1px solid var(--border-thin);border-radius:var(--radius-md);font-size:var(--text-sm)">Could not read usage.</div>
+          <div style="display:flex;align-items:center;gap:16px;padding:14px 0;margin-top:8px;border-top:1px solid var(--border-thin)">
+            <div style="flex:1"><div style="font-size:var(--text-base);font-weight:500">Model</div><div style="font-size:var(--text-sm);color:var(--text-secondary);margin-top:2px">Used for summaries, triage and reply drafts.</div></div>
+            <span style="font-family:var(--font-mono);font-size:var(--text-sm);background:var(--navy-50);color:var(--navy-500);padding:4px 12px;border-radius:var(--radius-pill)">claude-sonnet-5</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:16px;padding:14px 0;border-top:1px solid var(--border-thin)">
+            <div style="flex:1"><div style="font-size:var(--text-base);font-weight:500">Monthly spend alert</div><div style="font-size:var(--text-sm);color:var(--text-secondary);margin-top:2px">Shows a warning on the dashboard past this amount. It never blocks a run.</div></div>
+            <div style="width:140px"><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Input" default-value="$20.00" mono="{{ true }}" style="{{ rightAlign }}" hint-size="140px,38px"></x-import></div>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ showData }}" hint-placeholder-val="{{ false }}">
+        <div style="padding:24px;background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-lg);box-shadow:var(--shadow-card)">
+          <h2 style="font-size:var(--text-lg);font-weight:700;margin:0 0 4px">Data</h2>
+          <div style="font-size:var(--text-sm);color:var(--text-secondary);margin-bottom:16px">Everything here is yours to take out. Exports include all records, not a sample.</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="secondary" size="sm" on-click="{{ noop }}" hint-size="auto,32px">Export everything (JSON)</x-import>
+            <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="secondary" size="sm" on-click="{{ noop }}" hint-size="auto,32px">Export mail threads (CSV)</x-import>
+            <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="secondary" size="sm" on-click="{{ noop }}" hint-size="auto,32px">Export invoices (CSV)</x-import>
+          </div>
+          <div style="display:flex;align-items:center;gap:16px;padding:14px 0;margin-top:16px;border-top:1px solid var(--border-thin)">
+            <div style="flex:1"><div style="font-size:var(--text-base);font-weight:500">Clear cached mail on this device</div><div style="font-size:var(--text-sm);color:var(--text-secondary);margin-top:2px">Removes the local copy only. Gmail is untouched and the next read rebuilds it.</div></div>
+            <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="secondary" size="sm" on-click="{{ noop }}" hint-size="auto,32px">Clear cache</x-import>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ showShortcuts }}" hint-placeholder-val="{{ false }}">
+        <div style="padding:24px;background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-lg);box-shadow:var(--shadow-card)">
+          <h2 style="font-size:var(--text-lg);font-weight:700;margin:0 0 4px">Keyboard shortcuts</h2>
+          <div style="font-size:var(--text-sm);color:var(--text-secondary);margin-bottom:12px">Keyboard first. These work everywhere.</div>
+          <sc-for list="{{ shortcuts }}" as="k" hint-placeholder-count="6">
+            <div style="display:flex;align-items:center;gap:16px;padding:10px 0;border-top:1px solid var(--border-thin)">
+              <span style="flex:1;font-size:var(--text-base)">{{ k.what }}</span>
+              <span style="font-family:var(--font-mono);font-size:var(--text-xs);background:var(--navy-50);color:var(--navy-500);padding:3px 10px;border-radius:6px;border:1px solid var(--navy-100)">{{ k.key }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+
+      </div>
+    </div>
+  </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script="" data-props="{}">
+class Component extends DCLogic {
+  state = { section: 'general', density: 'comfortable', saved: false, summarised: false,
+    toggles: { digest: true, overdue: true, atrisk: true, needsyou: false, zebra: false, gists: true, autoarch: false, latefee: true, autonumber: true, rollover: true, autodone: false, carry: true, confirmdone: false } };
+
+  flip(key) { this.setState(s => ({ toggles: { ...s.toggles, [key]: !s.toggles[key] } })); }
+  tgl(key, label, desc) {
+    const on = this.state.toggles[key];
+    return { label, desc, bg: on ? 'var(--navy)' : 'var(--border-strong)', knob: on ? 19 : 3, toggle: () => this.flip(key) };
+  }
+
+  renderVals() {
+    const s = this.state;
+    const navItems = ['Dashboard', 'Action items', 'Projects', 'Meetings', 'SOPs', 'Templates', 'Clients', 'Mail', 'Invoicing', 'Reports', 'Settings']
+      .map(l => ({ id: l.toLowerCase().replace(' ', '-'), label: l }));
+    const GROUPS = [
+      ['Workspace', [['general', 'General'], ['notifications', 'Notifications'], ['appearance', 'Appearance'], ['security', 'Security']]],
+      ['Business', [['invoicing', 'Invoicing'], ['projects', 'Projects'], ['actions', 'Action items']]],
+      ['Integrations', [['connections', 'Connections'], ['asana', 'Asana'], ['mail', 'Mail and calendars', '192']]],
+      ['System', [['ai', 'AI usage'], ['data', 'Data'], ['shortcuts', 'Keyboard shortcuts']]]
+    ];
+    const navGroups = GROUPS.map(([label, items]) => ({
+      label,
+      items: items.map(([id, l, attention]) => {
+        const active = s.section === id;
+        return { label: l, attention: attention || false,
+          bg: active ? 'var(--navy-100)' : 'transparent', fg: active ? 'var(--navy)' : 'var(--muted)',
+          weight: active ? 600 : 400, hoverBg: active ? 'var(--navy-100)' : 'var(--surface-hover)',
+          pick: () => this.setState({ section: id }) };
+      })
+    }));
+    return {
+      navItems, navGroups, noop: () => {},
+      showGeneral: s.section === 'general', showNotifications: s.section === 'notifications',
+      showAppearance: s.section === 'appearance', showConnections: s.section === 'connections',
+      showAsana: s.section === 'asana', showMail: s.section === 'mail',
+      showAi: s.section === 'ai', showData: s.section === 'data', showShortcuts: s.section === 'shortcuts',
+      showSecurity: s.section === 'security', showInvoicing: s.section === 'invoicing',
+      showProjects: s.section === 'projects', showActions: s.section === 'actions',
+      sessionOpts: ['30 days', '7 days', '24 hours'],
+      termsOpts: ['Net 15', 'Net 7', 'Net 30', 'Due on receipt'],
+      bankOpts: ['Show on every invoice', 'Only when asked', 'Never'],
+      invToggles: [
+        this.tgl('latefee', 'Late reminder note', 'Adds a plain reminder line to invoices past due.'),
+        this.tgl('autonumber', 'Automatic numbering', 'Next number increments on its own. Turn off to type numbers by hand.')
+      ],
+      riskOpts: ['7 days', '5 days', '14 days'],
+      projToggles: [
+        this.tgl('rollover', 'Roll overdue items into Today', 'Anything past due shows on the Today view until done.'),
+        this.tgl('autodone', 'Close projects when all items are done', 'Marks the project done instead of leaving it open.')
+      ],
+      dueOpts: ['Today', 'Tomorrow', 'No date'],
+      snoozeOpts: ['Tomorrow, next week', 'Tomorrow, 3 days, next week'],
+      actionToggles: [
+        this.tgl('carry', 'Carry unfinished items forward', 'Unfinished items move to the next day instead of going stale.'),
+        this.tgl('confirmdone', 'Confirm before marking done', 'One extra click. Prevents accidental completes in tables.')
+      ],
+      tzOptions: ['Asia/Manila (GMT+8)', 'America/New_York (GMT-4)', 'Europe/London (GMT+1)'],
+      dateOptions: ['Aug 30, 2026', '30 Aug 2026', '2026-08-30'],
+      currencyOptions: ['PHP', 'USD', 'EUR'],
+      weekOptions: ['Monday', 'Sunday'],
+      saveLabel: s.saved ? 'Saved' : 'Save changes',
+      save: () => { this.setState({ saved: true }); setTimeout(() => this.setState({ saved: false }), 1500); },
+      notifToggles: [
+        this.tgl('digest', 'Morning digest', 'One card on the dashboard at 7:00 AM with what will slip today.'),
+        this.tgl('overdue', 'Overdue invoice alerts', 'Badge when an invoice passes its due date.'),
+        this.tgl('atrisk', 'At-risk project alerts', 'Badge when a project turns at risk or blocked.'),
+        this.tgl('needsyou', 'Mail needs-you alerts', 'Badge when triage puts a thread in Needs you.')
+      ],
+      quietFrom: ['10:00 PM', '9:00 PM', '11:00 PM'], quietTo: ['7:00 AM', '6:00 AM', '8:00 AM'],
+      densityOpts: ['comfortable', 'compact'].map(d => ({
+        label: d.charAt(0).toUpperCase() + d.slice(1),
+        bg: s.density === d ? 'var(--navy)' : 'transparent', fg: s.density === d ? '#FFFFFF' : 'var(--ink)',
+        pick: () => this.setState({ density: d })
+      })),
+      startPages: ['Dashboard', 'Action items', 'Mail', 'Projects'],
+      apprToggles: [this.tgl('zebra', 'Zebra rows in tables', 'Alternating row tint for long tables. Off by default.')],
+      scopes: ['calendar.readonly', 'gmail.readonly', 'openid', 'email'],
+      summariseLabel: s.summarised ? 'Summarising, check Mail in a minute' : 'Summarise now',
+      summarise: () => this.setState({ summarised: true }),
+      mailTabs: ['Needs you', 'Urgent', 'Important', 'Everything'],
+      mailToggles: [
+        this.tgl('gists', 'Show gists in the list', 'The one-line AI summary under each subject.'),
+        this.tgl('autoarch', 'Auto-archive noise older than 30 days', 'Files it here only. Gmail is untouched.')
+      ],
+      rightAlign: { textAlign: 'right' },
+      shortcuts: [
+        { what: 'Quick add', key: 'N' }, { what: 'Search', key: '/' },
+        { what: 'Go to Mail', key: 'G then M' }, { what: 'Go to Dashboard', key: 'G then D' },
+        { what: 'Archive thread', key: 'E' }, { what: 'Reply to thread', key: 'R' },
+        { what: 'Next / previous thread', key: 'J / K' }, { what: 'Show shortcuts', key: '?' }
+      ]
+    };
+  }
+}
+</script>
+
+
+</body></html>

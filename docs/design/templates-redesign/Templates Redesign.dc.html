@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="../support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/tokens/fonts.css">
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/tokens/colors.css">
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/tokens/typography.css">
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/tokens/spacing.css">
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/tokens/effects.css">
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/tokens/base.css">
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/styles.css">
+  <script src="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/_ds_bundle.js"></script>
+  <style>
+    body{margin:0;background:var(--surface-page);}
+    a{color:var(--text-link);} a:hover{color:var(--navy);}
+  </style>
+</helmet>
+<div style="display:flex;min-height:100vh;font-family:var(--font-sans);color:var(--text-body)">
+  <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Sidebar" items="{{ navItems }}" active-id="templates" on-quick-add="{{ noop }}" hint-size="224px,100%" style="height:100vh;position:sticky;top:0"></x-import>
+  <main style="flex:1;height:100vh;overflow-y:auto;box-sizing:border-box">
+  <div style="padding:32px 48px 64px;box-sizing:border-box">
+
+    <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap">
+      <div>
+        <h1 style="font-size:var(--text-2xl);font-weight:700;margin:0 0 6px">Templates</h1>
+        <div style="font-size:var(--text-sm);color:var(--text-secondary)">One library for everything reusable: reply patterns, PM and financial reports, performance, time, ticket and client trackers.</div>
+      </div>
+      <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="primary" on-click="{{ openNew }}" hint-size="auto,38px">New template</x-import>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-top:20px">
+      <sc-for list="{{ kpis }}" as="k" hint-placeholder-count="4">
+        <div style="min-width:0;padding:13px 16px;background:var(--surface-card);border:1px solid var(--border-thin);border-left:3px solid {{ k.accent }};border-radius:var(--radius-md);box-shadow:var(--shadow-card)">
+          <div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ k.label }}</div>
+          <div style="font-family:var(--font-mono);font-size:var(--text-xl);margin:6px 0 4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ k.value }}</div>
+          <div style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ k.sub }}</div>
+        </div>
+      </sc-for>
+    </div>
+
+    <div style="display:flex;gap:12px;margin-top:16px;align-items:center;flex-wrap:wrap">
+      <div style="display:flex;flex-wrap:wrap;gap:4px;padding:4px;max-width:100%;box-sizing:border-box;width:fit-content;background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-md);box-shadow:var(--shadow-card)">
+        <sc-for list="{{ tabs }}" as="tb" hint-placeholder-count="8">
+          <button sc-camel-on-click="{{ tb.pick }}" style="display:inline-flex;align-items:center;gap:8px;padding:7px 14px;border:none;border-radius:var(--radius-sm);cursor:pointer;white-space:nowrap;font-family:var(--font-sans);font-size:var(--text-base);font-weight:500;background:{{ tb.bg }};color:{{ tb.fg }};transition:background-color var(--transition-fast)" style-hover="background:{{ tb.hoverBg }}">{{ tb.label }}<span style="font-family:var(--font-mono);font-size:var(--text-xs);color:{{ tb.countFg }}">{{ tb.count }}</span></button>
+        </sc-for>
+      </div>
+      <div style="flex:1;min-width:240px">
+        <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Input" value="{{ search }}" sc-camel-on-change="{{ setSearch }}" placeholder="Search names, scenarios and body text. Filters as you type." hint-size="100%,38px"></x-import>
+      </div>
+    </div>
+
+    <div style="margin-top:16px;background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-lg);box-shadow:var(--shadow-card);overflow:hidden">
+      <div style="overflow-x:auto">
+      <div style="min-width:860px">
+      <div style="display:grid;grid-template-columns:minmax(230px,1.4fr) 130px 110px 70px 110px 110px 150px;gap:12px;padding:10px 20px;background:var(--surface-row-alt);font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary)">
+        <span>Template</span><span>Category</span><span>Output</span><span style="text-align:right">Used</span><span>Last used</span><span>Owner</span><span></span>
+      </div>
+      <sc-for list="{{ rows }}" as="t" hint-placeholder-count="8">
+        <div style="border-top:1px solid var(--border-thin)">
+          <div sc-camel-on-click="{{ t.toggle }}" style="display:grid;grid-template-columns:minmax(230px,1.4fr) 130px 110px 70px 110px 110px 150px;gap:12px;align-items:center;padding:12px 20px;cursor:pointer;background:{{ t.bg }};transition:background-color var(--transition-fast)" style-hover="background:var(--surface-hover)">
+            <span style="min-width:0">
+              <span style="display:block;font-weight:600;font-size:var(--text-md);color:var(--text-link);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ t.name }}</span>
+              <span style="display:block;font-size:var(--text-xs);color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px">{{ t.scenario }}</span>
+            </span>
+            <span><span style="background:{{ t.catBg }};color:{{ t.catFg }};font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;padding:2px 8px;border-radius:var(--radius-pill);white-space:nowrap">{{ t.cat }}</span></span>
+            <span style="font-family:var(--font-mono);font-size:var(--text-xs)">{{ t.output }}</span>
+            <span style="font-family:var(--font-mono);font-size:var(--text-sm);text-align:right">{{ t.used }}</span>
+            <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary)">{{ t.lastUsed }}</span>
+            <span style="font-size:var(--text-sm);color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ t.owner }}</span>
+            <span style="display:flex;gap:6px;justify-content:flex-end">
+              <button sc-camel-on-click="{{ t.use }}" style="padding:4px 12px;background:var(--navy);border:1px solid var(--navy);border-radius:var(--radius-pill);cursor:pointer;font-family:var(--font-sans);font-size:var(--text-xs);font-weight:500;color:#FFFFFF;transition:background-color var(--transition-fast)" style-hover="background:var(--navy-700)">{{ t.useLabel }}</button>
+              <button sc-camel-on-click="{{ t.dup }}" title="Duplicate" style="padding:4px 10px;background:var(--surface-card);border:1px solid var(--border-strong);border-radius:var(--radius-pill);cursor:pointer;font-family:var(--font-sans);font-size:var(--text-xs);font-weight:500;color:var(--navy-700);transition:background-color var(--transition-fast)" style-hover="background:var(--navy-50)">Copy</button>
+            </span>
+          </div>
+          <sc-if value="{{ t.open }}" hint-placeholder-val="{{ false }}">
+            <div style="padding:16px 20px 20px;background:var(--surface-row-alt);border-top:1px solid var(--border-thin)">
+              <div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Skeleton</div>
+              <div style="padding:12px 14px;background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-sm);font-size:var(--text-sm);line-height:1.6;white-space:pre-line">{{ t.body }}</div>
+              <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px 16px;margin-top:14px">
+                <sc-for list="{{ t.inputs }}" as="inp" hint-placeholder-count="3">
+                  <div>
+                    <div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">{{ inp.label }}</div>
+                    <sc-if value="{{ inp.isSelect }}" hint-placeholder-val="{{ false }}">
+                      <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Select" options="{{ inp.options }}" value="{{ inp.value }}" sc-camel-on-change="{{ inp.set }}" hint-size="100%,38px"></x-import>
+                    </sc-if>
+                    <sc-if value="{{ inp.isText }}" hint-placeholder-val="{{ true }}">
+                      <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Input" value="{{ inp.value }}" sc-camel-on-change="{{ inp.set }}" placeholder="{{ inp.ph }}" hint-size="100%,38px"></x-import>
+                    </sc-if>
+                  </div>
+                </sc-for>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;margin-top:14px">
+                <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="primary" size="sm" on-click="{{ t.generate }}" hint-size="auto,32px">{{ t.genLabel }}</x-import>
+                <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="ghost" size="sm" on-click="{{ noop }}" hint-size="auto,32px">Edit template</x-import>
+                <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="ghost" size="sm" on-click="{{ t.archive }}" hint-size="auto,32px">Archive</x-import>
+              </div>
+              <sc-if value="{{ t.hasResult }}" hint-placeholder-val="{{ false }}">
+                <div style="margin-top:14px;padding:14px 16px;background:var(--surface-callout);border:1px solid var(--border-thin);border-radius:var(--radius-md)">
+                  <div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">{{ t.resultLabel }}</div>
+                  <div style="font-size:var(--text-sm);line-height:1.7;white-space:pre-line">{{ t.result }}</div>
+                </div>
+              </sc-if>
+            </div>
+          </sc-if>
+        </div>
+      </sc-for>
+      <sc-if value="{{ rowsEmpty }}" hint-placeholder-val="{{ false }}">
+        <div style="padding:40px 20px;text-align:center;font-size:var(--text-base);color:var(--text-secondary);border-top:1px solid var(--border-thin)">No templates match. Clear the search or pick another category.</div>
+      </sc-if>
+      </div>
+      </div>
+    </div>
+
+  <sc-if value="{{ newOpen }}" hint-placeholder-val="{{ false }}">
+    <div sc-camel-on-click="{{ closeNew }}" style="position:fixed;inset:0;z-index:80;background:rgba(16,42,76,.38)"></div>
+    <div style="position:fixed;top:6vh;left:50%;transform:translateX(-50%);z-index:90;width:min(680px,92vw);max-height:86vh;overflow-y:auto;background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-lg);box-shadow:var(--shadow-pop);padding:24px 28px;box-sizing:border-box">
+      <div style="display:flex;align-items:center;gap:10px">
+        <h2 style="font-size:var(--text-lg);font-weight:700;margin:0">New template</h2>
+        <span style="flex:1"></span>
+        <button sc-camel-on-click="{{ closeNew }}" title="Close" style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;background:transparent;border:none;border-radius:var(--radius-sm);cursor:pointer;color:var(--muted);transition:background-color var(--transition-fast)" style-hover="background:var(--surface-hover)"><svg width="15" height="15" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"></path></svg></button>
+      </div>
+      <div style="margin-top:16px">
+        <div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Name</div>
+        <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Input" value="{{ ntName }}" sc-camel-on-change="{{ setNtName }}" placeholder="Monthly client performance report" hint-size="100%,38px"></x-import>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px 16px;margin-top:14px">
+        <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Category</div><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Select" options="{{ catOpts }}" value="{{ ntCat }}" sc-camel-on-change="{{ setNtCat }}" hint-size="100%,38px"></x-import></div>
+        <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Output</div><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Select" options="{{ outOpts }}" value="{{ ntOut }}" sc-camel-on-change="{{ setNtOut }}" hint-size="100%,38px"></x-import></div>
+        <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Owner</div><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Select" options="{{ ownerOpts }}" value="{{ ntOwner }}" sc-camel-on-change="{{ setNtOwner }}" hint-size="100%,38px"></x-import></div>
+        <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Audience</div><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Select" options="{{ audOpts }}" value="{{ ntAud }}" sc-camel-on-change="{{ setNtAud }}" hint-size="100%,38px"></x-import></div>
+        <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Cadence</div><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Select" options="{{ cadOpts }}" value="{{ ntCad }}" sc-camel-on-change="{{ setNtCad }}" hint-size="100%,38px"></x-import></div>
+      </div>
+      <div style="margin-top:14px">
+        <div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">When to use it</div>
+        <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Input" value="{{ ntWhen }}" sc-camel-on-change="{{ setNtWhen }}" placeholder="Every month end, per active client" hint-size="100%,38px"></x-import>
+      </div>
+      <div style="margin-top:14px">
+        <div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Skeleton</div>
+        <div style="border:1px solid var(--border-strong);border-radius:var(--radius-sm);overflow:hidden">
+          <div style="display:flex;gap:2px;padding:6px 8px;background:var(--surface-row-alt);border-bottom:1px solid var(--border-thin)">
+            <sc-for list="{{ fmtButtons }}" as="fb" hint-placeholder-count="8">
+              <button sc-camel-on-click="{{ fb.pick }}" title="{{ fb.tip }}" style="display:inline-flex;align-items:center;justify-content:center;min-width:28px;height:26px;padding:0 7px;background:transparent;border:none;border-radius:var(--radius-sm);cursor:pointer;font-family:var(--font-mono);font-size:var(--text-sm);font-weight:{{ fb.w }};font-style:{{ fb.fs }};color:var(--ink);transition:background-color var(--transition-fast)" style-hover="background:var(--navy-50)">{{ fb.label }}</button>
+            </sc-for>
+            <span style="flex:1"></span>
+            <span style="align-self:center;font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary)">Rich text</span>
+          </div>
+          <div id="tpl-desc" sc-camel-content-editable="{{ true }}" style="display:block;width:100%;box-sizing:border-box;min-height:140px;padding:12px 14px;font-family:var(--font-sans);font-size:var(--text-sm);line-height:1.6;color:var(--ink);background:var(--surface-card);outline:none"></div>
+        </div>
+        <div style="margin-top:6px;font-size:var(--text-xs);color:var(--text-secondary)">Square brackets mark the holes the generator fills, like [client] or [period].</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:18px">
+        <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="primary" size="sm" on-click="{{ createTpl }}" hint-size="auto,32px">Create template</x-import>
+        <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="ghost" size="sm" on-click="{{ closeNew }}" hint-size="auto,32px">Cancel</x-import>
+        <span style="font-size:var(--text-sm);color:var(--text-secondary)">{{ ntHint }}</span>
+      </div>
+    </div>
+  </sc-if>
+
+  </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script="" data-props="{}">
+class Component extends DCLogic {
+  CATS = { Replies: ['var(--navy-50)', 'var(--navy-500)'], 'PM reports': ['var(--navy-100)', 'var(--navy)'], 'Financial reports': ['var(--chip-ontrack-bg)', 'var(--chip-ontrack-fg)'], Performance: ['var(--gold-100)', 'var(--gold-600)'], 'Time tracking': ['#F0EFEA', 'var(--muted)'], Tickets: ['#F9E2DE', '#A2311F'], Clients: ['var(--surface-callout)', 'var(--gold-600)'] };
+  OWNERS = ['Paul', 'Rue Mbeki', 'Sofia Okafor', 'Mei Bianchi'];
+
+  TPLS = [
+    { name: 'Escalation summary', cat: 'Replies', output: 'Email', used: 31, last: 'Aug 29', owner: 'Paul', scenario: 'When something needs a partner decision',
+      body: 'Summary of [issue]. What happened. What it affects. What I have tried. What I need decided.',
+      inputs: [['Situation', 'text', 'Meridian asked to push the phase review by two weeks.'], ['Writing to', 'text', 'Dana at Meridian']],
+      gen: (v) => 'Subject: Decision needed\n\nHi ' + (v['Writing to'] || '[recipient]') + ',\n\n' + (v['Situation'] || '[issue]') + '\n\nWhat it affects: the current phase timeline. What I have tried: rescheduling within the same week. What I need decided: whether we absorb the slip or re-baseline.\n\nBest,\nPaul' },
+    { name: 'Weekly project status report', cat: 'PM reports', output: 'Document', used: 48, last: 'Aug 28', owner: 'Paul', scenario: 'Every Friday, per active project',
+      body: '[project] status for [week]. Progress, milestones hit, risks, next week, asks.',
+      inputs: [['Project', 'select', ['Dunmore data warehouse', 'Fairwater reporting pack', 'Beacon quarterly review']], ['Week', 'text', 'Aug 25 to 29']],
+      gen: (v) => (v['Project'] || '[project]') + ', status for ' + (v['Week'] || '[week]') + '\n\nProgress: 58%, up 6 points. Milestones: pipelines live. Risks: evidence pack is late, gold. Next week: publish revised timeline. Asks: client data export sign off.' },
+    { name: 'Project closeout report', cat: 'PM reports', output: 'Document', used: 9, last: 'Aug 14', owner: 'Sofia Okafor', scenario: 'When an engagement ends',
+      body: 'What was delivered against [scope]. Timeline, budget, lessons, open items handed over.',
+      inputs: [['Project', 'select', ['Lyndhurst capacity plan', 'Jarrow kickoff']]],
+      gen: (v) => (v['Project'] || '[project]') + ', closeout\n\nDelivered: all milestones. Timeline: closed 2 days early. Budget: $44,800 of $45,000. Lessons: earlier legal review. Handover: 1 open item to client ops.' },
+    { name: 'RAID log', cat: 'PM reports', output: 'Sheet', used: 22, last: 'Aug 27', owner: 'Paul', scenario: 'Risks, assumptions, issues, dependencies per project',
+      body: 'Rows of [type], description, owner, severity, mitigation, due.',
+      inputs: [['Project', 'select', ['Dunmore data warehouse', 'Brightmoor onboarding programme']]],
+      gen: (v) => 'RAID for ' + (v['Project'] || '[project]') + '\n\nRisk, nightly sync gap, Sofia, high, backfill job, Sep 2\nIssue, portal login fails, Dana, high, fix in progress, Sep 1\nDependency, client data export, Paul, medium, chased, Sep 2' },
+    { name: 'Monthly P&L summary', cat: 'Financial reports', output: 'Document', used: 12, last: 'Aug 1', owner: 'Paul', scenario: 'First working day after close',
+      body: 'Money in, money out, overhead share, net for [month], versus last month.',
+      inputs: [['Month', 'select', ['August 2026', 'July 2026']]],
+      gen: (v) => 'P&L, ' + (v['Month'] || '[month]') + '\n\nMoney in $18,182.00. Money out $1,734.60. Overhead 8.8% of out. Net $16,447.40, up $4,879.60 on the month before.' },
+    { name: 'AR aging report', cat: 'Financial reports', output: 'Sheet', used: 18, last: 'Aug 29', owner: 'Rue Mbeki', scenario: 'Weekly collections pass',
+      body: 'Open invoices by age bucket for [scope], with the reminder ladder stage.',
+      inputs: [['Scope', 'select', ['Every client', 'Overdue only']]],
+      gen: (v) => 'AR aging, ' + (v['Scope'] || '[scope]') + '\n\n0 to 30: $1,371,295.89, 114 invoices\n31 to 60: $534,089.54, 42\n61 to 90: $658,996.27, 48\n90 plus: $4,558,122.01, 362, ladder stage 4' },
+    { name: 'Invoice cover note', cat: 'Financial reports', output: 'Email', used: 40, last: 'Aug 30', owner: 'Paul', scenario: 'Sent with every invoice',
+      body: 'Short note for [client] with [invoice], amount, due date and payment details.',
+      inputs: [['Client', 'select', ['Marlowe & Finch', 'Uppingham Systems', 'Quenington Capital']], ['Invoice', 'text', 'INV-2041']],
+      gen: (v) => 'Hi ' + (v['Client'] || '[client]') + ',\n\nPlease find ' + (v['Invoice'] || '[invoice]') + ' attached. Amount and due date are on the invoice, payment details below. Shout if anything looks off.\n\nThanks,\nPaul' },
+    { name: 'Team performance snapshot', cat: 'Performance', output: 'Dashboard', used: 8, last: 'Aug 25', owner: 'Paul', scenario: 'Monthly, per contractor',
+      body: 'For [person] over [period]: items done, on-time rate, hours logged, tickets closed, notes.',
+      inputs: [['Person', 'select', ['Sofia Okafor', 'Rue Mbeki', 'Ethan Lindqvist']], ['Period', 'select', ['August 2026', 'July 2026']]],
+      gen: (v) => (v['Person'] || '[person]') + ', ' + (v['Period'] || '[period]') + '\n\nItems done 34, on time 91%. Hours logged 82.5. Tickets closed 6, none reopened. Note: strongest month on the Dunmore workstream.' },
+    { name: 'Utilization report', cat: 'Time tracking', output: 'Sheet', used: 15, last: 'Aug 28', owner: 'Paul', scenario: 'Weekly, billable versus not',
+      body: 'Hours by [person or client] for [period], billable share, versus target.',
+      inputs: [['Group by', 'select', ['Person', 'Client']], ['Period', 'text', 'Aug 24 to 30']],
+      gen: (v) => 'Utilization by ' + (v['Group by'] || '[group]').toLowerCase() + ', ' + (v['Period'] || '[period]') + '\n\nPaul 31.2 h, 74% billable, target 70%\nSofia 38.0 h, 88% billable\nEthan 22.5 h, 60% billable, below the 65% floor' },
+    { name: 'Timesheet reminder', cat: 'Time tracking', output: 'Email', used: 26, last: 'Aug 29', owner: 'Rue Mbeki', scenario: 'Friday afternoon nudge',
+      body: 'Short nudge to [person] listing missing days for [week].',
+      inputs: [['Person', 'select', ['Ethan Lindqvist', 'Sofia Okafor']], ['Week', 'text', 'Aug 24 to 28']],
+      gen: (v) => 'Hi ' + ((v['Person'] || '[person]').split(' ')[0]) + ',\n\nTimesheets for ' + (v['Week'] || '[week]') + ' are missing Wednesday and Thursday. Two minutes now saves the month end scramble.\n\nThanks!' },
+    { name: 'Ticket SLA report', cat: 'Tickets', output: 'Dashboard', used: 11, last: 'Aug 30', owner: 'Paul', scenario: 'Weekly, breaches and near misses',
+      body: 'Open tickets for [scope] with SLA state, breaches, aging and owner.',
+      inputs: [['Scope', 'select', ['Every project', 'Breaching only']]],
+      gen: (v) => 'Ticket SLA, ' + (v['Scope'] || '[scope]').toLowerCase() + '\n\nT-118 breach in 4h, Dana. T-121 breach in 9h, Rue. T-126 unassigned, high, 6h to breach. 9 open in total, 2 breaching, median age 3 days.' },
+    { name: 'Incident postmortem', cat: 'Tickets', output: 'Document', used: 4, last: 'Aug 6', owner: 'Mei Bianchi', scenario: 'After any client-facing incident',
+      body: 'What broke for [client], timeline, root cause, fix, what prevents a repeat.',
+      inputs: [['Ticket', 'text', 'T-118'], ['Client', 'text', 'Beacon Analytics']],
+      gen: (v) => 'Postmortem, ' + (v['Ticket'] || '[ticket]') + ' at ' + (v['Client'] || '[client]') + '\n\nWhat broke: portal login after the Aug 26 deploy. Timeline: reported 5:40 PM, fixed next day. Root cause: session config. Fix: rollback plus patch. Prevention: login check added to the deploy list.' },
+    { name: 'Client health review', cat: 'Clients', output: 'Document', used: 14, last: 'Aug 26', owner: 'Paul', scenario: 'Quarterly, per client',
+      body: 'For [client]: revenue, aging, open projects, tickets, sentiment, renewal risk.',
+      inputs: [['Client', 'select', ['Marlowe & Finch', 'Uppingham Systems', 'Cranleigh Group']]],
+      gen: (v) => 'Client health, ' + (v['Client'] || '[client]') + '\n\nRevenue YTD $128,400. Aging clean, nothing past due. Projects 2 on track. Tickets 1 open, low. Sentiment good, replies within a day. Renewal risk low.' },
+    { name: 'Client onboarding pack', cat: 'Clients', output: 'Document', used: 7, last: 'Aug 20', owner: 'Sofia Okafor', scenario: 'New client kickoff',
+      body: 'Welcome note for [client], ways of working, contacts, billing terms, first milestones.',
+      inputs: [['Client', 'text', 'Caldera'], ['PoC', 'text', 'Dana']],
+      gen: (v) => 'Welcome, ' + (v['Client'] || '[client]') + '\n\nHi ' + (v['PoC'] || '[PoC]') + ', here is how we work: weekly status every Friday, one tracker for actions, invoices monthly on Net 15. First milestones and contacts follow on the kickoff call.' }
+  ];
+
+  state = { tpls: this.TPLS.map(t => ({ ...t, archived: false })), tab: 'All', search: '', openIdx: null,
+    inputVals: {}, results: {}, newOpen: false, nt: {}, ntHint: '' };
+
+  execCmd(cmd, val) { const el = document.getElementById('tpl-desc'); if (!el) return; el.focus(); document.execCommand(cmd, false, val); }
+
+  renderVals() {
+    const s = this.state;
+    const navItems = ['Dashboard', 'Action items', 'Projects', 'Meetings', 'Calendar', 'SOPs', 'Templates', 'Clients', 'Mail', 'Invoicing', 'Ledger', 'Reports', 'Settings']
+      .map(l => ({ id: l.toLowerCase().replace(' ', '-'), label: l }));
+    const active = s.tpls.filter(t => !t.archived);
+    const catNames = Object.keys(this.CATS);
+    const kpis = [
+      { label: 'Templates', value: String(active.length), sub: catNames.length + ' categories', accent: 'var(--navy-500)' },
+      { label: 'Drafts generated', value: '61', sub: 'this month', accent: '#2E7D5B' },
+      { label: 'Most used', value: 'Status report', sub: '48 uses', accent: 'var(--gold-600)' },
+      { label: 'Archived', value: String(s.tpls.length - active.length), sub: 'recoverable', accent: 'var(--border-strong)' }
+    ];
+    const tabs = ['All'].concat(catNames).map(name => {
+      const activeTab = s.tab === name;
+      const count = name === 'All' ? active.length : active.filter(t => t.cat === name).length;
+      return { label: name, count: String(count),
+        bg: activeTab ? 'var(--navy)' : 'transparent', fg: activeTab ? '#FFFFFF' : 'var(--ink)',
+        countFg: activeTab ? 'var(--text-inverse-muted)' : 'var(--muted)', hoverBg: activeTab ? 'var(--navy)' : 'var(--navy-50)',
+        pick: () => this.setState({ tab: name, openIdx: null }) };
+    });
+    const q = s.search.trim().toLowerCase();
+    const rows = s.tpls.map((t, i) => ({ t, i }))
+      .filter(({ t }) => !t.archived && (s.tab === 'All' || t.cat === s.tab) &&
+        (!q || (t.name + ' ' + t.scenario + ' ' + t.body + ' ' + t.cat).toLowerCase().includes(q)))
+      .map(({ t, i }) => {
+        const [cb, cf] = this.CATS[t.cat];
+        const open = s.openIdx === i;
+        const vGet = (label) => (s.inputVals[i] || {})[label];
+        return { name: t.name, scenario: t.scenario, cat: t.cat, catBg: cb, catFg: cf, output: t.output,
+          used: String(t.used), lastUsed: t.last, owner: t.owner, open,
+          bg: open ? 'var(--surface-row-alt)' : 'transparent',
+          useLabel: t.output === 'Email' ? 'Draft it' : 'Generate',
+          genLabel: t.output === 'Email' ? 'Draft from this' : 'Generate ' + t.output.toLowerCase(),
+          body: t.body,
+          toggle: () => this.setState(x => ({ openIdx: x.openIdx === i ? null : i })),
+          use: (e) => { e.stopPropagation(); this.setState({ openIdx: i }); },
+          dup: (e) => { e.stopPropagation(); this.setState(x => ({ tpls: x.tpls.concat([{ ...t, name: t.name + ' copy', used: 0, last: 'never' }]) })); },
+          archive: () => this.setState(x => ({ tpls: x.tpls.map((y, j) => j === i ? { ...y, archived: true } : y), openIdx: null })),
+          inputs: t.inputs.map(([label, kind, arg]) => ({ label,
+            isSelect: kind === 'select', isText: kind === 'text',
+            options: kind === 'select' ? arg : [], ph: kind === 'text' ? arg : '',
+            value: vGet(label),
+            set: (e) => { const v = e.target.value; this.setState(x => ({ inputVals: { ...x.inputVals, [i]: { ...(x.inputVals[i] || {}), [label]: v } } })); } })),
+          generate: () => this.setState(x => ({ results: { ...x.results, [i]: t.gen(x.inputVals[i] || {}) },
+            tpls: x.tpls.map((y, j) => j === i ? { ...y, used: y.used + 1, last: 'Aug 31' } : y) })),
+          hasResult: !!s.results[i], result: s.results[i] || '',
+          resultLabel: 'Draft ' + t.output.toLowerCase() + ', copy it out to use it' };
+      });
+    const vals = { navItems, kpis, tabs, rows, rowsEmpty: rows.length === 0,
+      search: s.search, setSearch: (e) => this.setState({ search: e.target.value }),
+      noop: () => {},
+      newOpen: s.newOpen,
+      openNew: () => this.setState({ newOpen: true, nt: { name: '', cat: 'PM reports', out: 'Document', owner: 'Paul', aud: 'Client facing', cad: 'On demand', when: '' }, ntHint: '' }),
+      closeNew: () => this.setState({ newOpen: false }),
+      catOpts: catNames, outOpts: ['Document', 'Email', 'Sheet', 'Dashboard'],
+      ownerOpts: this.OWNERS, audOpts: ['Client facing', 'Internal', 'Partner facing'],
+      cadOpts: ['On demand', 'Weekly', 'Fortnightly', 'Monthly', 'Quarterly'],
+      ntHint: s.ntHint,
+      fmtButtons: [
+        { label: 'B', tip: 'Bold', w: 700, fs: 'normal', pick: () => this.execCmd('bold') },
+        { label: 'I', tip: 'Italic', w: 400, fs: 'italic', pick: () => this.execCmd('italic') },
+        { label: 'U', tip: 'Underline', w: 400, fs: 'normal', pick: () => this.execCmd('underline') },
+        { label: 'H2', tip: 'Heading', w: 700, fs: 'normal', pick: () => this.execCmd('formatBlock', 'h3') },
+        { label: '• list', tip: 'Bullet list', w: 400, fs: 'normal', pick: () => this.execCmd('insertUnorderedList') },
+        { label: '1. list', tip: 'Numbered list', w: 400, fs: 'normal', pick: () => this.execCmd('insertOrderedList') },
+        { label: '<>', tip: 'Code block', w: 400, fs: 'normal', pick: () => this.execCmd('formatBlock', 'pre') },
+        { label: 'link', tip: 'Link', w: 400, fs: 'normal', pick: () => { const u = prompt('Link URL'); if (u) this.execCmd('createLink', u); } },
+        { label: 'clear', tip: 'Clear formatting', w: 400, fs: 'normal', pick: () => this.execCmd('removeFormat') }
+      ],
+      createTpl: () => {
+        const n = s.nt;
+        if (!n.name || !n.name.trim()) { this.setState({ ntHint: 'A name is required.' }); return; }
+        const el = document.getElementById('tpl-desc');
+        const body = el && el.textContent.trim() ? el.textContent.trim() : 'Write the skeleton with [holes].';
+        this.setState(x => ({ tpls: [{ name: n.name.trim(), cat: n.cat, output: n.out, used: 0, last: 'never', owner: n.owner,
+          scenario: n.when || n.cad + ', ' + n.aud.toLowerCase(), body, archived: false,
+          inputs: (body.match(/\[([^\]]+)\]/g) || []).slice(0, 4).map(h => [h.slice(1, -1).replace(/^./, c => c.toUpperCase()), 'text', '']),
+          gen: (v) => body.replace(/\[([^\]]+)\]/g, (m, h) => v[h.replace(/^./, c => c.toUpperCase())] || m) }].concat(x.tpls),
+          newOpen: false, tab: n.cat }));
+      }
+    };
+    ['name', 'cat', 'out', 'owner', 'aud', 'cad', 'when'].forEach(k => {
+      const K = k.charAt(0).toUpperCase() + k.slice(1);
+      vals['nt' + K] = s.nt[k];
+      vals['setNt' + K] = (e) => this.setState(x => ({ nt: { ...x.nt, [k]: e.target.value } }));
+    });
+    return vals;
+  }
+}
+</script>
+
+
+</body></html>

@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="../support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/tokens/fonts.css">
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/tokens/colors.css">
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/tokens/typography.css">
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/tokens/spacing.css">
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/tokens/effects.css">
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/tokens/base.css">
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/styles.css">
+  <script src="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/_ds_bundle.js"></script>
+  <style>
+    body{margin:0;background:var(--surface-page);}
+    a{color:var(--text-link);} a:hover{color:var(--navy);}
+  </style>
+</helmet>
+<div style="display:flex;min-height:100vh;font-family:var(--font-sans);color:var(--text-body)">
+  <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Sidebar" items="{{ navItems }}" active-id="reports" on-quick-add="{{ noop }}" hint-size="224px,100%" style="height:100vh;position:sticky;top:0"></x-import>
+  <main style="flex:1;height:100vh;overflow-y:auto;box-sizing:border-box">
+  <div style="padding:32px 48px 64px;box-sizing:border-box">
+
+    <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap">
+      <div>
+        <h1 style="font-size:var(--text-2xl);font-weight:700;margin:0 0 6px">Reports</h1>
+        <div style="font-size:var(--text-sm);color:var(--text-secondary)">Each report is a live query. Nothing is stored, so every one is current when you open it.</div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="secondary" on-click="{{ noop }}" hint-size="auto,38px">Export CSV</x-import>
+        <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="secondary" on-click="{{ noop }}" hint-size="auto,38px">Download PDF</x-import>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:16px;margin-top:20px;align-items:flex-start;flex-wrap:wrap">
+
+      <div style="width:270px;flex-shrink:0;background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-lg);box-shadow:var(--shadow-card);overflow:hidden">
+        <sc-for list="{{ groups }}" as="g" hint-placeholder-count="2">
+          <div style="padding:12px 18px 4px;font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);border-top:1px solid var(--border-thin)">{{ g.label }}</div>
+          <sc-for list="{{ g.items }}" as="r" hint-placeholder-count="4">
+            <div sc-camel-on-click="{{ r.pick }}" style="padding:10px 18px;cursor:pointer;background:{{ r.bg }};border-left:3px solid {{ r.edge }};transition:background-color var(--transition-fast)" style-hover="background:var(--surface-hover)">
+              <div style="font-size:var(--text-sm);font-weight:{{ r.w }}">{{ r.name }}</div>
+              <div style="font-size:var(--text-xs);color:var(--text-secondary);margin-top:2px">{{ r.blurb }}</div>
+            </div>
+          </sc-for>
+        </sc-for>
+        <div style="padding:12px 18px;border-top:1px solid var(--border-thin);font-size:var(--text-xs);color:var(--text-secondary)">Partner time saved ships in v2, once there is a real baseline to measure against.</div>
+      </div>
+
+      <div style="flex:1;min-width:480px;background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-lg);box-shadow:var(--shadow-card);overflow:hidden">
+        <div style="display:flex;align-items:center;gap:10px;padding:16px 20px;flex-wrap:wrap">
+          <h2 style="font-size:var(--text-lg);font-weight:700;margin:0">{{ rep.name }}</h2>
+          <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary)">{{ rep.asOf }}</span>
+          <span style="flex:1"></span>
+          <sc-if value="{{ rep.hasPeriod }}" hint-placeholder-val="{{ true }}">
+            <div style="width:170px"><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Select" options="{{ periodOpts }}" value="{{ period }}" sc-camel-on-change="{{ setPeriod }}" hint-size="170px,36px"></x-import></div>
+          </sc-if>
+          <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="primary" size="sm" on-click="{{ runNow }}" hint-size="auto,32px">Run again</x-import>
+        </div>
+        <div style="padding:0 20px 16px;font-size:var(--text-sm);color:var(--text-secondary)">{{ rep.blurb }}</div>
+
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;padding:0 20px 16px">
+          <sc-for list="{{ repKpis }}" as="k" hint-placeholder-count="4">
+            <div style="min-width:0;padding:12px 14px;background:var(--surface-callout);border:1px solid var(--border-thin);border-radius:var(--radius-md)">
+              <div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ k.label }}</div>
+              <div style="font-family:var(--font-mono);font-size:var(--text-lg);margin-top:5px;color:{{ k.color }};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ k.value }}</div>
+            </div>
+          </sc-for>
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:14px;padding:0 20px 18px">
+          <sc-for list="{{ charts }}" as="ch" hint-placeholder-count="2">
+            <div style="min-width:0;border:1px solid var(--border-thin);border-radius:var(--radius-md);padding:14px 16px;box-sizing:border-box">
+              <div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:10px">{{ ch.title }}</div>
+              {{ ch.node }}
+              <div style="display:flex;gap:12px;margin-top:10px;flex-wrap:wrap">
+                <sc-for list="{{ ch.legend }}" as="lg" hint-placeholder-count="3">
+                  <span style="display:inline-flex;align-items:center;gap:6px;font-size:var(--text-xs);color:var(--text-secondary)"><span style="width:8px;height:8px;border-radius:50%;background:{{ lg.color }}"></span>{{ lg.label }}<span style="font-family:var(--font-mono)">{{ lg.value }}</span></span>
+                </sc-for>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+
+        <div style="overflow-x:auto">
+        <div style="min-width:640px">
+        <div style="display:grid;grid-template-columns:{{ repCols }};gap:12px;padding:8px 20px;background:var(--surface-row-alt);border-top:1px solid var(--border-thin);font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary)">
+          <sc-for list="{{ repHeaders }}" as="h" hint-placeholder-count="4">
+            <span style="text-align:{{ h.align }}">{{ h.label }}</span>
+          </sc-for>
+        </div>
+        <sc-for list="{{ repRows }}" as="row" hint-placeholder-count="7">
+          <div style="display:grid;grid-template-columns:{{ repCols }};gap:12px;align-items:center;padding:10px 20px;border-top:1px solid var(--border-thin);transition:background-color var(--transition-fast)" style-hover="background:var(--surface-hover)">
+            <sc-for list="{{ row.cells }}" as="c" hint-placeholder-count="4">
+              <span style="min-width:0;text-align:{{ c.align }}">
+                <sc-if value="{{ c.isChip }}" hint-placeholder-val="{{ false }}">
+                  <span style="background:{{ c.chipBg }};color:{{ c.chipFg }};font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;padding:2px 8px;border-radius:var(--radius-pill);white-space:nowrap">{{ c.text }}</span>
+                </sc-if>
+                <sc-if value="{{ c.isBar }}" hint-placeholder-val="{{ false }}">
+                  <span style="display:flex;align-items:center;gap:8px">
+                    <span style="flex:1;display:flex;height:6px;border-radius:var(--radius-pill);overflow:hidden;background:var(--surface-row-alt)"><span style="width:{{ c.w }};background:{{ c.barColor }}"></span></span>
+                    <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary);width:38px;text-align:right">{{ c.w }}</span>
+                  </span>
+                </sc-if>
+                <sc-if value="{{ c.isText }}" hint-placeholder-val="{{ true }}">
+                  <span style="display:block;font-size:var(--text-sm);font-weight:{{ c.wgt }};font-family:{{ c.font }};color:{{ c.color }};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ c.text }}</span>
+                </sc-if>
+              </span>
+            </sc-for>
+          </div>
+        </sc-for>
+        <div style="display:flex;justify-content:flex-end;gap:24px;padding:12px 20px;border-top:1px solid var(--border-strong);font-size:var(--text-sm)">
+          <span style="font-weight:700">{{ rep.footLabel }}</span>
+          <span style="font-family:var(--font-mono);font-weight:700">{{ rep.footValue }}</span>
+        </div>
+        </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script="" data-props="{}">
+class Component extends DCLogic {
+  CH = { overdue: ['var(--chip-overdue-bg)', 'var(--chip-overdue-fg)'], 'at risk': ['var(--chip-overdue-bg)', 'var(--chip-overdue-fg)'], blocked: ['#F9E2DE', '#A2311F'], 'on track': ['var(--chip-ontrack-bg)', 'var(--chip-ontrack-fg)'], waiting: ['var(--chip-waiting-bg)', 'var(--chip-waiting-fg)'], done: ['var(--chip-done-bg)', 'var(--chip-done-fg)'], open: ['var(--chip-open-bg)', 'var(--chip-open-fg)'], current: ['var(--chip-ontrack-bg)', 'var(--chip-ontrack-fg)'] };
+  t(text, o) { return { kind: 'text', text, ...o }; }
+  m(text, o) { return { kind: 'text', text, font: 'var(--font-mono)', align: 'right', ...o }; }
+  chip(text) { return { kind: 'chip', text }; }
+  bar(pct, color) { return { kind: 'bar', w: pct + '%', barColor: color || 'var(--navy-500)' }; }
+
+  REPORTS = [
+    { group: 'Snapshots', name: 'What is slipping', blurb: 'Everything overdue, at risk, or waiting on a decision, in one list.', hasPeriod: false,
+      kpis: [['Overdue items', '816', 'warn'], ['At risk projects', '3', 'warn'], ['Stalled decisions', '181', ''], ['Oldest', 'Jul 17', '']],
+      headers: [['Item', 'left', 'minmax(220px,1.6fr)'], ['Where', 'left', '150px'], ['Owner', 'left', '120px'], ['Age', 'right', '70px'], ['State', 'left', '100px']],
+      rows: [
+        [this.t('AI-2214 · Review the handover document', { wgt: 600 }), this.t('Orchard renewal'), this.t('Dana Okafor'), this.m('45d'), this.chip('overdue')],
+        [this.t('AI-2198 · Approve the vendor escalation', { wgt: 600 }), this.t('Tessellate review'), this.t('Mei Bianchi'), this.m('45d'), this.chip('overdue')],
+        [this.t('T-126 · Nightly sync misses late entries', { wgt: 600 }), this.t('Dunmore warehouse'), this.t('Unassigned'), this.m('1d'), this.chip('at risk')],
+        [this.t('Beacon quarterly review', { wgt: 600 }), this.t('Project'), this.t('Paul'), this.m('14d'), this.chip('blocked')],
+        [this.t('AI-2288 · Send the training deck', { wgt: 600 }), this.t('Ilkley rollout'), this.t('Sofia Okafor'), this.m('6d'), this.chip('waiting')]
+      ], foot: ['Items shown', '5 of 1,000'] },
+    { group: 'Snapshots', name: 'Project roll-up', blurb: 'Every project by phase and status, with its next milestone.', hasPeriod: false,
+      kpis: [['Active projects', '8', ''], ['On track', '4', 'good'], ['At risk or blocked', '3', 'warn'], ['Waiting', '1', '']],
+      headers: [['Project', 'left', 'minmax(200px,1.5fr)'], ['Phase', 'left', '110px'], ['Progress', 'left', 'minmax(140px,1fr)'], ['Next milestone', 'left', '160px'], ['Status', 'left', '100px']],
+      rows: [
+        [this.t('Orchard contract renewal', { wgt: 600 }), this.t('Executing'), this.bar(72, '#A2311F'), this.t('Final report, Sep 4'), this.chip('blocked')],
+        [this.t('Dunmore site build', { wgt: 600 }), this.t('Executing'), this.bar(45, 'var(--gold-600)'), this.t('Revised timeline, Sep 12'), this.chip('at risk')],
+        [this.t('Tewkesbury market study', { wgt: 600 }), this.t('Planning'), this.bar(38, 'var(--gold-600)'), this.t('Migration plan, Sep 9'), this.chip('at risk')],
+        [this.t('Fairwater cost review', { wgt: 600 }), this.t('Executing'), this.bar(61, '#2E7D5B'), this.t('Invoice batch, Sep 18'), this.chip('on track')],
+        [this.t('Quenington data warehouse', { wgt: 600 }), this.t('Monitoring'), this.bar(88, '#2E7D5B'), this.t('Risk register, Oct 16'), this.chip('on track')]
+      ], foot: ['Projects shown', '5 of 8'] },
+    { group: 'Date range', name: 'Billing and aging', blurb: 'Outstanding by client and by aging bucket, with unbilled periods.', hasPeriod: true,
+      kpis: [['Outstanding', '$7,122,503.71', 'warn'], ['Past due', '$6,382,885.73', 'warn'], ['Unbilled hours', '112.5', ''], ['Clients affected', '31', '']],
+      headers: [['Client', 'left', 'minmax(180px,1.4fr)'], ['0 to 30', 'right', '110px'], ['31 to 60', 'right', '110px'], ['61 plus', 'right', '110px'], ['Total', 'right', '120px']],
+      rows: [
+        [this.t('Oakhaven Labs', { wgt: 600 }), this.m('$0.00'), this.m('$0.00'), this.m('$22,800.00', { color: 'var(--text-warn)' }), this.m('$22,800.00', { wgt: 600 })],
+        [this.t('Aldgate Holdings', { wgt: 600 }), this.m('$24,360.00'), this.m('$14,570.00'), this.m('$120,145.31', { color: 'var(--text-warn)' }), this.m('$159,075.31', { wgt: 600 })],
+        [this.t('Brightmoor Logistics', { wgt: 600 }), this.m('$18,400.00'), this.m('$22,800.00'), this.m('$0.00'), this.m('$41,200.00', { wgt: 600 })],
+        [this.t('Cranleigh Group', { wgt: 600 }), this.m('$18,800.00'), this.m('$12,600.00'), this.m('$0.00'), this.m('$31,400.00', { wgt: 600 })],
+        [this.t('Beacon Analytics', { wgt: 600 }), this.m('$16,200.00'), this.m('$8,100.00'), this.m('$0.00'), this.m('$24,300.00', { wgt: 600 })]
+      ], foot: ['Total outstanding, shown clients', '$278,775.31'] },
+    { group: 'Date range', name: 'Action item completion', blurb: 'Completed against open, on-time rate, and average resolution time.', hasPeriod: true,
+      kpis: [['Completed', '212', 'good'], ['Opened', '187', ''], ['On time', '78%', ''], ['Avg resolution', '4.2 d', '']],
+      headers: [['Owner', 'left', 'minmax(160px,1.2fr)'], ['Done', 'right', '80px'], ['On time', 'left', 'minmax(140px,1fr)'], ['Avg days', 'right', '90px'], ['Open now', 'right', '90px']],
+      rows: [
+        [this.t('Paul', { wgt: 600 }), this.m('64'), this.bar(84, '#2E7D5B'), this.m('3.1'), this.m('212')],
+        [this.t('Sofia Okafor', { wgt: 600 }), this.m('51'), this.bar(91, '#2E7D5B'), this.m('2.8'), this.m('96')],
+        [this.t('Beatriz Haddad', { wgt: 600 }), this.m('38'), this.bar(72, 'var(--gold-600)'), this.m('5.0'), this.m('141')],
+        [this.t('Ethan Lindqvist', { wgt: 600 }), this.m('33'), this.bar(69, 'var(--gold-600)'), this.m('5.9'), this.m('118')],
+        [this.t('Rue Mbeki', { wgt: 600 }), this.m('26'), this.bar(88, '#2E7D5B'), this.m('3.4'), this.m('77')]
+      ], foot: ['Completed in period', '212'] },
+    { group: 'Date range', name: 'Profit and loss', blurb: 'What came in against what went out, by currency, over a period.', hasPeriod: true,
+      kpis: [['Money in', '$18,182.00', 'good'], ['Money out', '$1,734.60', ''], ['Overhead share', '8.8%', ''], ['Net', '$16,447.40', 'good']],
+      headers: [['Category', 'left', 'minmax(180px,1.4fr)'], ['Kind', 'left', '110px'], ['Share', 'left', 'minmax(140px,1fr)'], ['Amount', 'right', '130px']],
+      rows: [
+        [this.t('Retainers', { wgt: 600 }), this.t('Income'), this.bar(58, '#2E7D5B'), this.m('$10,582.00')],
+        [this.t('Consulting fees', { wgt: 600 }), this.t('Income'), this.bar(42, '#2E7D5B'), this.m('$7,600.00')],
+        [this.t('Contractor costs', { wgt: 600 }), this.t('Expense'), this.bar(81, 'var(--gold-600)'), this.m('$1,400.00')],
+        [this.t('Travel and meals', { wgt: 600 }), this.t('Expense'), this.bar(10, 'var(--gold-600)'), this.m('$182.40')],
+        [this.t('Software subscriptions', { wgt: 600 }), this.t('Overhead'), this.bar(8, 'var(--navy-500)'), this.m('$138.00')],
+        [this.t('Banking and fees', { wgt: 600 }), this.t('Overhead'), this.bar(1, 'var(--navy-500)'), this.m('$14.20')]
+      ], foot: ['Net for the period', '$16,447.40'] },
+    { group: 'Date range', name: 'Expenses by category', blurb: 'Where the money went, grouped by category and by parent.', hasPeriod: true,
+      kpis: [['Total out', '$1,734.60', ''], ['Largest', 'Contractors', ''], ['Categories used', '4', ''], ['Receipts missing', '1', 'warn']],
+      headers: [['Category', 'left', 'minmax(200px,1.5fr)'], ['Lines', 'right', '80px'], ['Share', 'left', 'minmax(140px,1fr)'], ['Amount', 'right', '130px']],
+      rows: [
+        [this.t('Contractor costs', { wgt: 600 }), this.m('1'), this.bar(81, 'var(--gold-600)'), this.m('$1,400.00')],
+        [this.t('Travel and meals', { wgt: 600 }), this.m('1'), this.bar(10, 'var(--gold-600)'), this.m('$182.40')],
+        [this.t('Software subscriptions', { wgt: 600 }), this.m('2'), this.bar(8, 'var(--navy-500)'), this.m('$138.00')],
+        [this.t('Banking and fees', { wgt: 600 }), this.m('1'), this.bar(1, 'var(--navy-500)'), this.m('$14.20')]
+      ], foot: ['Total for the period', '$1,734.60'] },
+    { group: 'Date range', name: 'Client profitability', blurb: 'Revenue against costs booked to each client, and what is not yet knowable.', hasPeriod: true,
+      kpis: [['Best margin', 'Quenington', 'good'], ['Thinnest', 'Quarrymill', 'warn'], ['Unallocated cost', '$152.20', ''], ['Clients', '6', '']],
+      headers: [['Client', 'left', 'minmax(180px,1.4fr)'], ['Revenue', 'right', '120px'], ['Costs', 'right', '110px'], ['Margin', 'left', 'minmax(130px,1fr)'], ['Net', 'right', '120px']],
+      rows: [
+        [this.t('Uppingham Systems', { wgt: 600 }), this.m('$10,582.00'), this.m('$0.00'), this.bar(100, '#2E7D5B'), this.m('$10,582.00', { wgt: 600 })],
+        [this.t('Quenington Capital', { wgt: 600 }), this.m('$2,590.00'), this.m('$1,400.00'), this.bar(46, 'var(--gold-600)'), this.m('$1,190.00', { wgt: 600 })],
+        [this.t('Marlowe & Finch', { wgt: 600 }), this.m('$760.00'), this.m('$0.00'), this.bar(100, '#2E7D5B'), this.m('$760.00', { wgt: 600 })],
+        [this.t('Cranleigh Group', { wgt: 600 }), this.m('$0.00'), this.m('$182.40'), this.bar(0, '#A2311F'), this.m('-$182.40', { wgt: 600, color: 'var(--text-warn)' })]
+      ], foot: ['Net across shown clients', '$12,349.60'] }
+  ];
+
+  state = { idx: 0, period: 'August 2026', ranAt: '' };
+
+  donutNode(segs) {
+    const total = segs.reduce((a, x) => a + x.value, 0) || 1;
+    const R = 44, C = 2 * Math.PI * R;
+    let off = 0;
+    const rings = segs.map((x, i) => {
+      const frac = x.value / total;
+      const el = React.createElement('circle', { key: i, cx: 60, cy: 60, r: R, fill: 'none', stroke: x.color, strokeWidth: 22,
+        strokeDasharray: (frac * C - 1.5) + ' ' + (C - frac * C + 1.5), strokeDashoffset: -off * C + C / 4 });
+      off += frac;
+      return el;
+    });
+    return React.createElement('div', { style: { display: 'flex', justifyContent: 'center' } },
+      React.createElement('svg', { width: 130, height: 120, viewBox: '0 0 120 120' }, rings,
+        React.createElement('text', { x: 60, y: 58, textAnchor: 'middle', style: { font: '700 15px "DM Mono", monospace', fill: '#1B2433' } }, segs.centerTop || ''),
+        React.createElement('text', { x: 60, y: 74, textAnchor: 'middle', style: { font: '10px "DM Mono", monospace', fill: '#5B6470' } }, segs.centerSub || '')));
+  }
+  colsNode(items, fmt) {
+    const max = Math.max(...items.map(x => Math.abs(x.value)), 1);
+    const W = 300, H = 130, bw = Math.min(44, (W - 20) / items.length - 14);
+    const els = [];
+    items.forEach((x, i) => {
+      const cx = 10 + (i + 0.5) * ((W - 20) / items.length);
+      const h = Math.max(3, Math.abs(x.value) / max * 82);
+      els.push(React.createElement('rect', { key: 'b' + i, x: cx - bw / 2, y: 96 - h, width: bw, height: h, rx: 3, fill: x.color }));
+      els.push(React.createElement('text', { key: 'v' + i, x: cx, y: 90 - h, textAnchor: 'middle', style: { font: '9px "DM Mono", monospace', fill: '#5B6470' } }, fmt ? fmt(x.value) : x.value));
+      els.push(React.createElement('text', { key: 'l' + i, x: cx, y: 112, textAnchor: 'middle', style: { font: '9px "DM Mono", monospace', fill: '#5B6470' } }, x.label));
+    });
+    els.push(React.createElement('line', { key: 'ax', x1: 6, y1: 96.5, x2: W - 6, y2: 96.5, stroke: '#D9D5C9', strokeWidth: 1 }));
+    return React.createElement('svg', { width: '100%', viewBox: '0 0 ' + W + ' ' + H, preserveAspectRatio: 'xMidYMid meet' }, els);
+  }
+  lineNode(pts, color, fmt) {
+    const W = 300, H = 130, max = Math.max(...pts.map(p => p.value), 1);
+    const xy = pts.map((p, i) => [14 + i * ((W - 28) / (pts.length - 1)), 96 - p.value / max * 74]);
+    const path = xy.map(c => c.join(',')).join(' ');
+    const els = [
+      React.createElement('polygon', { key: 'a', points: '14,96 ' + path + ' ' + (W - 14) + ',96', fill: color + '22' }),
+      React.createElement('polyline', { key: 'p', points: path, fill: 'none', stroke: color, strokeWidth: 2 }),
+      React.createElement('line', { key: 'ax', x1: 6, y1: 96.5, x2: W - 6, y2: 96.5, stroke: '#D9D5C9', strokeWidth: 1 })
+    ];
+    xy.forEach((c, i) => {
+      els.push(React.createElement('circle', { key: 'd' + i, cx: c[0], cy: c[1], r: 3, fill: '#FFFFFF', stroke: color, strokeWidth: 2 }));
+      els.push(React.createElement('text', { key: 't' + i, x: c[0], y: c[1] - 8, textAnchor: 'middle', style: { font: '9px "DM Mono", monospace', fill: '#5B6470' } }, fmt ? fmt(pts[i].value) : pts[i].value));
+      els.push(React.createElement('text', { key: 'l' + i, x: c[0], y: 112, textAnchor: 'middle', style: { font: '9px "DM Mono", monospace', fill: '#5B6470' } }, pts[i].label));
+    });
+    return React.createElement('svg', { width: '100%', viewBox: '0 0 ' + W + ' ' + H, preserveAspectRatio: 'xMidYMid meet' }, els);
+  }
+  kFmt(v) { return v >= 1000000 ? (v / 1000000).toFixed(1) + 'M' : v >= 1000 ? Math.round(v / 1000) + 'k' : String(v); }
+
+  chartsFor(name) {
+    const G = '#2E7D5B', N = '#2E4E7E', A = '#C9A84C', GD = '#8A6D1E', R = '#A2311F', M = '#9AA3AF';
+    const donut = (title, segs, top, sub) => { const s = segs.map(([label, value, color]) => ({ label, value, color })); s.centerTop = top; s.centerSub = sub;
+      return { title, node: this.donutNode(s), legend: s.map(x => ({ label: x.label, value: this.kFmt(x.value), color: x.color })) }; };
+    const cols = (title, items, fmt) => ({ title, node: this.colsNode(items.map(([label, value, color]) => ({ label, value, color })), fmt || this.kFmt),
+      legend: [] });
+    const line = (title, pts, color, fmt) => ({ title, node: this.lineNode(pts.map(([label, value]) => ({ label, value })), color, fmt || this.kFmt), legend: [] });
+    switch (name) {
+      case 'What is slipping': return [
+        donut('Open items by state', [['Overdue', 816, GD], ['Waiting on a decision', 494, N], ['At risk', 121, A], ['Blocked', 38, R]], '1,469', 'open'),
+        cols('Overdue by age', [['<7d', 121, A], ['7-30d', 284, A], ['31-60d', 226, GD], ['60d+', 185, GD]])];
+      case 'Project roll-up': return [
+        donut('Projects by status', [['On track', 4, G], ['At risk', 2, A], ['Blocked', 1, R], ['Waiting', 1, M]], '8', 'active'),
+        cols('Progress by project, %', [['Quen', 88, G], ['Orch', 72, R], ['Fair', 61, G], ['Dun', 45, A], ['Tewk', 38, A]], v => v + '%')];
+      case 'Billing and aging': return [
+        cols('Outstanding by age bucket, $', [['0-30', 1371296, N], ['31-60', 534090, A], ['61-90', 658996, GD], ['90+', 4558122, GD]]),
+        line('Collected per month, $', [['Apr', 1210000], ['May', 980000], ['Jun', 1655000], ['Jul', 1310000], ['Aug', 1442610]], G)];
+      case 'Action item completion': return [
+        line('Completed per week', [['W31', 44], ['W32', 51], ['W33', 47], ['W34', 38], ['W35', 32]], N),
+        donut('On time against late', [['On time', 165, G], ['Late', 47, A]], '78%', 'on time')];
+      case 'Profit and loss': return [
+        line('Net by month, $', [['Apr', 9200], ['May', 12400], ['Jun', 8100], ['Jul', 11568], ['Aug', 16447]], G),
+        donut('Money out by kind', [['Contractors', 1400, GD], ['Travel', 182, A], ['Overhead', 152, N]], '$1.7k', 'out')];
+      case 'Expenses by category': return [
+        donut('Share by category', [['Contractors', 1400, GD], ['Travel and meals', 182, A], ['Software', 138, N], ['Banking', 14, M]], '$1.7k', 'total'),
+        cols('Money out by month, $', [['Apr', 2210, A], ['May', 1180, A], ['Jun', 2655, GD], ['Jul', 1310, A], ['Aug', 1735, A]])];
+      case 'Client profitability': return [
+        cols('Net by client, $', [['Upp', 10582, G], ['Quen', 1190, G], ['Marl', 760, G], ['Cran', -182, R]]),
+        donut('Revenue share', [['Uppingham', 10582, N], ['Quenington', 2590, A], ['Marlowe', 760, G]], '$13.9k', 'revenue')];
+      default: return [];
+    }
+  }
+
+  renderVals() {
+    const s = this.state;
+    const navItems = ['Dashboard', 'Action items', 'Projects', 'Meetings', 'Calendar', 'SOPs', 'Templates', 'Clients', 'Mail', 'Invoicing', 'Ledger', 'Reports', 'Settings']
+      .map(l => ({ id: l.toLowerCase().replace(' ', '-'), label: l }));
+    const rep = this.REPORTS[s.idx];
+    const groups = ['Snapshots', 'Date range'].map(label => ({ label,
+      items: this.REPORTS.map((r, i) => ({ r, i })).filter(x => x.r.group === label).map(({ r, i }) => {
+        const active = i === s.idx;
+        return { name: r.name, blurb: r.blurb.split(',')[0] + '.', w: active ? 700 : 500,
+          bg: active ? 'var(--navy-50)' : 'transparent', edge: active ? 'var(--navy)' : 'transparent',
+          pick: () => this.setState({ idx: i, ranAt: '' }) };
+      }) }));
+    return { navItems, groups, noop: () => {},
+      rep: { name: rep.name, blurb: rep.blurb, hasPeriod: rep.hasPeriod,
+        asOf: s.ranAt ? 'run ' + s.ranAt : 'live, as of Mon, Aug 31, 9:12 AM' + (rep.hasPeriod ? ' · ' + s.period : ''),
+        footLabel: rep.foot[0], footValue: rep.foot[1] },
+      periodOpts: ['August 2026', 'July 2026', 'Q3 2026', 'Year to date'],
+      period: s.period, setPeriod: (e) => this.setState({ period: e.target.value, ranAt: '' }),
+      runNow: () => this.setState({ ranAt: 'just now, Mon, Aug 31, ' + new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) }),
+      charts: this.chartsFor(rep.name),
+      repKpis: rep.kpis.map(([label, value, k]) => ({ label, value, color: k === 'warn' ? 'var(--text-warn)' : k === 'good' ? 'var(--text-positive)' : 'var(--ink)' })),
+      repCols: rep.headers.map(h => h[2]).join(' '),
+      repHeaders: rep.headers.map(([label, align]) => ({ label, align })),
+      repRows: rep.rows.map(cells => ({ cells: cells.map(c => {
+        if (c.kind === 'chip') { const [b, f] = this.CH[c.text] || this.CH.open; return { isChip: true, isText: false, isBar: false, text: c.text, chipBg: b, chipFg: f, align: 'left' }; }
+        if (c.kind === 'bar') return { isBar: true, isText: false, isChip: false, w: c.w, barColor: c.barColor, align: 'left' };
+        return { isText: true, isChip: false, isBar: false, text: c.text, align: c.align || 'left',
+          wgt: c.wgt || 400, font: c.font || 'var(--font-sans)',
+          color: c.color || (c.font ? 'var(--ink)' : c.wgt ? 'var(--ink)' : 'var(--text-secondary)') };
+      }) }))
+    };
+  }
+}
+</script>
+
+
+</body></html>

@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="../support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/tokens/fonts.css">
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/tokens/colors.css">
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/tokens/typography.css">
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/tokens/spacing.css">
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/tokens/effects.css">
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/tokens/base.css">
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/styles.css">
+  <script src="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/_ds_bundle.js"></script>
+  <style>
+    body{margin:0;background:var(--surface-page);}
+    a{color:var(--text-link);} a:hover{color:var(--navy);}
+  </style>
+</helmet>
+<div style="display:flex;min-height:100vh;font-family:var(--font-sans);color:var(--text-body)">
+  <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Sidebar" items="{{ navItems }}" active-id="meetings" on-quick-add="{{ noop }}" hint-size="224px,100%" style="height:100vh;position:sticky;top:0"></x-import>
+  <main style="flex:1;height:100vh;overflow-y:auto;box-sizing:border-box">
+  <div style="padding:32px 48px 64px;box-sizing:border-box">
+
+  <sc-if value="{{ isList }}" hint-placeholder-val="{{ true }}">
+    <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap">
+      <div>
+        <h1 style="font-size:var(--text-2xl);font-weight:700;margin:0 0 6px">Meetings</h1>
+        <div style="font-size:var(--text-sm);color:var(--text-secondary)">Every client call, its transcript, and what came out of it.</div>
+      </div>
+      <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="primary" on-click="{{ openNew }}" hint-size="auto,38px">New meeting</x-import>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-top:20px">
+      <sc-for list="{{ kpis }}" as="k" hint-placeholder-count="4">
+        <div style="min-width:0;padding:13px 16px;background:var(--surface-card);border:1px solid var(--border-thin);border-left:3px solid {{ k.accent }};border-radius:var(--radius-md);box-shadow:var(--shadow-card)">
+          <div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ k.label }}</div>
+          <div style="font-family:var(--font-mono);font-size:var(--text-xl);margin:6px 0 4px">{{ k.value }}</div>
+          <div style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ k.sub }}</div>
+        </div>
+      </sc-for>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(400px,1fr));gap:16px;margin-top:16px;align-items:start">
+
+      <div style="background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-lg);box-shadow:var(--shadow-card);overflow:hidden">
+        <div style="display:flex;align-items:center;gap:8px;padding:16px 20px;flex-wrap:wrap">
+          <h2 style="font-size:var(--text-lg);font-weight:700;margin:0">Meetings log</h2>
+          <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary)">{{ logMeta }}</span>
+          <span style="flex:1"></span>
+          <sc-for list="{{ logFilters }}" as="lf" hint-placeholder-count="4">
+            <button sc-camel-on-click="{{ lf.pick }}" style="padding:4px 12px;background:{{ lf.bg }};border:1px solid {{ lf.border }};border-radius:var(--radius-pill);cursor:pointer;font-family:var(--font-sans);font-size:var(--text-sm);font-weight:500;color:var(--navy-700);transition:background-color var(--transition-fast)" style-hover="background:var(--navy-50)">{{ lf.label }}</button>
+          </sc-for>
+        </div>
+        <div style="padding:0 20px 12px">
+          <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Input" value="{{ search }}" sc-camel-on-change="{{ setSearch }}" placeholder="Search titles, clients, attendees and transcripts. Filters as you type." hint-size="100%,38px"></x-import>
+        </div>
+        <sc-for list="{{ rows }}" as="m" hint-placeholder-count="8">
+          <div sc-camel-on-click="{{ m.open }}" style="display:flex;align-items:center;gap:12px;padding:11px 20px;border-top:1px solid var(--border-thin);cursor:pointer;transition:background-color var(--transition-fast)" style-hover="background:var(--surface-hover)">
+            <span style="flex:1;min-width:0">
+              <span style="display:block;font-size:var(--text-md);font-weight:600;color:var(--text-link);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ m.title }}</span>
+              <span style="display:block;font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px">{{ m.meta }}</span>
+            </span>
+            <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary);white-space:nowrap">{{ m.items }}</span>
+            <span style="background:{{ m.chipBg }};color:{{ m.chipFg }};font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;padding:2px 8px;border-radius:var(--radius-pill);flex-shrink:0;white-space:nowrap">{{ m.chip }}</span>
+          </div>
+        </sc-for>
+        <sc-if value="{{ rowsEmpty }}" hint-placeholder-val="{{ false }}">
+          <div style="padding:32px 20px;text-align:center;font-size:var(--text-base);color:var(--text-secondary);border-top:1px solid var(--border-thin)">No meetings match. Clear the search or pick another filter.</div>
+        </sc-if>
+      </div>
+
+      <div style="background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-lg);box-shadow:var(--shadow-card);overflow:hidden">
+        <div style="display:flex;align-items:center;gap:10px;padding:16px 20px">
+          <h2 style="font-size:var(--text-lg);font-weight:700;margin:0">Coming up</h2>
+          <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary)">next two weeks · paul@northsideops.invalid</span>
+        </div>
+        <sc-if value="{{ aiOpen }}" hint-placeholder-val="{{ true }}">
+          <div style="margin:0 20px 4px;padding:14px 16px;background:var(--surface-callout);border:1px solid var(--border-thin);border-radius:var(--radius-md)">
+            <div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Scheduling assistant</div>
+            <div style="font-size:var(--text-sm);line-height:1.6">{{ aiText }}</div>
+            <div style="display:flex;gap:8px;margin-top:10px">
+              <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="primary" size="sm" on-click="{{ aiApply }}" hint-size="auto,30px">{{ aiApplyLabel }}</x-import>
+              <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="ghost" size="sm" on-click="{{ aiDismiss }}" hint-size="auto,30px">Keep as is</x-import>
+            </div>
+          </div>
+        </sc-if>
+        <sc-if value="{{ aiApplied }}" hint-placeholder-val="{{ false }}">
+          <div style="margin:0 20px 4px;padding:12px 16px;background:var(--chip-done-bg);border:1px solid var(--border-thin);border-radius:var(--radius-md);font-size:var(--text-sm);color:var(--chip-done-fg)">Vendor demo moved to Tuesday, 1:00 PM. Everyone can attend, and the overlap is gone. Invites go out when you confirm in the calendar.</div>
+        </sc-if>
+        <sc-for list="{{ upcoming }}" as="day" hint-placeholder-count="5">
+          <div style="padding:10px 12px 6px;border-top:1px solid var(--border-thin)">
+            <div style="display:flex;align-items:center;gap:8px;padding:0 8px 4px">
+              <span style="font-size:var(--text-sm);font-weight:700;white-space:nowrap">{{ day.label }}</span>
+              <sc-if value="{{ day.today }}" hint-placeholder-val="{{ false }}">
+                <span style="background:var(--gold-100);color:var(--gold-600);font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;padding:1px 8px;border-radius:var(--radius-pill)">Today</span>
+              </sc-if>
+            </div>
+            <sc-for list="{{ day.events }}" as="ev" hint-placeholder-count="2">
+              <div style="display:flex;align-items:center;gap:12px;padding:7px 8px;border-radius:var(--radius-sm);background:{{ ev.bg }}">
+                <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary);width:132px;flex-shrink:0;white-space:nowrap">{{ ev.time }}</span>
+                <span style="flex:1;min-width:0;font-size:var(--text-sm);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ ev.title }}</span>
+                <sc-if value="{{ ev.hasLink }}" hint-placeholder-val="{{ false }}">
+                  <button sc-camel-on-click="{{ noop }}" style="flex-shrink:0;padding:3px 12px;background:var(--surface-card);border:1px solid var(--border-strong);border-radius:var(--radius-pill);cursor:pointer;font-family:var(--font-sans);font-size:var(--text-xs);font-weight:500;color:var(--navy-700);transition:background-color var(--transition-fast)" style-hover="background:var(--navy-50)">Join</button>
+                </sc-if>
+              </div>
+            </sc-for>
+          </div>
+        </sc-for>
+        <div style="padding:10px 20px 16px;border-top:1px solid var(--border-thin);font-size:var(--text-sm);color:var(--text-secondary)">From the calendars you chose in Settings. Meetings created here are not pushed to the calendar.</div>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ isDetail }}" hint-placeholder-val="{{ false }}">
+    <div style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary)"><a href="#" sc-camel-on-click="{{ back }}" style="color:var(--text-link);text-decoration:none">Meetings</a> / {{ d.title }}</div>
+    <div style="display:flex;align-items:center;gap:12px;margin-top:8px;flex-wrap:wrap">
+      <h1 style="font-size:var(--text-2xl);font-weight:700;margin:0">{{ d.title }}</h1>
+      <span style="background:{{ d.chipBg }};color:{{ d.chipFg }};font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;padding:3px 10px;border-radius:var(--radius-pill)">{{ d.chip }}</span>
+      <span style="flex:1"></span>
+      <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="secondary" size="sm" on-click="{{ importTranscript }}" hint-size="auto,32px">{{ importLabel }}</x-import>
+      <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="ghost" size="sm" on-click="{{ copySummary }}" hint-size="auto,32px">{{ copyLabel }}</x-import>
+    </div>
+    <div style="font-size:var(--text-sm);color:var(--text-secondary);margin-top:6px">{{ d.meta }}</div>
+
+    <div style="display:grid;grid-template-columns:minmax(0,2.2fr) minmax(270px,1fr);gap:16px;margin-top:20px;align-items:start">
+      <div style="display:flex;flex-direction:column;gap:16px">
+
+        <div style="padding:20px 24px;background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-lg);box-shadow:var(--shadow-card)">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
+            <h2 style="font-size:var(--text-lg);font-weight:700;margin:0">Summary</h2>
+            <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary)">{{ d.summaryMeta }}</span>
+          </div>
+          <sc-if value="{{ hasTranscript }}" hint-placeholder-val="{{ true }}">
+            <div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin:12px 0 4px">What was decided</div>
+            <div style="font-size:var(--text-sm);line-height:1.6">{{ d.decided }}</div>
+            <div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin:14px 0 4px">What is still open</div>
+            <div style="font-size:var(--text-sm);line-height:1.6">{{ d.stillOpen }}</div>
+            <div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin:14px 0 4px">Risks raised</div>
+            <div style="font-size:var(--text-sm);line-height:1.6">{{ d.risks }}</div>
+          </sc-if>
+          <sc-if value="{{ noTranscript }}" hint-placeholder-val="{{ false }}">
+            <div style="padding:20px 0 8px;font-size:var(--text-sm);color:var(--text-secondary)">Import the transcript to unlock the summary and extraction.</div>
+          </sc-if>
+        </div>
+
+        <div style="background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-lg);box-shadow:var(--shadow-card);overflow:hidden">
+          <div style="display:flex;align-items:center;gap:10px;padding:16px 20px">
+            <h2 style="font-size:var(--text-lg);font-weight:700;margin:0">Transcript</h2>
+            <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary)">{{ d.transcriptMeta }}</span>
+            <span style="flex:1"></span>
+            <sc-if value="{{ hasTranscript }}" hint-placeholder-val="{{ true }}">
+              <div style="width:200px"><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Input" value="{{ tq }}" sc-camel-on-change="{{ setTq }}" placeholder="Search this transcript" hint-size="200px,34px"></x-import></div>
+            </sc-if>
+          </div>
+          <sc-if value="{{ hasTranscript }}" hint-placeholder-val="{{ true }}">
+            <sc-for list="{{ transcript }}" as="ln" hint-placeholder-count="6">
+              <div style="display:flex;gap:12px;padding:8px 20px;border-top:1px solid var(--border-thin);background:{{ ln.bg }}">
+                <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary);width:44px;flex-shrink:0;padding-top:2px">{{ ln.at }}</span>
+                <span style="font-size:var(--text-sm);line-height:1.6;min-width:0"><span style="font-weight:600">{{ ln.who }}:</span> {{ ln.text }}</span>
+              </div>
+            </sc-for>
+          </sc-if>
+          <sc-if value="{{ noTranscript }}" hint-placeholder-val="{{ false }}">
+            <div sc-camel-on-click="{{ importTranscript }}" style="margin:0 20px 20px;padding:22px;border:1px dashed var(--border-strong);border-radius:var(--radius-md);text-align:center;cursor:pointer;font-size:var(--text-sm);color:var(--text-secondary);transition:background-color var(--transition-fast)" style-hover="background:var(--navy-50)">Nothing imported yet. Drop a transcript file here, or click to browse. VTT, TXT and DOCX.</div>
+          </sc-if>
+        </div>
+
+        <div style="background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-lg);box-shadow:var(--shadow-card);overflow:hidden">
+          <div style="display:flex;align-items:center;gap:10px;padding:16px 20px">
+            <h2 style="font-size:var(--text-lg);font-weight:700;margin:0">Action items</h2>
+            <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary)">{{ d.aiMeta }}</span>
+            <span style="flex:1"></span>
+            <a href="#" sc-camel-on-click="{{ noop2 }}" style="font-size:var(--text-sm);font-weight:500">Open tracker</a>
+          </div>
+          <sc-for list="{{ actionItems }}" as="ai" hint-placeholder-count="3">
+            <div style="display:flex;align-items:center;gap:12px;padding:10px 20px;border-top:1px solid var(--border-thin)">
+              <span style="flex:1;min-width:0">
+                <span style="display:block;font-size:var(--text-sm);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ ai.title }}</span>
+                <span style="display:block;font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary);margin-top:2px">{{ ai.meta }}</span>
+              </span>
+              <span style="background:{{ ai.chipBg }};color:{{ ai.chipFg }};font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;padding:2px 8px;border-radius:var(--radius-pill)">{{ ai.chip }}</span>
+            </div>
+          </sc-for>
+        </div>
+
+        <div style="background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-lg);box-shadow:var(--shadow-card);overflow:hidden">
+          <div style="display:flex;align-items:center;gap:10px;padding:16px 20px">
+            <h2 style="font-size:var(--text-lg);font-weight:700;margin:0">Review queue</h2>
+            <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary)">what Claude proposed, and what you decided</span>
+          </div>
+          <sc-for list="{{ proposals }}" as="pr" hint-placeholder-count="3">
+            <div style="display:flex;align-items:center;gap:12px;padding:10px 20px;border-top:1px solid var(--border-thin)">
+              <span style="flex:1;min-width:0">
+                <span style="display:block;font-size:var(--text-sm);font-weight:500">{{ pr.title }}</span>
+                <span style="display:block;font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary);margin-top:2px">{{ pr.by }}</span>
+              </span>
+              <sc-if value="{{ pr.pending }}" hint-placeholder-val="{{ false }}">
+                <button sc-camel-on-click="{{ pr.accept }}" style="padding:4px 12px;background:var(--surface-card);border:1px solid var(--border-strong);border-radius:var(--radius-pill);cursor:pointer;font-family:var(--font-sans);font-size:var(--text-sm);font-weight:500;color:var(--navy-700);transition:background-color var(--transition-fast)" style-hover="background:var(--navy-50)">Accept</button>
+                <button sc-camel-on-click="{{ pr.reject }}" style="padding:4px 12px;background:var(--surface-card);border:1px solid var(--border-strong);border-radius:var(--radius-pill);cursor:pointer;font-family:var(--font-sans);font-size:var(--text-sm);font-weight:500;color:var(--navy-700);transition:background-color var(--transition-fast)" style-hover="background:var(--navy-50)">Reject</button>
+              </sc-if>
+              <sc-if value="{{ pr.decided }}" hint-placeholder-val="{{ true }}">
+                <span style="background:{{ pr.chipBg }};color:{{ pr.chipFg }};font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;padding:2px 8px;border-radius:var(--radius-pill)">{{ pr.chip }}</span>
+              </sc-if>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:16px">
+        <div style="padding:20px 24px;background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-lg);box-shadow:var(--shadow-card)">
+          <h2 style="font-size:var(--text-lg);font-weight:700;margin:0 0 8px">Details</h2>
+          <sc-for list="{{ detailPairs }}" as="dp" hint-placeholder-count="5">
+            <div style="display:flex;align-items:baseline;gap:12px;padding:8px 0;border-top:1px solid var(--border-thin)">
+              <span style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);width:86px;flex-shrink:0">{{ dp.label }}</span>
+              <span style="font-size:var(--text-sm);min-width:0">{{ dp.value }}</span>
+            </div>
+          </sc-for>
+        </div>
+        <div style="padding:20px 24px;background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-lg);box-shadow:var(--shadow-card)">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
+            <h2 style="font-size:var(--text-lg);font-weight:700;margin:0">Attendees</h2>
+            <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary)">{{ nAttendees }}</span>
+          </div>
+          <sc-for list="{{ attendees }}" as="at" hint-placeholder-count="4">
+            <div style="display:flex;align-items:center;gap:12px;padding:8px 0;border-top:1px solid var(--border-thin)">
+              <span style="display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:50%;background:{{ at.avBg }};color:{{ at.avFg }};font-size:var(--text-xs);font-weight:600;flex-shrink:0">{{ at.initials }}</span>
+              <span style="flex:1;min-width:0">
+                <span style="display:block;font-size:var(--text-sm);font-weight:500">{{ at.name }}</span>
+                <span style="display:block;font-size:var(--text-xs);color:var(--text-secondary)">{{ at.role }}</span>
+              </span>
+            </div>
+          </sc-for>
+        </div>
+        <div style="padding:20px 24px;background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-lg);box-shadow:var(--shadow-card)">
+          <h2 style="font-size:var(--text-lg);font-weight:700;margin:0 0 8px">Recording</h2>
+          <sc-if value="{{ hasRecording }}" hint-placeholder-val="{{ true }}">
+            <a href="#" sc-camel-on-click="{{ noop2 }}" style="font-family:var(--font-mono);font-size:var(--text-sm);word-break:break-all">{{ d.recording }}</a>
+          </sc-if>
+          <sc-if value="{{ noRecording }}" hint-placeholder-val="{{ false }}">
+            <div style="font-size:var(--text-sm);color:var(--text-secondary)">No recording link. Add one from Edit.</div>
+          </sc-if>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ newOpen }}" hint-placeholder-val="{{ false }}">
+    <div sc-camel-on-click="{{ closeNew }}" style="position:fixed;inset:0;z-index:80;background:rgba(16,42,76,.38)"></div>
+    <div style="position:fixed;top:8vh;left:50%;transform:translateX(-50%);z-index:90;width:min(640px,92vw);max-height:84vh;overflow-y:auto;background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-lg);box-shadow:var(--shadow-pop);padding:24px 28px;box-sizing:border-box">
+      <div style="display:flex;align-items:center;gap:10px">
+        <h2 style="font-size:var(--text-lg);font-weight:700;margin:0">New meeting</h2>
+        <span style="flex:1"></span>
+        <button sc-camel-on-click="{{ closeNew }}" title="Close" style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;background:transparent;border:none;border-radius:var(--radius-sm);cursor:pointer;color:var(--muted);transition:background-color var(--transition-fast)" style-hover="background:var(--surface-hover)"><svg width="15" height="15" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"></path></svg></button>
+      </div>
+      <div style="margin-top:16px">
+        <div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Title</div>
+        <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Input" value="{{ nmTitle }}" sc-camel-on-change="{{ setNmTitle }}" placeholder="What the call was" hint-size="100%,38px"></x-import>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px 16px;margin-top:14px">
+        <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Type</div><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Select" options="{{ mtypeOpts }}" value="{{ nmType }}" sc-camel-on-change="{{ setNmType }}" hint-size="100%,38px"></x-import></div>
+        <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Date</div><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Input" value="{{ nmDate }}" sc-camel-on-change="{{ setNmDate }}" mono="{{ true }}" placeholder="Aug 31" hint-size="100%,38px"></x-import></div>
+        <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Time</div><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Input" value="{{ nmTime }}" sc-camel-on-change="{{ setNmTime }}" mono="{{ true }}" placeholder="10:00 AM" hint-size="100%,38px"></x-import></div>
+        <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Duration</div><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Select" options="{{ durOpts }}" value="{{ nmDuration }}" sc-camel-on-change="{{ setNmDuration }}" hint-size="100%,38px"></x-import></div>
+        <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Client</div><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Select" options="{{ clientOpts }}" value="{{ nmClient }}" sc-camel-on-change="{{ setNmClient }}" hint-size="100%,38px"></x-import></div>
+        <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Project</div><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Select" options="{{ projectOpts }}" value="{{ nmProject }}" sc-camel-on-change="{{ setNmProject }}" hint-size="100%,38px"></x-import></div>
+        <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Repeats</div><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Select" options="{{ recurOpts }}" value="{{ nmRecur }}" sc-camel-on-change="{{ setNmRecur }}" hint-size="100%,38px"></x-import></div>
+        <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Reminder</div><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Select" options="{{ remOpts }}" value="{{ nmReminder }}" sc-camel-on-change="{{ setNmReminder }}" hint-size="100%,38px"></x-import></div>
+      </div>
+      <div style="margin-top:14px">
+        <div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Attendees</div>
+        <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Input" value="{{ nmAttendees }}" sc-camel-on-change="{{ setNmAttendees }}" placeholder="Who is on the call. Comma separated." hint-size="100%,38px"></x-import>
+      </div>
+      <div style="margin-top:14px">
+        <div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Agenda</div>
+        <textarea value="{{ nmAgenda }}" sc-camel-on-change="{{ setNmAgenda }}" placeholder="What the call needs to cover, one point per line." style="width:100%;box-sizing:border-box;min-height:72px;padding:10px 12px;font-family:var(--font-sans);font-size:var(--text-sm);line-height:1.5;color:var(--ink);background:var(--surface-card);border:1px solid var(--border-strong);border-radius:var(--radius-sm);resize:vertical"></textarea>
+      </div>
+      <div style="margin-top:14px">
+        <div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Recording link</div>
+        <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Input" value="{{ nmRecording }}" sc-camel-on-change="{{ setNmRecording }}" mono="{{ true }}" placeholder="Optional. The transcript is imported separately." hint-size="100%,38px"></x-import>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:18px">
+        <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="primary" size="sm" on-click="{{ createMeeting }}" hint-size="auto,32px">Create meeting</x-import>
+        <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="ghost" size="sm" on-click="{{ closeNew }}" hint-size="auto,32px">Cancel</x-import>
+        <span style="font-size:var(--text-sm);color:var(--text-secondary)">{{ nmHint }}</span>
+      </div>
+    </div>
+  </sc-if>
+
+  </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script="" data-props="{}">
+class Component extends DCLogic {
+  CHIP = { reviewed: ['var(--chip-done-bg)', 'var(--chip-done-fg)'], 'to review': ['var(--gold-100)', 'var(--gold-600)'], 'no transcript': ['var(--chip-waiting-bg)', 'var(--chip-waiting-fg)'],
+    overdue: ['var(--chip-overdue-bg)', 'var(--chip-overdue-fg)'], open: ['var(--chip-open-bg)', 'var(--chip-open-fg)'], done: ['var(--chip-done-bg)', 'var(--chip-done-fg)'],
+    accepted: ['var(--chip-done-bg)', 'var(--chip-done-fg)'], rejected: ['var(--chip-waiting-bg)', 'var(--chip-waiting-fg)'] };
+
+  TRANSCRIPT = [
+    ['0:00', 'Paul', 'Thanks for making time. The goal today is to clear the two blockers on the market study and agree who signs off the risk register.'],
+    ['1:42', 'Sam Nakamura', 'The data export finished on Friday, so the first blocker is done. The remaining one is the vendor list, legal still has it.'],
+    ['4:18', 'Mei Bianchi', 'Legal promised it back by Wednesday. If it slips again I would rather we proceed with the draft list and mark it provisional.'],
+    ['7:05', 'Paul', 'Agreed, provisional on Wednesday if legal has not returned it. Sofia, can you own the follow-up?'],
+    ['7:31', 'Sofia Okafor', 'Yes, I will chase them Tuesday morning and circulate either way.'],
+    ['12:50', 'Rue Mbeki', 'On the risk register, I think it should be Mei. She has the fullest view of the vendor exposure.'],
+    ['13:22', 'Mei Bianchi', 'I can take it, but I want the cutover runbook first. Half the register depends on it.'],
+    ['15:04', 'Paul', 'Then two outcomes. Mei signs off the register once the runbook lands, and I chase the runbook this week.']
+  ];
+
+  INIT = [
+    { id: 1, title: 'Lyndhurst blocker review', date: 'Mon, Aug 31', time: '9:00 AM to 9:45 AM', client: 'Lyndhurst Collective', project: 'Castlereagh market study', attendees: ['Paul', 'Sam Nakamura', 'Mei Bianchi', 'Sofia Okafor', 'Rue Mbeki'], recording: 'meet.google.com/rec/lyndhurst-0831', status: 'reviewed', items: 2,
+      decided: 'Scope confirmed with two open questions carried forward. The vendor list goes provisional on Wednesday if legal has not returned it.',
+      stillOpen: 'Who signs off the risk register. Mei takes it once the cutover runbook lands.',
+      risks: 'Legal turnaround has slipped twice. A third slip pushes the market study milestone by a week.',
+      summaryMeta: 'reviewed Mon, Aug 31',
+      ais: [['Collect the revised timeline for Dovecote', 'Overdue by 14 days · Mon, Aug 17 · Beatriz Haddad', 'overdue'], ['Collect the change request for Jarrow', 'Due Tue, Nov 3 · Alex Farrell', 'open']],
+      proposals: [['Validate the migration plan', 'claude-sonnet-5', 'accepted'], ['Chase the cutover runbook', 'claude-sonnet-5', 'accepted'], ['Add a legal escalation contact to the client record', 'claude-sonnet-5', 'pending']] },
+    { id: 2, title: 'Sandringham status call', date: 'Mon, Aug 31', time: '11:00 AM to 11:30 AM', client: 'Sandringham Group', project: 'Lyndhurst capacity plan', attendees: ['Alex Farrell', 'Rue Mbeki', 'Dana Okafor', 'Marcus Lindqvist'], recording: 'meet.google.com/rec/sandringham-0831', status: 'to review', items: 2,
+      decided: 'Capacity numbers accepted for Q4. Hiring freeze stays until November.',
+      stillOpen: 'Whether the December surge is staffed by contractors or overtime.',
+      risks: 'None raised.', summaryMeta: 'drafted, awaiting your review',
+      ais: [['Draft the Q4 capacity note', 'Due Fri, Sep 4 · Rue Mbeki', 'open'], ['Confirm the freeze exceptions', 'Due Wed, Sep 9 · Alex Farrell', 'open']],
+      proposals: [['Book the December staffing decision for the Sep 28 call', 'claude-sonnet-5', 'pending'], ['File the freeze exception list as a project item', 'claude-sonnet-5', 'pending']] },
+    { id: 3, title: 'Cranleigh retrospective', date: 'Mon, Aug 31', time: '2:00 PM to 3:00 PM', client: 'Cranleigh Group', project: 'Ottery risk register rebuild', attendees: ['Ethan Lindqvist', 'Ravi Novak', 'Kofi Sorensen'], recording: '', status: 'no transcript', items: 1,
+      ais: [['Rework the register template', 'Due Thu, Sep 3 · Ethan Lindqvist', 'open']], proposals: [] },
+    { id: 4, title: 'Tewkesbury budget review', date: 'Mon, Aug 31', time: '4:00 PM to 4:45 PM', client: 'Tewkesbury Holdings', project: 'No project', attendees: ['Alex Farrell', 'Tom Whitfield'], recording: '', status: 'no transcript', items: 2,
+      ais: [['Reconcile the Q3 spend', 'Due Tue, Sep 8 · Alex Farrell', 'open'], ['Send the revised budget', 'Due Fri, Sep 11 · Paul', 'open']], proposals: [] },
+    { id: 5, title: 'Kestrel steering committee', date: 'Sun, Aug 30', time: '3:00 PM to 4:00 PM', client: 'Kestrel Consulting', project: 'Fairwater cost review', attendees: ['Rue Mbeki', 'Tom Whitfield', 'Alex Farrell', 'Lena Vega', 'Hugo Ahmed'], recording: 'meet.google.com/rec/kestrel-0830', status: 'to review', items: 3,
+      decided: 'Cost review extended two weeks. Fairwater covers the extension at the agreed rate.',
+      stillOpen: 'Which vendor contracts are in scope for the second pass.',
+      risks: 'Extension compresses the reporting pack timeline.', summaryMeta: 'drafted, awaiting your review',
+      ais: [['Confirm the extension in writing', 'Due Tue, Sep 1 · Paul', 'open'], ['List the second pass contracts', 'Due Thu, Sep 3 · Rue Mbeki', 'open'], ['Update the engagement letter', 'Due Fri, Sep 4 · Tom Whitfield', 'open']],
+      proposals: [['Raise the extension invoice from tracked hours', 'claude-sonnet-5', 'pending']] },
+    { id: 6, title: 'Lyndhurst phase review', date: 'Sun, Aug 30', time: '10:00 AM to 10:45 AM', client: 'Lyndhurst Collective', project: 'Westmoor systems integration', attendees: ['Rue Mbeki', 'Beatriz Haddad', 'Hugo Ahmed'], recording: '', status: 'no transcript', items: 0, ais: [], proposals: [] },
+    { id: 7, title: 'Jarrow kickoff', date: 'Fri, Aug 28', time: '1:00 PM to 2:00 PM', client: 'Jarrow Analytics', project: 'Lantern diligence support', attendees: ['Hugo Ahmed', 'Kofi Sorensen', 'Ethan Lindqvist', 'Paul'], recording: 'meet.google.com/rec/jarrow-0828', status: 'reviewed', items: 3,
+      decided: 'Diligence scope agreed, six weeks, data room access by Sep 2.',
+      stillOpen: 'Whether the tax workstream is in scope.',
+      risks: 'Data room access depends on a third party.', summaryMeta: 'reviewed Fri, Aug 28',
+      ais: [['Request data room access', 'Done · Kofi Sorensen', 'done'], ['Draft the diligence checklist', 'Due Wed, Sep 2 · Hugo Ahmed', 'open'], ['Confirm the tax scope', 'Due Fri, Sep 4 · Paul', 'open']],
+      proposals: [['Create the six-week diligence project', 'claude-sonnet-5', 'accepted']] }
+  ];
+
+  UPCOMING = [
+    { label: 'Monday, Aug 31', today: true, events: [['3:00 AM to 3:30 AM', 'Standup', true, false], ['5:00 AM to 6:00 AM', 'Caldera scoping call', true, true], ['5:00 AM to 5:30 AM', 'Overlapping vendor demo', false, true]] },
+    { label: 'Tuesday, Sep 1', today: false, events: [['8:00 AM to 11:00 AM', 'Migration dry run', true, false]] },
+    { label: 'Wednesday, Sep 2', today: false, events: [['10:00 AM to 11:00 AM', 'Pineda invoice discussion', false, false]] },
+    { label: 'Friday, Sep 4', today: false, events: [['All day', 'Public holiday', false, false]] },
+    { label: 'Saturday, Sep 5', today: false, events: [['7:00 AM to 8:30 AM', 'Twin Peaks reporting workshop', true, false]] }
+  ];
+
+  state = { meetings: this.INIT, view: 'list', selId: null, filter: 'all', search: '', tq: '',
+    newOpen: false, nm: {}, copied: false, decisions: {}, nextId: 8, upcoming: this.UPCOMING, ai: 'open' };
+
+  chip(k) { return this.CHIP[k] || this.CHIP.open; }
+  patchMeeting(id, patch) { this.setState(s => ({ meetings: s.meetings.map(m => m.id === id ? { ...m, ...patch } : m) })); }
+
+  renderVals() {
+    const s = this.state;
+    const navItems = ['Dashboard', 'Action items', 'Projects', 'Meetings', 'Calendar', 'SOPs', 'Templates', 'Clients', 'Mail', 'Invoicing', 'Ledger', 'Reports', 'Settings']
+      .map(l => ({ id: l.toLowerCase().replace(' ', '-'), label: l }));
+    const counts = { all: s.meetings.length, 'no transcript': 0, 'to review': 0, reviewed: 0 };
+    s.meetings.forEach(m => { counts[m.status]++; });
+    const kpis = [
+      { label: 'This week', value: '7', sub: '3 today', accent: 'var(--navy-500)' },
+      { label: 'Needs a transcript', value: String(counts['no transcript']), sub: 'import to extract', accent: 'var(--border-strong)' },
+      { label: 'Awaiting your review', value: String(counts['to review']), sub: 'summaries drafted', accent: 'var(--gold-600)' },
+      { label: 'Items from meetings', value: '13', sub: 'this week', accent: '#2E7D5B' }
+    ];
+    const q = s.search.trim().toLowerCase();
+    const rows = s.meetings
+      .filter(m => s.filter === 'all' || m.status === s.filter)
+      .filter(m => !q || (m.title + ' ' + m.client + ' ' + m.project + ' ' + m.attendees.join(' ')).toLowerCase().includes(q))
+      .map(m => {
+        const [b, f] = this.chip(m.status);
+        return { title: m.title, meta: m.date + ' · ' + m.client + ' · ' + m.project + ' · ' + m.attendees.join(', '),
+          items: m.items + (m.items === 1 ? ' item' : ' items'), chip: m.status, chipBg: b, chipFg: f,
+          open: () => this.setState({ view: 'detail', selId: m.id, tq: '', copied: false }) };
+      });
+    const vals = { navItems, kpis, rows, rowsEmpty: rows.length === 0,
+      isList: s.view === 'list', isDetail: s.view === 'detail',
+      logMeta: rows.length + ' of ' + s.meetings.length,
+      logFilters: [['all', 'All'], ['no transcript', 'Needs transcript'], ['to review', 'To review'], ['reviewed', 'Reviewed']].map(([id, label]) => {
+        const active = s.filter === id;
+        return { label, bg: active ? 'var(--navy-50)' : 'var(--surface-card)', border: active ? 'var(--navy-500)' : 'var(--border-strong)',
+          pick: () => this.setState({ filter: id }) };
+      }),
+      search: s.search, setSearch: (e) => this.setState({ search: e.target.value }),
+      upcoming: s.upcoming.map(d => ({ ...d, events: d.events.map(([time, title, hasLink, conflict]) => ({ time, title, hasLink,
+        bg: conflict ? 'var(--gold-100)' : 'transparent' })) })),
+      aiOpen: s.ai === 'open', aiApplied: s.ai === 'applied',
+      aiText: 'Two calls need you Monday at 5:00 AM, the Caldera scoping call and the vendor demo. Everyone on the demo is free Tuesday at 1:00 PM, right after the migration dry run. Push the demo back?',
+      aiApplyLabel: 'Move demo to Tue, 1:00 PM',
+      aiApply: () => this.setState(x => ({ ai: 'applied', upcoming: x.upcoming.map(d => {
+        if (d.label.indexOf('Monday') === 0) return { ...d, events: d.events.filter(e => e[1] !== 'Overlapping vendor demo').map(e => [e[0], e[1], e[2], false]) };
+        if (d.label.indexOf('Tuesday') === 0) return { ...d, events: d.events.concat([['1:00 PM to 1:30 PM', 'Vendor demo, moved', true, false]]) };
+        return d;
+      }) })),
+      aiDismiss: () => this.setState({ ai: 'dismissed' }),
+      mtypeOpts: ['Client call', 'Internal', 'Kickoff', 'Retrospective', 'Steering committee', 'Workshop'],
+      durOpts: ['15 minutes', '30 minutes', '45 minutes', '1 hour', '90 minutes', '2 hours'],
+      recurOpts: ['Does not repeat', 'Weekly', 'Fortnightly', 'Monthly'],
+      remOpts: ['No reminder', '10 minutes before', '1 hour before', '1 day before'],
+      newOpen: s.newOpen,
+      openNew: () => this.setState({ newOpen: true, nm: { title: '', type: 'Client call', date: 'Aug 31', time: '', duration: '30 minutes', client: 'No client', project: 'No project', recur: 'Does not repeat', reminder: '10 minutes before', attendees: '', agenda: '', recording: '' }, nmHint: '' }),
+      closeNew: () => this.setState({ newOpen: false }),
+      clientOpts: ['No client', 'Lyndhurst Collective', 'Sandringham Group', 'Cranleigh Group', 'Tewkesbury Holdings', 'Kestrel Consulting', 'Jarrow Analytics'],
+      projectOpts: ['No project', 'Castlereagh market study', 'Lyndhurst capacity plan', 'Ottery risk register rebuild', 'Fairwater cost review', 'Lantern diligence support'],
+      nmHint: s.nmHint || '',
+      createMeeting: () => {
+        const n = s.nm;
+        if (!n.title || !n.title.trim()) { this.setState({ nmHint: 'A title is required.' }); return; }
+        const m = { id: s.nextId, title: n.title.trim(), date: n.date || 'Aug 31',
+          time: (n.time || 'Not set') + (n.duration ? ', ' + n.duration : ''), client: n.client, project: n.project,
+          attendees: n.attendees ? n.attendees.split(',').map(x => x.trim()).filter(Boolean) : ['Paul'],
+          recording: n.recording, status: 'no transcript', items: 0, ais: [], proposals: [] };
+        this.setState(x => ({ meetings: [m].concat(x.meetings), newOpen: false, nextId: x.nextId + 1, view: 'detail', selId: m.id }));
+      },
+      noop: () => {}, noop2: (e) => e.preventDefault(),
+      back: (e) => { e.preventDefault(); this.setState({ view: 'list' }); } };
+    ['title', 'type', 'date', 'time', 'duration', 'client', 'project', 'recur', 'reminder', 'attendees', 'agenda', 'recording'].forEach(k => {
+      const K = k.charAt(0).toUpperCase() + k.slice(1);
+      vals['nm' + K] = s.nm[k];
+      vals['setNm' + K] = (e) => this.setState(x => ({ nm: { ...x.nm, [k]: e.target.value } }));
+    });
+    if (s.view !== 'detail') return vals;
+    const m = s.meetings.find(x => x.id === s.selId) || s.meetings[0];
+    const [b, f] = this.chip(m.status);
+    const has = m.status !== 'no transcript';
+    const tq = s.tq.trim().toLowerCase();
+    Object.assign(vals, {
+      d: { title: m.title, chip: m.status, chipBg: b, chipFg: f,
+        meta: m.date + ' · ' + m.time + ' · ' + m.client + ' · ' + m.project,
+        decided: m.decided, stillOpen: m.stillOpen, risks: m.risks,
+        summaryMeta: has ? m.summaryMeta : 'locked until a transcript is imported',
+        transcriptMeta: has ? this.TRANSCRIPT.length + ' passages, 45 minutes' : 'nothing imported yet',
+        aiMeta: m.ais.length + ' tracked from this meeting', recording: m.recording },
+      hasTranscript: has, noTranscript: !has,
+      importLabel: has ? 'Replace transcript' : 'Import transcript',
+      importTranscript: () => {
+        const inp = document.createElement('input');
+        inp.type = 'file'; inp.accept = '.vtt,.txt,.docx,.srt';
+        inp.onchange = () => { if (inp.files.length) this.patchMeeting(m.id, { status: 'to review', summaryMeta: 'drafted, awaiting your review', decided: m.decided || 'Summary drafts once the transcript is processed.', stillOpen: m.stillOpen || 'To be extracted.', risks: m.risks || 'To be extracted.' }); };
+        inp.click();
+      },
+      copyLabel: s.copied ? 'Copied' : 'Copy summary',
+      copySummary: () => {
+        if (!has) return;
+        navigator.clipboard && navigator.clipboard.writeText('Decided: ' + m.decided + '\nStill open: ' + m.stillOpen + '\nRisks: ' + m.risks);
+        this.setState({ copied: true });
+        setTimeout(() => this.setState({ copied: false }), 1500);
+      },
+      tq: s.tq, setTq: (e) => this.setState({ tq: e.target.value }),
+      transcript: this.TRANSCRIPT.filter(([, , text]) => !tq || text.toLowerCase().includes(tq)).map(([at, who, text]) => ({
+        at, who, text, bg: tq && text.toLowerCase().includes(tq) ? 'var(--surface-callout)' : 'transparent' })),
+      actionItems: m.ais.map(([title, meta, k]) => { const [cb, cf] = this.chip(k); return { title, meta, chip: k, chipBg: cb, chipFg: cf }; }),
+      proposals: m.proposals.map(([title, by, st0], i) => {
+        const st = s.decisions[m.id + ':' + i] || st0;
+        const [cb, cf] = this.chip(st);
+        return { title, by, pending: st === 'pending', decided: st !== 'pending', chip: st, chipBg: cb, chipFg: cf,
+          accept: () => this.setState(x => ({ decisions: { ...x.decisions, [m.id + ':' + i]: 'accepted' } })),
+          reject: () => this.setState(x => ({ decisions: { ...x.decisions, [m.id + ':' + i]: 'rejected' } })) };
+      }),
+      detailPairs: [['Date', m.date], ['Time', m.time], ['Client', m.client], ['Project', m.project], ['Source', 'Created by you, transcript imported by hand']].map(([label, value]) => ({ label, value })),
+      nAttendees: String(m.attendees.length),
+      attendees: m.attendees.map((name, i) => ({ name,
+        role: name === 'Paul' ? 'You, host' : i % 2 ? 'Client side' : 'Your side',
+        initials: name.split(' ').map(w => w[0]).slice(0, 2).join(''),
+        avBg: name === 'Paul' ? 'var(--navy)' : 'var(--navy-100)', avFg: name === 'Paul' ? '#FFFFFF' : 'var(--navy)' })),
+      hasRecording: !!m.recording, noRecording: !m.recording
+    });
+    return vals;
+  }
+}
+</script>
+
+
+</body></html>
