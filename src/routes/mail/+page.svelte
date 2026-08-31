@@ -9,6 +9,7 @@
 	import Input from '$lib/components/Input.svelte';
 	import Select from '$lib/components/Select.svelte';
 	import MailboxPicker from '$lib/components/MailboxPicker.svelte';
+	import { reauthNotice } from '$lib/mailbox-warning';
 	import type { PageData } from './$types';
 
 	/**
@@ -145,6 +146,13 @@
 		/>
 	</header>
 
+	{#each data.roster as account (account.id)}
+		{@const notice = reauthNotice(account)}
+		{#if notice}
+			<p class="reauth" role="status">{notice}</p>
+		{/if}
+	{/each}
+
 	{#if errorMessage}<p class="error" role="alert">{errorMessage}</p>{/if}
 
 	<nav class="tabs" aria-label="Filter mail by what it needs from you">
@@ -259,6 +267,16 @@
 {/if}
 
 <style>
+	/* A full width notice, in flow. Inside the picker column it widened the
+	   header's flex child and rode up beside the title. */
+	.reauth {
+		margin: var(--space-3) 0 0;
+		padding: var(--space-2) var(--space-3);
+		border: 1px solid var(--gold);
+		border-radius: var(--radius-md);
+		font-size: var(--text-sm);
+	}
+
 	.head {
 		display: flex;
 		align-items: flex-end;
