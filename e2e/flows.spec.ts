@@ -1,5 +1,7 @@
 import { test, expect } from '@playwright/test';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 
 /**
  * Layer 3: the core flows a person actually performs.
@@ -9,6 +11,25 @@ import { readFileSync } from 'node:fs';
  */
 
 const expected = JSON.parse(readFileSync('seed/expected.json', 'utf8'));
+
+/**
+ * Removes a row the suite created directly from the local database.
+ *
+ * Used only where the API has no delete, which is the case for a ledger
+ * transaction on purpose: money that has been recorded is not something the app
+ * offers to erase, and adding a route so a test could tidy up would be building
+ * a capability for the test's benefit. So the test reaches past the API for its
+ * own cleanup, the way the layer 2 fixtures do, and the product keeps the
+ * shape it should have.
+ */
+function deleteRow(table: string, id: string) {
+	const dir = '.wrangler/state/v3/d1/miniflare-D1DatabaseObject';
+	const file = readdirSync(dir).find((f) => f.endsWith('.sqlite') && f !== 'metadata.sqlite');
+	if (!file) throw new Error('Local D1 not found.');
+	const db = new DatabaseSync(join(dir, file));
+	db.prepare(`DELETE FROM ${table} WHERE id = ?`).run(id);
+	db.close();
+}
 
 /**
  * Waits for the client to take over before typing into it.
@@ -233,8 +254,10 @@ test.describe('quick add', () => {
 		const dialog = page.getByRole('dialog', { name: 'Quick add' });
 		await expect(dialog).toBeVisible();
 
-		await dialog.getByLabel('Title').pressSequentially(TITLE);
-		await dialog.getByRole('button', { name: 'Add item' }).click();
+		// Quick add is nine kinds now, and each names its own field and button.
+		// Action item is the first, which is the one this test has always used.
+		await dialog.getByLabel('What has to happen').pressSequentially(TITLE);
+		await dialog.getByRole('button', { name: 'Add action item' }).click();
 
 		await expect(dialog).toBeHidden();
 		// The new item has no deadline, so it sorts to the end and is not on page
@@ -256,12 +279,50 @@ test.describe('quick add', () => {
 		await page.keyboard.press('n');
 		const dialog = page.getByRole('dialog', { name: 'Quick add' });
 		await expect(dialog).toBeVisible();
-		await dialog.getByLabel('Title').pressSequentially(TITLE);
-		await dialog.getByRole('button', { name: 'Add item' }).click();
+		await dialog.getByLabel('What has to happen').pressSequentially(TITLE);
+		await dialog.getByRole('button', { name: 'Add action item' }).click();
 
 		// Closing on failure is what hid the unsaved item. It must stay open.
 		await expect(dialog).toBeVisible();
 		await expect(dialog.getByRole('alert')).toContainText(/session/i);
+	});
+
+	/**
+	 * The box is nine kinds now, and the thing worth pinning is that picking one
+	 * changes where the thing lands. A capture point for the whole firm is only
+	 * useful if it is never ambiguous which drawer something went into.
+	 */
+	test('a different kind reshapes the form and lands somewhere else', async ({ page, request }) => {
+		const NOTE = 'E2E quick add ledger probe';
+		await page.goto('/actions?view=all');
+		await ready(page);
+		await page.getByRole('heading', { level: 1 }).click();
+		await page.keyboard.press('n');
+
+		const dialog = page.getByRole('dialog', { name: 'Quick add' });
+		await expect(dialog).toBeVisible();
+		await dialog.getByRole('button', { name: 'Ledger line' }).click();
+
+		// The action item's field is gone, and the ledger's is here.
+		await expect(dialog.getByLabel('What has to happen')).toHaveCount(0);
+		await dialog.getByLabel('What it was').fill(NOTE);
+		await dialog.getByLabel('Amount, USD').fill('12.34');
+		await dialog.getByRole('button', { name: 'Add ledger line' }).click();
+
+		await expect(dialog).toBeHidden();
+
+		const rows = await (await request.get('/api/ledger/transactions')).json();
+		const made = rows.transactions.find((t: { notes?: string }) => t.notes?.includes(NOTE));
+		expect(made, 'the ledger line reached the ledger').toBeTruthy();
+		expect(made.amount_cents).toBe(1234);
+
+		// Nothing this suite creates may outlive it, or layer 1 fails next run.
+		deleteRow('ledger_transactions', made.id);
+		const after = await (await request.get('/api/ledger/transactions')).json();
+		expect(
+			after.transactions.some((t: { id: string }) => t.id === made.id),
+			'the probe row was left behind'
+		).toBe(false);
 	});
 });
 
