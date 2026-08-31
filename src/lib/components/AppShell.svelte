@@ -12,7 +12,22 @@
 	// Only Action Items exists. The rest of the site map in architecture section
 	// B gets a nav entry when its module ships, not before. No dead links.
 
-	let { children, today }: { children: Snippet; today: string } = $props();
+	/**
+	 * `wide` drops the reading-width cap for pages laid out as two columns.
+	 *
+	 * Most modules are a single column of prose and tables, where 1200px is a
+	 * comfortable measure and centring is right. Mail is a wide left column plus
+	 * a fixed 380px rail, and capping that pushes both into the middle with the
+	 * rail floating away from the edge it belongs against.
+	 *
+	 * Opt in per page rather than raising the cap for everything, which would
+	 * reflow every other module to fix one.
+	 */
+	let {
+		children,
+		today,
+		wide = false
+	}: { children: Snippet; today: string; wide?: boolean } = $props();
 
 	const nav = [
 		{ href: '/', label: 'Dashboard', exact: true },
@@ -88,7 +103,7 @@
 	</nav>
 
 	<main id="main">
-		<div class="content">
+		<div class="content" class:wide>
 			{@render children()}
 		</div>
 	</main>
@@ -263,6 +278,10 @@
 		max-width: var(--content-max);
 		margin: 0 auto;
 		padding: var(--space-5) var(--space-4) var(--space-7);
+	}
+
+	.content.wide {
+		max-width: none;
 	}
 
 	/* The export's persistent sidebar, restored once there is room for it. */
