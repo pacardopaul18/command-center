@@ -24,6 +24,7 @@
 		{ href: '/clients', label: 'Clients', exact: false },
 		{ href: '/mail', label: 'Mail', exact: false },
 		{ href: '/invoices', label: 'Invoicing', exact: false },
+		{ href: '/ledger', label: 'Ledger', exact: false },
 		{ href: '/reports', label: 'Reports', exact: false },
 		{ href: '/settings', label: 'Settings', exact: false }
 	];
