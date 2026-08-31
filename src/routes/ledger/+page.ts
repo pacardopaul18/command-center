@@ -1,4 +1,5 @@
 import type { PageLoad } from './$types';
+import { monthKey, monthWindow, previousMonth } from '$lib/ledger';
 
 export interface LedgerCategory {
 	id: string;
@@ -35,18 +36,43 @@ export interface CurrencyTotal {
 	entries: number;
 }
 
+/**
+ * The ledger, a month at a time.
+ *
+ * A month rather than a free range, because that is the unit the books are kept
+ * in and the unit every question about them is asked in. An explicit `from` and
+ * `to` still work and still win, so a link out of a report into a specific
+ * window lands where it says.
+ *
+ * The previous month's totals are fetched alongside, because "net for August"
+ * on its own does not say whether August was better or worse than July, and
+ * that comparison is the reason to look at all.
+ */
 export const load: PageLoad = async ({ fetch, url }) => {
-	const from = url.searchParams.get('from') ?? '';
-	const to = url.searchParams.get('to') ?? '';
-	const params = new URLSearchParams();
-	if (from) params.set('from', from);
-	if (to) params.set('to', to);
-	const q = params.toString() ? `?${params}` : '';
+	const explicitFrom = url.searchParams.get('from') ?? '';
+	const explicitTo = url.searchParams.get('to') ?? '';
+	const custom = Boolean(explicitFrom || explicitTo);
 
-	const [txRes, catRes, totalsRes, clientsRes] = await Promise.all([
-		fetch(`/api/ledger/transactions${q}`),
+	const month = url.searchParams.get('month') ?? monthKey(new Date());
+	const window = monthWindow(month);
+
+	const from = custom ? explicitFrom : window.from;
+	const to = custom ? explicitTo : window.to;
+
+	const scope = new URLSearchParams();
+	if (from) scope.set('from', from);
+	if (to) scope.set('to', to);
+	const q = scope.toString() ? `?${scope}` : '';
+
+	const prior = monthWindow(previousMonth(month));
+	const priorQuery = `?from=${prior.from}&to=${prior.to}`;
+
+	const [txRes, catRes, totalsRes, priorRes, clientsRes] = await Promise.all([
+		fetch(`/api/ledger/transactions${q}&limit=500`.replace('?&', '?')),
 		fetch('/api/ledger/categories?include_archived=true'),
 		fetch(`/api/ledger/totals${q}`),
+		// Only meaningful for a month view; a custom range has no "month before".
+		custom ? Promise.resolve(null) : fetch(`/api/ledger/totals${priorQuery}`),
 		fetch('/api/clients')
 	]);
 
@@ -57,13 +83,18 @@ export const load: PageLoad = async ({ fetch, url }) => {
 
 	return {
 		transactions: ((await txRes.json()) as { transactions: LedgerTransaction[] }).transactions,
+		clients: clientsRes.ok
+			? ((await clientsRes.json()) as { clients: { id: string; name: string }[] }).clients
+			: [],
 		categories: catRes.ok
 			? ((await catRes.json()) as { categories: LedgerCategory[] }).categories
 			: [],
 		totals: totalsRes.ok ? ((await totalsRes.json()) as { totals: CurrencyTotal[] }).totals : [],
-		clients: clientsRes.ok
-			? ((await clientsRes.json()) as { clients: { id: string; name: string }[] }).clients
+		priorTotals: priorRes?.ok
+			? ((await priorRes.json()) as { totals: CurrencyTotal[] }).totals
 			: [],
+		month,
+		custom,
 		from,
 		to
 	};

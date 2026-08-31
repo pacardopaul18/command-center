@@ -4280,3 +4280,55 @@ Three fields the prototype draws are absent: website, industry and source. They
 are columns on `clients` and no ALTER may touch an existing table before
 Thursday. Client since is drawn, because `created_at` already answers it. The
 three land on Thursday with the `action_items` columns already queued.
+
+### D156: a ledger line can be corrected, unless this app wrote it
+
+The Ledger redesign draws a pencil and a bin on every row and there was neither
+route. The reasoning for their absence had been written down in a test comment:
+money that has been recorded is not something the app offers to erase. That is
+wrong, and it is the kind of wrong that hides: a ledger nobody can correct is a
+ledger people stop entering things into, and the books then quietly stop being
+the books.
+
+So both routes exist, and both refuse the same class of row. `provenance` is the
+whole mechanism.
+
+A line with provenance `invoice` was written when a payment was recorded against
+an invoice. It is the ledger's copy of a fact that lives on the invoice, and
+editing it here would make the two disagree about money that has already
+arrived, invisibly from either screen. The refusal names the invoice and says
+where the change belongs.
+
+A line with provenance `import` is a record of what a statement said, and a
+statement that has been edited is not evidence of anything. The refusal points
+at a correcting line instead, which is what double entry would have made you do.
+
+Deleting takes the receipts with it, objects as well as rows: `expense_receipts`
+cascades, so removing only the transaction would strand every attached file
+under a key no row names.
+
+On screen the controls appear only on lines that accept them, D27. A pencil that
+always refuses is worse than no pencil, and the row says what it is instead.
+
+### D157: the seed counts what it wrote, not what is in the table
+
+Adding a ledger stream to the volume fixture broke the loader's own check, and
+the failure was instructive: it reported 667 rows where 666 were expected, on a
+load that had gone perfectly. The extra row belongs to the dev seed, which
+writes one ledger line this fixture does not own and must not clear.
+
+Every row the volume generator writes carries the `v-` prefix, and every DELETE
+at the top of the generated SQL removes by it. So the question the loader can
+actually answer is "are all of my rows here", and it now asks that. Counting
+whole tables asked a different question and got away with it only while no table
+was shared.
+
+That no unprefixed row exists is a separate assertion in layer 1, and keeping
+the two apart matters: a test leak reads as a leak rather than as a miscount.
+
+The ledger fixture's income half is not invented. Each line is the same payment
+id, client, date and figure as the `invoice_payments` row it came from, under
+the category the posting route uses, with `provenance = 'invoice'`. The books
+and the invoices therefore agree by construction, so a guard comparing them is
+testing the application rather than two independently generated lists that
+happen to match.

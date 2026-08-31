@@ -29,14 +29,46 @@ function openDb(): DatabaseSync {
 let db: DatabaseSync;
 let clientId = '';
 
+/**
+ * What the window already held before this fixture wrote to it.
+ *
+ * These assertions used to be absolute, on the reasoning that nothing else put
+ * ledger rows in July. That stopped being true the moment the volume seed grew
+ * a ledger, and the test failed with figures that were entirely correct.
+ *
+ * Measuring the baseline first and asserting the difference makes the check
+ * about what this fixture contributes, which is what it was always trying to
+ * say. It is also immune to the fixture growing again.
+ */
+const baseline: Record<string, number> = {};
+
 function cleanup() {
 	db.prepare('DELETE FROM ledger_transactions WHERE notes LIKE ?').run(`%${TAG}%`);
 	db.prepare('DELETE FROM ledger_categories WHERE name LIKE ?').run(`%${TAG}%`);
 }
 
-beforeAll(() => {
+beforeAll(async () => {
 	db = openDb();
 	cleanup();
+
+	const before = await report('pnl');
+	for (const row of (before.data.currencies ?? []) as {
+		currency: string;
+		income_cents: number;
+		net_cents: number;
+	}[]) {
+		baseline[`${row.currency}.income`] = row.income_cents;
+		baseline[`${row.currency}.net`] = row.net_cents;
+	}
+
+	const beforeExpenses = await report('expenses');
+	for (const row of (beforeExpenses.data.totals ?? []) as {
+		currency: string;
+		amount_cents: number;
+	}[]) {
+		baseline[`${row.currency}.expense`] = row.amount_cents;
+	}
+
 	const now = '2026-07-15T00:00:00Z';
 	clientId = (db.prepare('SELECT id FROM clients ORDER BY created_at LIMIT 1').get() as {
 		id: string;
@@ -87,9 +119,15 @@ describe('the ledger reports', () => {
 
 		const usd = currencies.find((c) => c.currency === 'USD');
 		const php = currencies.find((c) => c.currency === 'PHP');
-		expect(usd?.income_cents).toBe(100000);
-		expect(php?.income_cents).toBe(100000);
-		expect(usd?.net_cents, 'the USD net ignored the USD expense').toBe(75000);
+
+		// Equal amounts in two currencies. Anything summing across them would
+		// have to produce 200000, a number that cannot be right in either.
+		expect(Number(usd?.income_cents) - (baseline['USD.income'] ?? 0)).toBe(100000);
+		expect(Number(php?.income_cents) - (baseline['PHP.income'] ?? 0)).toBe(100000);
+		expect(
+			Number(usd?.net_cents) - (baseline['USD.net'] ?? 0),
+			'the USD net ignored the USD expense'
+		).toBe(75000);
 
 		// The shape offers nothing to misread as a grand total.
 		expect(data.net_cents, 'a combined net was returned').toBeUndefined();
@@ -101,7 +139,7 @@ describe('the ledger reports', () => {
 		const totals = data.totals as { currency: string; amount_cents: number }[];
 		for (const t of totals) expect(t.currency).toBeTruthy();
 		const usd = totals.find((t) => t.currency === 'USD');
-		expect(usd?.amount_cents).toBe(25000);
+		expect(Number(usd?.amount_cents) - (baseline['USD.expense'] ?? 0)).toBe(25000);
 		// Income must not appear in an expenses report.
 		const lines = data.lines as { kind: string }[];
 		for (const l of lines) expect(['expense', 'overhead']).toContain(l.kind);
@@ -117,7 +155,9 @@ describe('the ledger reports', () => {
 		expect(labour.no_rates_set, 'the report claims rates exist').toBe(true);
 
 		const lines = data.lines as { currency: string; revenue_cents: number; margin_cents: number }[];
-		const mine = lines.filter((l) => l.revenue_cents === 100000);
+		// PHP appears in this window only because this fixture put it there, so
+		// its presence is the check that the fixture's own lines are reported.
+		const mine = lines.filter((l) => l.currency === 'PHP');
 		expect(mine.length, 'the client lines are missing').toBeGreaterThan(0);
 		// Each line is one currency. A margin is only ever within one.
 		for (const l of lines) expect(l.currency).toBeTruthy();

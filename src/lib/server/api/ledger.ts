@@ -1,3 +1,4 @@
+import type { D1Database } from '@cloudflare/workers-types';
 import { Hono } from 'hono';
 import type { ApiEnv } from './env';
 import { nowUtc } from '../dates';
@@ -446,6 +447,259 @@ ledger.post('/transactions', async (c) => {
 		.first();
 
 	return c.json({ transaction: created }, 201);
+});
+
+/**
+ * Correcting a line, and the one rule that governs it.
+ *
+ * The redesign draws a pencil and a bin on every row and there was neither
+ * route. A ledger nobody can correct is a ledger people stop entering things
+ * into, so both exist now, and both refuse the same class of row: anything this
+ * app posted for itself.
+ *
+ * `provenance` is the whole mechanism. A line with provenance 'invoice' was
+ * written when a payment was recorded against an invoice, and editing it here
+ * would make the ledger and the invoice disagree about money that has already
+ * arrived. The refusal names where the change belongs rather than saying no.
+ * D156.
+ *
+ * An imported line is refused for the same reason in the other direction: it is
+ * a record of what a statement said, and a statement that has been edited is
+ * not evidence of anything.
+ */
+async function manualLine(db: D1Database, id: string) {
+	const row = await db
+		.prepare(
+			`SELECT t.id, t.provenance, t.source_invoice_id, i.invoice_number
+       FROM ledger_transactions t
+       LEFT JOIN invoices i ON i.id = t.source_invoice_id
+       WHERE t.id = ?`
+		)
+		.bind(id)
+		.first<{
+			id: string;
+			provenance: string;
+			source_invoice_id: string | null;
+			invoice_number: string | null;
+		}>();
+
+	if (!row) throw new ApiError(404, 'No transaction with that id.');
+
+	if (row.provenance === 'invoice') {
+		throw new ApiError(
+			409,
+			row.invoice_number
+				? `This line was posted from invoice ${row.invoice_number}. Change the payment on that invoice instead.`
+				: 'This line was posted from an invoice. Change the payment on that invoice instead.'
+		);
+	}
+
+	if (row.provenance === 'import') {
+		throw new ApiError(
+			409,
+			'This line came from an imported statement, and an edited statement is not evidence. Add a correcting line instead.'
+		);
+	}
+
+	return row;
+}
+
+ledger.patch('/transactions/:id', async (c) => {
+	const db = c.env.DB;
+	const id = c.req.param('id');
+	await manualLine(db, id);
+
+	const body = await readJsonObject(c.req.raw);
+	const sets: string[] = [];
+	const binds: unknown[] = [];
+
+	if (body.category_id !== undefined) {
+		const categoryId = requiredText(body.category_id, 'category_id', 64);
+		const category = await db
+			.prepare('SELECT id FROM ledger_categories WHERE id = ?')
+			.bind(categoryId)
+			.first();
+		if (!category) throw new ApiError(404, 'No category with that id.');
+		sets.push('category_id = ?');
+		binds.push(categoryId);
+	}
+
+	if (body.txn_date !== undefined) {
+		sets.push('txn_date = ?');
+		binds.push(requiredText(body.txn_date, 'txn_date', 10));
+	}
+
+	if (body.amount !== undefined) {
+		// Same convention as the create route: positive, with the category's kind
+		// carrying the sign. A stored negative expense would subtract twice.
+		const amountCents = parseMoneyToCents(requiredText(body.amount, 'amount', 24));
+		if (amountCents === null || amountCents === 0) {
+			throw new ApiError(400, 'amount must be a positive figure, like 1250 or 1,250.00.');
+		}
+		sets.push('amount_cents = ?');
+		binds.push(amountCents);
+	}
+
+	for (const [key, column, limit] of [
+		['client_id', 'client_id', 64],
+		['project_id', 'project_id', 64],
+		['notes', 'notes', 2000]
+	] as const) {
+		if (body[key] !== undefined) {
+			sets.push(`${column} = ?`);
+			binds.push(optionalText(body[key], key, limit) ?? null);
+		}
+	}
+
+	if (sets.length === 0) throw new ApiError(400, 'Nothing to change.');
+
+	sets.push('updated_at = ?');
+	binds.push(nowUtc());
+
+	try {
+		await db
+			.prepare(`UPDATE ledger_transactions SET ${sets.join(', ')} WHERE id = ?`)
+			.bind(...binds, id)
+			.run();
+	} catch (err) {
+		const message = err instanceof Error ? err.message : '';
+		// The trigger's own words, as the create route passes them through.
+		if (message.includes('belongs to a different client')) {
+			throw new ApiError(
+				409,
+				'That project belongs to a different client than the one on this transaction.'
+			);
+		}
+		if (message.includes('FOREIGN KEY')) {
+			throw new ApiError(404, 'The client or project on this transaction does not exist.');
+		}
+		throw err;
+	}
+
+	const updated = await db
+		.prepare(
+			`SELECT t.*, cat.name AS category_name, cat.kind AS category_kind
+       FROM ledger_transactions t JOIN ledger_categories cat ON cat.id = t.category_id
+       WHERE t.id = ?`
+		)
+		.bind(id)
+		.first();
+
+	return c.json({ transaction: updated });
+});
+
+ledger.delete('/transactions/:id', async (c) => {
+	const db = c.env.DB;
+	const id = c.req.param('id');
+	await manualLine(db, id);
+
+	/**
+	 * The receipts go with it, and the objects go with the rows.
+	 *
+	 * `expense_receipts` cascades on delete, so leaving R2 alone would strand
+	 * every attached file: no row names them and nothing knows to remove them.
+	 * They are read and deleted first, so the worst case is a stray object
+	 * rather than a stray object nobody can find.
+	 */
+	const { results } = await db
+		.prepare('SELECT r2_key FROM expense_receipts WHERE transaction_id = ?')
+		.bind(id)
+		.all<{ r2_key: string }>();
+
+	for (const receipt of results ?? []) {
+		await c.env.FILES.delete(receipt.r2_key).catch(() => {});
+	}
+
+	await db.prepare('DELETE FROM ledger_transactions WHERE id = ?').bind(id).run();
+	return c.json({ ok: true });
+});
+
+/**
+ * The month on screen, as a CSV.
+ *
+ * Exports exactly what the window asks for and nothing else, so a file cannot
+ * quietly contain more than the screen it was taken from. One row per line,
+ * amounts as plain decimal numbers rather than as formatted money, because this
+ * is going into a spreadsheet and "$1,250.00" arrives there as text.
+ */
+ledger.get('/export', async (c) => {
+	const { where, binds } = window(c);
+
+	const { results } = await c.env.DB.prepare(
+		`SELECT t.txn_date, cat.name AS category_name, cat.kind AS category_kind,
+        cl.name AS client_name, p.name AS project_name,
+        t.amount_cents, t.currency, t.provenance, t.notes
+     FROM ledger_transactions t
+     JOIN ledger_categories cat ON cat.id = t.category_id
+     LEFT JOIN clients cl ON cl.id = t.client_id
+     LEFT JOIN projects p ON p.id = t.project_id
+     ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
+     ORDER BY t.txn_date ASC, t.created_at ASC`
+	)
+		.bind(...binds)
+		.all<Record<string, string | number | null>>();
+
+	/**
+	 * One CSV field, quoted.
+	 *
+	 * Everything is quoted rather than only the fields that need it. A rule that
+	 * decides per field is a rule that gets the decision wrong on the one note
+	 * containing a comma, and a note is exactly where a comma turns up.
+	 *
+	 * A leading =, +, - or @ is prefixed with a quote, because a spreadsheet
+	 * reads those as the start of a formula. A note beginning "-40 refunded"
+	 * would otherwise be evaluated by Excel, which is the well-known way a CSV
+	 * export becomes a security problem in somebody else's application.
+	 */
+	const field = (value: string | number | null): string => {
+		let text = value === null || value === undefined ? '' : String(value);
+		if (/^[=+\-@\t\r]/.test(text)) text = `'${text}`;
+		return `"${text.replace(/"/g, '""')}"`;
+	};
+
+	const header = [
+		'date',
+		'category',
+		'kind',
+		'client',
+		'project',
+		'amount',
+		'currency',
+		'provenance',
+		'notes'
+	];
+
+	const lines = [header.map(field).join(',')];
+	for (const row of results ?? []) {
+		lines.push(
+			[
+				row.txn_date,
+				row.category_name,
+				row.category_kind,
+				row.client_name,
+				row.project_name,
+				// Plain decimal. A spreadsheet reads 1250.00 as a number and
+				// "$1,250.00" as text, and a column of text does not add up.
+				(Number(row.amount_cents) / 100).toFixed(2),
+				row.currency,
+				row.provenance,
+				row.notes
+			].map(field).join(',')
+		);
+	}
+
+	const from = c.req.query('from');
+	const to = c.req.query('to');
+	const name = from && to ? `ledger-${from}-to-${to}.csv` : 'ledger.csv';
+
+	return new Response(lines.join('\r\n') + '\r\n', {
+		headers: {
+			// UTF-8 said out loud, so a note with an accent in it opens correctly.
+			'content-type': 'text/csv; charset=utf-8',
+			'content-disposition': `attachment; filename="${name}"`,
+			'cache-control': 'private, no-store'
+		}
+	});
 });
 
 /**
