@@ -11,12 +11,9 @@
 	 * returns names its account.
 	 */
 
-	export interface PickerAccount {
-		id: string;
-		account_email: string | null;
-		status?: string;
-		reauth?: { days_left: number | null; expired: boolean } | null;
-	}
+	import { reauthLabel, type ReauthAccount } from '$lib/mailbox-warning';
+
+	export type PickerAccount = ReauthAccount;
 
 	let {
 		accounts,
@@ -30,24 +27,12 @@
 		onChange: (account: string) => void;
 	} = $props();
 
-	/** An account whose token is out, or nearly. Google's clock runs per account. */
-	function warning(account: PickerAccount): string | null {
-		if (account.status === 'needs_reauth') return 'needs reconnecting';
-		if (!account.reauth) return null;
-		if (account.reauth.expired) return 'expired';
-		if (account.reauth.days_left !== null && account.reauth.days_left <= 2) {
-			return `${account.reauth.days_left}d left`;
-		}
-		return null;
-	}
-
 	const current = $derived(
 		active === 'all'
 			? 'All mailboxes'
 			: (accounts.find((a) => a.id === active)?.account_email ?? 'Not connected')
 	);
 
-	const needsAttention = $derived(accounts.filter((a) => warning(a) !== null));
 </script>
 
 <div class="picker">
@@ -61,8 +46,8 @@
 		>
 			{#each accounts as account (account.id)}
 				<option value={account.id}>
-					{account.account_email ?? account.id}{warning(account)
-						? ` (${warning(account)})`
+					{account.account_email ?? account.id}{reauthLabel(account)
+						? ` (${reauthLabel(account)})`
 						: ''}
 				</option>
 			{/each}
@@ -75,18 +60,6 @@
 			<path d="M6 9l6 6 6-6" />
 		</svg>
 	</label>
-
-	{#each needsAttention as account (account.id)}
-		<p class="warn" role="status">
-			{account.account_email ?? account.id}
-			{#if account.reauth?.expired || account.status === 'needs_reauth'}
-				needs reconnecting. Google expires the token every seven days while the app is
-				unpublished, which is expected rather than a fault.
-			{:else}
-				expires in {account.reauth?.days_left} day{account.reauth?.days_left === 1 ? '' : 's'}.
-			{/if}
-		</p>
-	{/each}
 </div>
 
 <style>
@@ -150,12 +123,4 @@
 		font: inherit;
 	}
 
-	.warn {
-		margin: 0;
-		max-width: 34rem;
-		padding: var(--space-2) var(--space-3);
-		border: 1px solid var(--gold);
-		border-radius: var(--radius-md);
-		font-size: var(--text-sm);
-	}
 </style>
