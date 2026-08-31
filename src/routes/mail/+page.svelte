@@ -188,6 +188,26 @@
 
 	const PAGE_SIZES = [10, 20, 50, 100];
 
+	/**
+	 * The view a thread was opened from, carried on the link.
+	 *
+	 * Coming back used to land on the default tab, so opening a thread from
+	 * Everything at 100 per page returned you to Needs you at 20. The state that
+	 * matters is in the URL already; this passes it along so the back link can
+	 * put it back exactly.
+	 */
+	const backTo = $derived.by(() => {
+		const params = new URLSearchParams();
+		if (data.q) params.set('q', data.q);
+		if (data.account) params.set('account', data.account);
+		if (data.clientId) params.set('client_id', data.clientId);
+		if (data.tab) params.set('tab', data.tab);
+		if (data.archived) params.set('archived', 'true');
+		params.set('per', String(data.perPage));
+		if (data.page > 1) params.set('page', String(data.page));
+		return params.toString();
+	});
+
 	function countFor(key: string): number {
 		if (key === 'needs') return data.needsYou;
 		if (key === 'all') return Object.values(data.counts).reduce((n, v) => n + v, 0);
@@ -315,9 +335,17 @@
 			{/if}
 		</div>
 
-		<button type="button" class="ghost" onclick={togglePills} aria-pressed={showPills}>
-			{showPills ? 'Hide labels' : 'Show labels'}
-		</button>
+		<!--
+			A switch, not a button. It reports a state that is either on or off and
+			stays that way, which a button labelled with its own next action does
+			not: "Show labels" reads as a thing that will happen rather than a
+			thing that is currently false.
+		-->
+		<label class="switch">
+			<input type="checkbox" role="switch" checked={showPills} onchange={togglePills} />
+			<span class="track" aria-hidden="true"><span class="knob"></span></span>
+			<span class="switch-label">Labels</span>
+		</label>
 		<a class="ghost" href={urlFor({ archived: data.archived ? null : 'true' })}>
 			<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 				<rect x="2" y="4" width="20" height="5" rx="1" />
@@ -361,7 +389,11 @@
 					</svg>
 				</button>
 
-				<a class="row" href="/mail/{thread.id}?account={thread.account_id ?? data.account}">
+				<a
+					class="row"
+					href="/mail/{thread.id}?account={thread.account_id ??
+						data.account}&back={encodeURIComponent(backTo)}"
+				>
 					<span class="chip {chipClass(thread)}">{chipLabel(thread)}</span>
 					<span class="subject">{thread.subject ?? '(no subject)'}</span>
 					<span class="from">
@@ -647,6 +679,65 @@
 	.off {
 		opacity: 0.4;
 		pointer-events: none;
+	}
+
+	.switch {
+		position: relative;
+		display: inline-flex;
+		align-items: center;
+		gap: var(--space-2);
+		cursor: pointer;
+		font-size: var(--text-sm);
+		white-space: nowrap;
+	}
+
+	/* The real checkbox stays, invisible but focusable, so the control keeps its
+	   keyboard behaviour and its accessible role. It covers the whole control
+	   rather than hiding in a corner: at 1px the painted track sat on top of it
+	   and swallowed the click. */
+	.switch input {
+		position: absolute;
+		inset: 0;
+		width: 100%;
+		height: 100%;
+		margin: 0;
+		opacity: 0;
+		cursor: pointer;
+		z-index: 1;
+	}
+
+	.track {
+		position: relative;
+		display: inline-block;
+		width: 34px;
+		height: 20px;
+		border-radius: var(--radius-pill);
+		background: var(--border-strong);
+		transition: background-color var(--transition-fast);
+	}
+
+	.knob {
+		position: absolute;
+		top: 2px;
+		left: 2px;
+		width: 16px;
+		height: 16px;
+		border-radius: 50%;
+		background: #fff;
+		transition: transform var(--transition-fast);
+	}
+
+	.switch input:checked + .track {
+		background: var(--navy);
+	}
+
+	.switch input:checked + .track .knob {
+		transform: translateX(14px);
+	}
+
+	.switch input:focus-visible + .track {
+		outline: 2px solid var(--navy);
+		outline-offset: 2px;
 	}
 
 	/* The client typeahead's list of matches. */

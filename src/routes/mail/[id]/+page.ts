@@ -68,6 +68,9 @@ export const load: PageLoad = async ({ fetch, params, url }) => {
 	 * being opened against two accounts, and the guarantee tests caught it.
 	 */
 	const account = url.searchParams.get('account') ?? '';
+	// The list view this was opened from, so Back returns to it rather than to
+	// whatever the defaults happen to be.
+	const back = url.searchParams.get('back') ?? '';
 	const q = account ? `?account=${encodeURIComponent(account)}` : '';
 
 	const res = await fetch(`/api/email/threads/${params.id}${q}`);
@@ -88,5 +91,5 @@ export const load: PageLoad = async ({ fetch, params, url }) => {
 		attachments: Attachment[];
 	};
 
-	return { ...data, account };
+	return { ...data, account, back };
 };

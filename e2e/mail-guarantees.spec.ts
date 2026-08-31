@@ -376,6 +376,29 @@ test.describe('mail views: account segregation survives the redesign', () => {
 	});
 
 	/**
+	 * Coming back from a thread returns to the view you left.
+	 *
+	 * Reported by Paul: opening a thread from Everything at 100 per page and
+	 * pressing Back landed on Needs you at the default size. The link carried
+	 * only the account, so every other choice fell back to a default, and the
+	 * list looked like it had reset itself.
+	 */
+	test('back from a thread restores the list it was opened from', async ({ page }) => {
+		await page.goto(`/mail?account=${A}&tab=all&per=100`);
+		await page.waitForLoadState('networkidle');
+
+		await page.locator('.row').first().click();
+		await page.waitForURL(/\/mail\/[^?]+\?/, { timeout: 10000 });
+
+		await page.getByRole('link', { name: /Back to mail/ }).click();
+		await page.waitForURL(/\/mail\?/, { timeout: 10000 });
+
+		const params = new URL(page.url()).searchParams;
+		expect(params.get('tab'), 'the tab was not restored').toBe('all');
+		expect(params.get('per'), 'the page size was not restored').toBe('100');
+	});
+
+	/**
 	 * Opening mail must not tell the sender it was opened.
 	 *
 	 * A remote image in an email is a tracking pixel as often as a picture, so
