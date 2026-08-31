@@ -24,6 +24,49 @@
 	let busy = $state(false);
 	let errorMessage = $state('');
 	let openEventId = $state<string | null>(null);
+
+	/**
+	 * Which clock the times are drawn on.
+	 *
+	 * Local by default, because that is what the person looking at the screen
+	 * experiences and what Google Calendar shows them. The firm runs on Mountain
+	 * time and the digests and cron are anchored there, so a toggle offers it,
+	 * remembered per browser.
+	 *
+	 * Never UTC. It was UTC before this, which is a clock nobody in this firm
+	 * lives on: a 9am meeting rendered as 9am to no one, and looked right.
+	 */
+	const FIRM_ZONE = 'America/Denver';
+	let firmTime = $state(false);
+
+	$effect(() => {
+		try {
+			firmTime = localStorage.getItem('calendar:firm-time') === 'true';
+		} catch {
+			// A browser refusing storage still renders, just without the memory.
+		}
+	});
+
+	function toggleZone() {
+		firmTime = !firmTime;
+		try {
+			localStorage.setItem('calendar:firm-time', String(firmTime));
+		} catch {
+			// Same.
+		}
+	}
+
+	const zone = $derived(
+		firmTime ? FIRM_ZONE : Intl.DateTimeFormat().resolvedOptions().timeZone
+	);
+
+	/** Said once in the header, so no time on the page is ambiguous. */
+	const zoneLabel = $derived.by(() => {
+		const name = new Intl.DateTimeFormat('en-US', { timeZone: zone, timeZoneName: 'short' })
+			.formatToParts(new Date())
+			.find((part) => part.type === 'timeZoneName')?.value;
+		return `${zone.replace(/_/g, ' ')}${name ? ` (${name})` : ''}`;
+	});
 	let attendees = $state<
 		{ email: string | null; display_name: string | null; response_status: string | null; is_organizer: number }[]
 	>([]);
@@ -70,6 +113,27 @@
 		}
 	}
 
+	/**
+	 * Which calendar day an instant falls on, in the zone being displayed.
+	 *
+	 * Not a substring of the ISO string. That is the UTC day, and once times are
+	 * drawn locally an 11pm meeting in one zone is the next morning in another,
+	 * so slicing the timestamp files events under a day they are not on. The
+	 * event would still be listed, under the wrong heading, which is the kind of
+	 * wrong that looks fine.
+	 */
+	function dayKeyIn(value: string, tz: string): string {
+		// An all-day event arrives as a plain date and has no instant to convert.
+		if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+		const parts = new Intl.DateTimeFormat('en-CA', {
+			timeZone: tz,
+			year: 'numeric',
+			month: '2-digit',
+			day: '2-digit'
+		}).format(new Date(value));
+		return parts;
+	}
+
 	/** Days in the drawn window, so an empty day still appears as a day. */
 	const days = $derived.by(() => {
 		const out: { key: string; label: string; events: CalendarEventRow[] }[] = [];
@@ -78,16 +142,16 @@
 		for (let i = 0; i < count; i++) {
 			const d = new Date(start);
 			d.setUTCDate(d.getUTCDate() + i);
-			const key = d.toISOString().slice(0, 10);
+			const key = dayKeyIn(d.toISOString(), zone);
 			out.push({
 				key,
 				label: d.toLocaleDateString('en-US', {
 					weekday: 'short',
 					month: 'short',
 					day: 'numeric',
-					timeZone: 'UTC'
+					timeZone: zone
 				}),
-				events: data.events.filter((e) => (e.starts_at ?? '').slice(0, 10) === key)
+				events: data.events.filter((e) => dayKeyIn(e.starts_at ?? '', zone) === key)
 			});
 		}
 		return out;
@@ -96,7 +160,7 @@
 	/** Agenda hides empty days; a week view must keep them or it is not a week. */
 	const agendaDays = $derived(days.filter((d) => d.events.length > 0));
 
-	const today = new Date().toISOString().slice(0, 10);
+	const today = $derived(dayKeyIn(new Date().toISOString(), zone));
 
 	function timeLabel(event: CalendarEventRow): string {
 		if (event.all_day === 1) return 'All day';
@@ -106,7 +170,7 @@
 			d.toLocaleTimeString('en-US', {
 				hour: 'numeric',
 				minute: '2-digit',
-				timeZone: 'UTC'
+				timeZone: zone
 			});
 		return end ? `${fmt(start)} to ${fmt(end)}` : fmt(start);
 	}
@@ -131,8 +195,13 @@
 			<h1>Calendar</h1>
 			<p class="sub">
 				Read only. Nothing here changes anything in Google Calendar, because this app has no
-				permission to.
+				permission to. Times shown in <strong>{zoneLabel}</strong>.
 			</p>
+			<label class="switch">
+				<input type="checkbox" role="switch" checked={firmTime} onchange={toggleZone} />
+				<span class="track" aria-hidden="true"><span class="knob"></span></span>
+				<span>Show in firm time (Mountain)</span>
+			</label>
 		</div>
 		<MailboxPicker
 			accounts={data.roster}
@@ -165,9 +234,9 @@
 				Later
 			</button>
 			<span class="range mono">
-				{new Date(data.from).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })}
+				{new Date(data.from).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: zone })}
 				to
-				{new Date(data.to).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })}
+				{new Date(data.to).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: zone })}
 			</span>
 		</div>
 	</div>
@@ -314,6 +383,61 @@
 		max-width: 60ch;
 		font-size: var(--text-sm);
 		color: var(--text-secondary);
+	}
+
+	.switch {
+		position: relative;
+		display: inline-flex;
+		align-items: center;
+		gap: var(--space-2);
+		margin-top: var(--space-2);
+		font-size: var(--text-sm);
+		cursor: pointer;
+	}
+
+	.switch input {
+		position: absolute;
+		inset: 0;
+		width: 100%;
+		height: 100%;
+		margin: 0;
+		opacity: 0;
+		cursor: pointer;
+		z-index: 1;
+	}
+
+	.track {
+		position: relative;
+		display: inline-block;
+		width: 34px;
+		height: 20px;
+		border-radius: var(--radius-pill);
+		background: var(--border-strong);
+		transition: background-color var(--transition-fast);
+	}
+
+	.knob {
+		position: absolute;
+		top: 2px;
+		left: 2px;
+		width: 16px;
+		height: 16px;
+		border-radius: 50%;
+		background: #fff;
+		transition: transform var(--transition-fast);
+	}
+
+	.switch input:checked + .track {
+		background: var(--navy);
+	}
+
+	.switch input:checked + .track .knob {
+		transform: translateX(14px);
+	}
+
+	.switch input:focus-visible + .track {
+		outline: 2px solid var(--navy);
+		outline-offset: 2px;
 	}
 
 	.reauth,
