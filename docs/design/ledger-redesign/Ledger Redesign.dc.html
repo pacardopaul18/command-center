@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="../support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/tokens/fonts.css">
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/tokens/colors.css">
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/tokens/typography.css">
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/tokens/spacing.css">
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/tokens/effects.css">
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/tokens/base.css">
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/styles.css">
+  <script src="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/_ds_bundle.js"></script>
+  <style>
+    body{margin:0;background:var(--surface-page);}
+    a{color:var(--text-link);} a:hover{color:var(--navy);}
+  </style>
+</helmet>
+<div style="display:flex;min-height:100vh;font-family:var(--font-sans);color:var(--text-body)">
+  <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Sidebar" items="{{ navItems }}" active-id="ledger" on-quick-add="{{ noop }}" hint-size="224px,100%" style="height:100vh;position:sticky;top:0"></x-import>
+  <main style="flex:1;height:100vh;overflow-y:auto;box-sizing:border-box">
+  <div style="padding:32px 48px 64px;box-sizing:border-box">
+
+    <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap">
+      <div>
+        <h1 style="font-size:var(--text-2xl);font-weight:700;margin:0 0 6px">Ledger</h1>
+        <div style="font-size:var(--text-sm);color:var(--text-secondary)">What came in and what went out. Single entry, and revenue counts when the money arrives rather than when the invoice is sent. All amounts in USD.</div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="secondary" on-click="{{ noop }}" hint-size="auto,38px">Export CSV</x-import>
+        <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="primary" on-click="{{ toggleAdd }}" hint-size="auto,38px">Add a line</x-import>
+      </div>
+    </div>
+
+    <div style="display:flex;align-items:center;gap:8px;margin-top:20px;flex-wrap:wrap">
+      <button sc-camel-on-click="{{ prevMonth }}" title="Earlier month" style="display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;background:var(--surface-card);border:1px solid var(--border-strong);border-radius:var(--radius-sm);cursor:pointer;color:var(--ink);transition:background-color var(--transition-fast)" style-hover="background:var(--surface-hover)"><svg width="15" height="15" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"></path></svg></button>
+      <span style="font-family:var(--font-mono);font-size:var(--text-base);min-width:150px;text-align:center">{{ monthLabel }}</span>
+      <button sc-camel-on-click="{{ nextMonth }}" title="Later month" style="display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;background:var(--surface-card);border:1px solid var(--border-strong);border-radius:var(--radius-sm);cursor:pointer;color:{{ nextColor }};transition:background-color var(--transition-fast)" style-hover="background:var(--surface-hover)"><svg width="15" height="15" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"></path></svg></button>
+      <sc-if value="{{ notThisMonth }}" hint-placeholder-val="{{ false }}">
+        <button sc-camel-on-click="{{ goThisMonth }}" style="padding:6px 12px;background:transparent;border:1px solid transparent;border-radius:var(--radius-sm);cursor:pointer;font-family:var(--font-sans);font-size:var(--text-sm);font-weight:500;color:var(--navy-700);transition:background-color var(--transition-fast)" style-hover="background:var(--navy-50)">Back to this month</button>
+      </sc-if>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:16px">
+      <sc-for list="{{ stats }}" as="st" hint-placeholder-count="4">
+        <div style="padding:14px 18px;background:var(--surface-card);border:1px solid var(--border-thin);border-left:3px solid {{ st.accent }};border-radius:var(--radius-md);box-shadow:var(--shadow-card)">
+          <div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary)">{{ st.label }}</div>
+          <div style="font-family:var(--font-mono);font-size:var(--text-xl);margin:6px 0 4px;color:{{ st.color }}">{{ st.value }}</div>
+          <div style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary)">{{ st.sub }}</div>
+        </div>
+      </sc-for>
+    </div>
+
+    <sc-if value="{{ addOpen }}" hint-placeholder-val="{{ false }}">
+      <div style="margin-top:16px;padding:24px;background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-lg);box-shadow:var(--shadow-card)">
+        <h2 style="font-size:var(--text-lg);font-weight:700;margin:0 0 4px">{{ addTitle }}</h2>
+        <div style="font-size:var(--text-sm);color:var(--text-secondary);margin-bottom:16px">Enter the amount as a positive figure. The category decides whether it counts up or down.</div>
+        <div style="display:grid;grid-template-columns:130px 1fr 1fr 130px 1fr;gap:12px 16px">
+          <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Date</div><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Input" value="{{ fDate }}" sc-camel-on-change="{{ setFDate }}" mono="{{ true }}" hint-size="100%,38px"></x-import></div>
+          <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Category</div><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Select" options="{{ catOpts }}" value="{{ fCat }}" sc-camel-on-change="{{ setFCat }}" hint-size="100%,38px"></x-import></div>
+          <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Client, if it belongs to one</div><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Select" options="{{ clientOpts }}" value="{{ fClient }}" sc-camel-on-change="{{ setFClient }}" hint-size="100%,38px"></x-import></div>
+          <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Amount (USD)</div><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Input" value="{{ fAmount }}" sc-camel-on-change="{{ setFAmount }}" mono="{{ true }}" placeholder="1250.00" hint-size="100%,38px"></x-import></div>
+          <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Notes</div><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Input" value="{{ fNotes }}" sc-camel-on-change="{{ setFNotes }}" placeholder="August retainer" hint-size="100%,38px"></x-import></div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;margin-top:16px">
+          <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="primary" size="sm" on-click="{{ saveLine }}" hint-size="auto,32px">{{ addSaveLabel }}</x-import>
+          <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="ghost" size="sm" on-click="{{ toggleAdd }}" hint-size="auto,32px">Cancel</x-import>
+          <button sc-camel-on-click="{{ attachReceipt }}" style="display:inline-flex;align-items:center;gap:6px;padding:6px 12px;background:transparent;border:1px dashed var(--border-strong);border-radius:var(--radius-sm);cursor:pointer;font-family:var(--font-sans);font-size:var(--text-sm);font-weight:500;color:var(--navy-700);transition:background-color var(--transition-fast)" style-hover="background:var(--navy-50)">
+            <svg width="14" height="14" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path></svg>
+            {{ receiptLabel }}
+          </button>
+          <span style="font-size:var(--text-sm);color:var(--text-secondary)">{{ fHint }}</span>
+        </div>
+      </div>
+    </sc-if>
+
+    <div style="display:grid;grid-template-columns:minmax(560px,1fr) 340px;gap:16px;margin-top:16px;align-items:start">
+
+      <div style="background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-lg);box-shadow:var(--shadow-card);overflow:hidden">
+        <div style="display:flex;align-items:center;gap:8px;padding:14px 20px;flex-wrap:wrap">
+          <h2 style="font-size:var(--text-lg);font-weight:700;margin:0">Lines</h2>
+          <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary)">{{ lineCount }}</span>
+          <span style="flex:1"></span>
+          <sc-for list="{{ kindFilters }}" as="kf" hint-placeholder-count="3">
+            <button sc-camel-on-click="{{ kf.pick }}" style="padding:4px 12px;background:{{ kf.bg }};border:1px solid {{ kf.border }};border-radius:var(--radius-pill);cursor:pointer;font-family:var(--font-sans);font-size:var(--text-sm);font-weight:500;color:var(--navy-700);transition:background-color var(--transition-fast)" style-hover="background:var(--navy-50)">{{ kf.label }}</button>
+          </sc-for>
+          <div style="width:190px"><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Input" value="{{ lineQ }}" sc-camel-on-change="{{ setLineQ }}" placeholder="Search lines" hint-size="190px,34px"></x-import></div>
+        </div>
+        <div style="overflow-x:auto">
+        <div style="min-width:760px">
+        <div style="display:grid;grid-template-columns:76px 1fr 130px 96px 104px 104px 60px;gap:10px;padding:8px 20px;background:var(--surface-row-alt);border-top:1px solid var(--border-thin);font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary)">
+          <span>Date</span><span>Category and notes</span><span>Client</span><span style="text-align:right">In</span><span style="text-align:right">Out</span><span style="text-align:right">Balance</span><span></span>
+        </div>
+        <sc-for list="{{ lines }}" as="ln" hint-placeholder-count="8">
+          <div style="display:grid;grid-template-columns:76px 1fr 130px 96px 104px 104px 60px;gap:10px;align-items:center;padding:10px 20px;border-top:1px solid var(--border-thin);transition:background-color var(--transition-fast)" style-hover="background:var(--surface-hover)">
+            <span style="font-family:var(--font-mono);font-size:var(--text-xs)">{{ ln.date }}</span>
+            <span style="min-width:0">
+              <span style="display:flex;align-items:center;gap:8px">
+                <span style="width:8px;height:8px;border-radius:50%;background:{{ ln.dot }};flex-shrink:0"></span>
+                <span style="font-size:var(--text-sm);font-weight:500;white-space:nowrap">{{ ln.cat }}</span>
+                <sc-if value="{{ ln.hasReceipt }}" hint-placeholder-val="{{ false }}">
+                  <svg width="13" height="13" sc-camel-view-box="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path></svg>
+                </sc-if>
+              </span>
+              <span style="display:block;font-size:var(--text-xs);color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px">{{ ln.notes }}</span>
+            </span>
+            <span style="font-size:var(--text-sm);color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ ln.client }}</span>
+            <span style="font-family:var(--font-mono);font-size:var(--text-sm);text-align:right;color:var(--text-positive)">{{ ln.in }}</span>
+            <span style="font-family:var(--font-mono);font-size:var(--text-sm);text-align:right">{{ ln.out }}</span>
+            <span style="font-family:var(--font-mono);font-size:var(--text-sm);text-align:right;color:{{ ln.balColor }}">{{ ln.balance }}</span>
+            <span style="display:flex;gap:2px;justify-content:flex-end">
+              <button sc-camel-on-click="{{ ln.edit }}" title="Edit line" style="display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;background:transparent;border:none;border-radius:var(--radius-sm);cursor:pointer;color:var(--muted);transition:background-color var(--transition-fast)" style-hover="background:var(--navy-50)"><svg width="13" height="13" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"></path></svg></button>
+              <button sc-camel-on-click="{{ ln.remove }}" title="Delete line" style="display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;background:transparent;border:none;border-radius:var(--radius-sm);cursor:pointer;color:var(--muted);transition:background-color var(--transition-fast)" style-hover="background:var(--surface-hover)"><svg width="13" height="13" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"></path><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"></path><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button>
+            </span>
+          </div>
+        </sc-for>
+        <sc-if value="{{ linesEmpty }}" hint-placeholder-val="{{ false }}">
+          <div style="padding:40px 20px;text-align:center;font-size:var(--text-base);color:var(--text-secondary);border-top:1px solid var(--border-thin)">No lines this month. Add one with the button above, or press N.</div>
+        </sc-if>
+        </div>
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:24px;padding:12px 20px;border-top:1px solid var(--border-strong);font-size:var(--text-sm)">
+          <span style="font-weight:700">Net for {{ monthShort }}</span>
+          <span style="font-family:var(--font-mono);font-weight:700;color:{{ netColor }}">{{ netMonth }}</span>
+        </div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:16px">
+        <div style="padding:20px 24px;background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-lg);box-shadow:var(--shadow-card)">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
+            <h2 style="font-size:var(--text-lg);font-weight:700;margin:0">By category</h2>
+            <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary)">{{ monthShort }}</span>
+          </div>
+          <sc-for list="{{ catRows }}" as="cr" hint-placeholder-count="4">
+            <div style="padding:10px 0;border-top:1px solid var(--border-thin)">
+              <div style="display:flex;align-items:baseline;gap:8px">
+                <span style="width:8px;height:8px;border-radius:50%;background:{{ cr.dot }};flex-shrink:0;align-self:center"></span>
+                <span style="flex:1;font-size:var(--text-sm);font-weight:500">{{ cr.name }}</span>
+                <span style="font-family:var(--font-mono);font-size:var(--text-sm)">{{ cr.amount }}</span>
+              </div>
+              <div style="display:flex;height:6px;border-radius:var(--radius-pill);overflow:hidden;background:var(--surface-row-alt);margin-top:6px">
+                <div style="width:{{ cr.w }};background:{{ cr.dot }}"></div>
+              </div>
+            </div>
+          </sc-for>
+          <sc-if value="{{ catRowsEmpty }}" hint-placeholder-val="{{ false }}">
+            <div style="padding:12px 0 0;font-size:var(--text-sm);color:var(--text-secondary)">Nothing recorded this month.</div>
+          </sc-if>
+        </div>
+
+        <div style="padding:20px 24px;background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-lg);box-shadow:var(--shadow-card)">
+          <div style="display:flex;align-items:center;gap:10px">
+            <h2 style="font-size:var(--text-lg);font-weight:700;margin:0">Categories</h2>
+            <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary)">{{ nCats }}</span>
+            <span style="flex:1"></span>
+            <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="secondary" size="sm" on-click="{{ toggleCatForm }}" hint-size="auto,30px">Add category</x-import>
+          </div>
+          <sc-if value="{{ catFormOpen }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;gap:8px;margin-top:12px;align-items:center">
+              <div style="flex:1"><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Input" value="{{ catName }}" sc-camel-on-change="{{ setCatName }}" placeholder="Software subscriptions" hint-size="100%,36px"></x-import></div>
+              <div style="width:110px"><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Select" options="{{ kindOpts }}" value="{{ catKind }}" sc-camel-on-change="{{ setCatKind }}" hint-size="110px,36px"></x-import></div>
+              <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="primary" size="sm" on-click="{{ saveCat }}" hint-size="auto,30px">Save</x-import>
+            </div>
+          </sc-if>
+          <sc-for list="{{ cats }}" as="ct" hint-placeholder-count="4">
+            <div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--border-thin);margin-top:9px">
+              <span style="width:8px;height:8px;border-radius:50%;background:{{ ct.dot }};flex-shrink:0"></span>
+              <span style="flex:1;font-size:var(--text-sm);font-weight:500">{{ ct.name }}</span>
+              <span style="background:{{ ct.chipBg }};color:{{ ct.chipFg }};font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;padding:1px 8px;border-radius:var(--radius-pill)">{{ ct.kind }}</span>
+              <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary)">{{ ct.uses }}</span>
+            </div>
+          </sc-for>
+          <div style="margin-top:12px;font-size:var(--text-sm);color:var(--text-secondary)">Income counts up. Expense and overhead count down. Overhead is cost of running the firm rather than serving a client.</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script="" data-props="{}">
+class Component extends DCLogic {
+  fmt(n) { return (n < 0 ? '-$' : '$') + Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+
+  CATS = [
+    { name: 'Consulting fees', kind: 'Income', dot: '#2E7D5B' },
+    { name: 'Retainers', kind: 'Income', dot: '#2E7D5B' },
+    { name: 'Contractor costs', kind: 'Expense', dot: 'var(--gold-600)' },
+    { name: 'Software subscriptions', kind: 'Overhead', dot: 'var(--navy-500)' },
+    { name: 'Banking and fees', kind: 'Overhead', dot: 'var(--navy-500)' },
+    { name: 'Travel and meals', kind: 'Expense', dot: 'var(--gold-600)' }
+  ];
+
+  MONTHS = ['Jun 2026', 'Jul 2026', 'Aug 2026'];
+
+  INIT = [
+    { m: 2, date: 'Aug 29', cat: 'Retainers', client: 'Uppingham Systems', notes: 'August retainer, paid by ACH', amount: 10582, receipt: false },
+    { m: 2, date: 'Aug 26', cat: 'Software subscriptions', client: '', notes: 'Notion, annual seat', amount: 96, receipt: true },
+    { m: 2, date: 'Aug 24', cat: 'Contractor costs', client: 'Quenington Capital', notes: 'Research assistant, board pack sprint', amount: 1400, receipt: true },
+    { m: 2, date: 'Aug 16', cat: 'Consulting fees', client: 'Quenington Capital', notes: 'V-2290 board pack, wire received', amount: 2590, receipt: false },
+    { m: 2, date: 'Aug 15', cat: 'Consulting fees', client: '', notes: 'August retainer', amount: 4250, receipt: false },
+    { m: 2, date: 'Aug 12', cat: 'Banking and fees', client: '', notes: 'Wise incoming wire fee', amount: 14.2, receipt: true },
+    { m: 2, date: 'Aug 9', cat: 'Consulting fees', client: 'Marlowe & Finch', notes: 'V-2019 quarterly review, paid', amount: 760, receipt: false },
+    { m: 2, date: 'Aug 4', cat: 'Travel and meals', client: 'Cranleigh Group', notes: 'Site visit, rail and lunch', amount: 182.4, receipt: true },
+    { m: 2, date: 'Aug 2', cat: 'Software subscriptions', client: '', notes: 'Cloudflare and hosting', amount: 42, receipt: false },
+    { m: 1, date: 'Jul 30', cat: 'Consulting fees', client: 'Yealmpton Studio', notes: 'SOP sprint, paid', amount: 2599.3, receipt: false },
+    { m: 1, date: 'Jul 18', cat: 'Contractor costs', client: '', notes: 'Bookkeeper, Q2 close', amount: 650, receipt: true },
+    { m: 1, date: 'Jul 12', cat: 'Retainers', client: 'Uppingham Systems', notes: 'July retainer', amount: 9680, receipt: false },
+    { m: 1, date: 'Jul 8', cat: 'Software subscriptions', client: '', notes: 'Zoom and Google Workspace', amount: 61.5, receipt: false },
+    { m: 0, date: 'Jun 24', cat: 'Consulting fees', client: 'Quarrymill Health', notes: 'Diligence support, paid', amount: 643, receipt: false },
+    { m: 0, date: 'Jun 15', cat: 'Retainers', client: 'Uppingham Systems', notes: 'June retainer', amount: 9680, receipt: false },
+    { m: 0, date: 'Jun 10', cat: 'Travel and meals', client: '', notes: 'Client dinner, Boston', amount: 148.75, receipt: true }
+  ];
+
+  state = { lines: this.INIT, cats: this.CATS, month: 2, addOpen: false, editIdx: null,
+    fDate: 'Aug 31', fCat: 'Consulting fees', fClient: '', fAmount: '', fNotes: '', fReceipt: false, fHint: '',
+    kindFilter: 'all', lineQ: '', catForm: false, catName: '', catKind: 'Expense' };
+
+  KIND_CHIPS = { Income: ['var(--chip-ontrack-bg)', 'var(--chip-ontrack-fg)'], Expense: ['var(--gold-100)', 'var(--gold-600)'], Overhead: ['var(--navy-100)', 'var(--navy)'] };
+
+  catOf(name) { return this.state.cats.find(c => c.name === name) || { kind: 'Expense', dot: 'var(--gold-600)' }; }
+  signed(ln) { return this.catOf(ln.cat).kind === 'Income' ? ln.amount : -ln.amount; }
+  dayOf(d) { return parseInt(d.split(' ')[1], 10) || 0; }
+
+  attach(cb) {
+    const inp = document.createElement('input');
+    inp.type = 'file'; inp.accept = '.pdf,.png,.jpg,.jpeg';
+    inp.onchange = () => { if (inp.files.length) cb(); };
+    inp.click();
+  }
+
+  renderVals() {
+    const s = this.state;
+    const navItems = ['Dashboard', 'Action items', 'Projects', 'Meetings', 'Calendar', 'SOPs', 'Templates', 'Clients', 'Mail', 'Invoicing', 'Ledger', 'Reports', 'Settings']
+      .map(l => ({ id: l.toLowerCase().replace(' ', '-'), label: l }));
+    const monthLabel = this.MONTHS[s.month];
+    const monthShort = monthLabel.split(' ')[0];
+    const inMonth = s.lines.filter(l => l.m === s.month);
+    let mIn = 0, mOut = 0, mOverhead = 0;
+    inMonth.forEach(l => {
+      const k = this.catOf(l.cat).kind;
+      if (k === 'Income') mIn += l.amount; else { mOut += l.amount; if (k === 'Overhead') mOverhead += l.amount; }
+    });
+    const mNet = mIn - mOut;
+    const prev = s.lines.filter(l => l.m === s.month - 1);
+    const pNet = prev.reduce((a, l) => a + this.signed(l), 0);
+    const netDelta = prev.length ? (mNet >= pNet ? 'up ' : 'down ') + this.fmt(Math.abs(mNet - pNet)) + ' vs ' + this.MONTHS[s.month - 1].split(' ')[0] : 'no earlier month';
+    const stats = [
+      { label: 'Money in', value: this.fmt(mIn), sub: inMonth.filter(l => this.catOf(l.cat).kind === 'Income').length + ' lines', accent: '#2E7D5B', color: 'var(--ink)' },
+      { label: 'Money out', value: this.fmt(mOut), sub: inMonth.filter(l => this.catOf(l.cat).kind !== 'Income').length + ' lines', accent: 'var(--gold-600)', color: 'var(--ink)' },
+      { label: 'Of which overhead', value: this.fmt(mOverhead), sub: mOut > 0 ? Math.round(mOverhead / mOut * 100) + '% of money out' : 'nothing out', accent: 'var(--navy-500)', color: 'var(--ink)' },
+      { label: 'Net for ' + monthShort, value: this.fmt(mNet), sub: netDelta, accent: mNet >= 0 ? '#2E7D5B' : 'var(--gold-600)', color: mNet >= 0 ? 'var(--text-positive)' : 'var(--text-warn)' }
+    ];
+    const q = s.lineQ.trim().toLowerCase();
+    const sortedMonth = inMonth.slice().sort((a, b) => this.dayOf(a.date) - this.dayOf(b.date));
+    let run = 0;
+    const withBal = sortedMonth.map(l => { run += this.signed(l); return { l, bal: run }; });
+    const shown = withBal
+      .filter(({ l }) => {
+        const k = this.catOf(l.cat).kind;
+        if (s.kindFilter === 'in' && k !== 'Income') return false;
+        if (s.kindFilter === 'out' && k === 'Income') return false;
+        if (q && !(l.cat + ' ' + l.client + ' ' + l.notes).toLowerCase().includes(q)) return false;
+        return true;
+      })
+      .reverse()
+      .map(({ l, bal }) => {
+        const idx = s.lines.indexOf(l);
+        const income = this.catOf(l.cat).kind === 'Income';
+        return { date: l.date, cat: l.cat, notes: l.notes || 'No notes', client: l.client || 'None',
+          dot: this.catOf(l.cat).dot, hasReceipt: !!l.receipt,
+          in: income ? this.fmt(l.amount) : '', out: income ? '' : this.fmt(l.amount),
+          balance: this.fmt(bal), balColor: bal >= 0 ? 'var(--ink)' : 'var(--text-warn)',
+          edit: () => this.setState({ addOpen: true, editIdx: idx, fDate: l.date, fCat: l.cat, fClient: l.client, fAmount: String(l.amount), fNotes: l.notes, fReceipt: !!l.receipt, fHint: '' }),
+          remove: () => this.setState(x => ({ lines: x.lines.filter((_, j) => j !== idx) })) };
+      });
+    const catAgg = {};
+    inMonth.forEach(l => { catAgg[l.cat] = (catAgg[l.cat] || 0) + l.amount; });
+    const maxCat = Math.max(1, ...Object.values(catAgg));
+    const catRows = Object.entries(catAgg).sort((a, b) => b[1] - a[1]).map(([name, amt]) => ({
+      name, amount: this.fmt(amt), dot: this.catOf(name).dot, w: Math.round(amt / maxCat * 100) + '%' }));
+    return {
+      navItems, stats, monthLabel, monthShort, noop: () => {},
+      prevMonth: () => this.setState(x => ({ month: Math.max(0, x.month - 1) })),
+      nextMonth: () => this.setState(x => ({ month: Math.min(this.MONTHS.length - 1, x.month + 1) })),
+      nextColor: s.month < this.MONTHS.length - 1 ? 'var(--ink)' : 'var(--muted)',
+      notThisMonth: s.month !== this.MONTHS.length - 1,
+      goThisMonth: () => this.setState({ month: this.MONTHS.length - 1 }),
+      addOpen: s.addOpen,
+      addTitle: s.editIdx != null ? 'Edit line' : 'Add a line',
+      addSaveLabel: s.editIdx != null ? 'Save changes' : 'Add it',
+      toggleAdd: () => this.setState(x => ({ addOpen: !x.addOpen, editIdx: null, fDate: 'Aug 31', fCat: 'Consulting fees', fClient: '', fAmount: '', fNotes: '', fReceipt: false, fHint: '' })),
+      fDate: s.fDate, setFDate: (e) => this.setState({ fDate: e.target.value }),
+      fCat: s.fCat, setFCat: (e) => this.setState({ fCat: e.target.value }),
+      fClient: s.fClient, setFClient: (e) => this.setState({ fClient: e.target.value }),
+      fAmount: s.fAmount, setFAmount: (e) => this.setState({ fAmount: e.target.value }),
+      fNotes: s.fNotes, setFNotes: (e) => this.setState({ fNotes: e.target.value }),
+      fHint: s.fHint,
+      catOpts: s.cats.map(c => c.name),
+      clientOpts: ['', 'Marlowe & Finch', 'Uppingham Systems', 'Yealmpton Studio', 'Quenington Capital', 'Quarrymill Health', 'Cranleigh Group'],
+      receiptLabel: s.fReceipt ? 'Receipt attached' : 'Attach receipt',
+      attachReceipt: () => this.attach(() => this.setState({ fReceipt: true })),
+      saveLine: () => {
+        const amt = parseFloat(s.fAmount);
+        if (!amt || amt <= 0) { this.setState({ fHint: 'A positive amount is required.' }); return; }
+        const built = { m: s.month, date: s.fDate, cat: s.fCat, client: s.fClient, notes: s.fNotes, amount: amt, receipt: s.fReceipt };
+        if (s.editIdx != null) this.setState(x => ({ lines: x.lines.map((l, j) => j === s.editIdx ? built : l), addOpen: false, editIdx: null }));
+        else this.setState(x => ({ lines: [built].concat(x.lines), addOpen: false }));
+      },
+      kindFilters: [['all', 'All'], ['in', 'Money in'], ['out', 'Money out']].map(([id, label]) => {
+        const active = s.kindFilter === id;
+        return { label, bg: active ? 'var(--navy-50)' : 'var(--surface-card)', border: active ? 'var(--navy-500)' : 'var(--border-strong)',
+          pick: () => this.setState({ kindFilter: id }) };
+      }),
+      lineQ: s.lineQ, setLineQ: (e) => this.setState({ lineQ: e.target.value }),
+      lines: shown, linesEmpty: shown.length === 0,
+      lineCount: shown.length + ' of ' + inMonth.length,
+      netMonth: this.fmt(mNet), netColor: mNet >= 0 ? 'var(--text-positive)' : 'var(--text-warn)',
+      catRows, catRowsEmpty: catRows.length === 0,
+      nCats: String(s.cats.length),
+      catFormOpen: s.catForm,
+      toggleCatForm: () => this.setState(x => ({ catForm: !x.catForm, catName: '', catKind: 'Expense' })),
+      catName: s.catName, setCatName: (e) => this.setState({ catName: e.target.value }),
+      catKind: s.catKind, setCatKind: (e) => this.setState({ catKind: e.target.value }),
+      kindOpts: ['Income', 'Expense', 'Overhead'],
+      saveCat: () => {
+        if (!s.catName.trim()) return;
+        const dot = s.catKind === 'Income' ? '#2E7D5B' : s.catKind === 'Overhead' ? 'var(--navy-500)' : 'var(--gold-600)';
+        this.setState(x => ({ cats: x.cats.concat([{ name: s.catName.trim(), kind: s.catKind, dot }]), catForm: false }));
+      },
+      cats: s.cats.map(ct => {
+        const [b, f] = this.KIND_CHIPS[ct.kind];
+        const uses = s.lines.filter(l => l.cat === ct.name).length;
+        return { ...ct, chipBg: b, chipFg: f, uses: uses + ' lines' };
+      })
+    };
+  }
+}
+</script>
+
+
+</body></html>

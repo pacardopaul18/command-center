@@ -1,0 +1,832 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="../support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/tokens/fonts.css">
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/tokens/colors.css">
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/tokens/typography.css">
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/tokens/spacing.css">
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/tokens/effects.css">
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/tokens/base.css">
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/styles.css">
+  <script src="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/_ds_bundle.js"></script>
+  <style>
+    body{margin:0;background:var(--surface-page);}
+    a{color:var(--text-link);} a:hover{color:var(--navy);}
+  </style>
+</helmet>
+<div style="display:flex;min-height:100vh;font-family:var(--font-sans);color:var(--text-body)">
+  <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Sidebar" items="{{ navItems }}" active-id="projects" on-quick-add="{{ noop }}" hint-size="224px,100%" style="height:100vh;position:sticky;top:0"></x-import>
+  <main style="flex:1;height:100vh;overflow-y:auto;box-sizing:border-box">
+  <div style="padding:32px 48px 64px;box-sizing:border-box">
+
+  <sc-if value="{{ isList }}" hint-placeholder-val="{{ true }}">
+    <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap">
+      <div>
+        <h1 style="font-size:var(--text-2xl);font-weight:700;margin:0 0 6px">Projects</h1>
+        <div style="font-size:var(--text-sm);color:var(--text-secondary)">192 engagements from initiation to closing. Click a project for the whole picture.</div>
+      </div>
+      <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="primary" on-click="{{ noop }}" hint-size="auto,38px">New project</x-import>
+    </div>
+
+    <div style="display:flex;gap:12px;margin-top:20px;align-items:center;flex-wrap:wrap">
+      <div style="display:flex;flex-wrap:wrap;gap:4px;padding:4px;max-width:100%;box-sizing:border-box;width:fit-content;background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-md);box-shadow:var(--shadow-card)">
+        <sc-for list="{{ phaseTabs }}" as="tb" hint-placeholder-count="7">
+          <button sc-camel-on-click="{{ tb.pick }}" style="display:inline-flex;align-items:center;gap:8px;padding:7px 14px;border:none;border-radius:var(--radius-sm);cursor:pointer;white-space:nowrap;font-family:var(--font-sans);font-size:var(--text-base);font-weight:500;background:{{ tb.bg }};color:{{ tb.fg }};transition:background-color var(--transition-fast)" style-hover="background:{{ tb.hoverBg }}">{{ tb.label }}<span style="font-family:var(--font-mono);font-size:var(--text-xs);color:{{ tb.countFg }}">{{ tb.count }}</span></button>
+        </sc-for>
+      </div>
+      <div style="flex:1;min-width:240px">
+        <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Input" value="{{ search }}" sc-camel-on-change="{{ setSearch }}" placeholder="Search projects and clients. Filters as you type." hint-size="100%,38px"></x-import>
+      </div>
+    </div>
+
+    <div style="margin-top:16px;background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-lg);box-shadow:var(--shadow-card);overflow:hidden">
+      <div style="overflow-x:auto">
+      <div style="min-width:960px">
+      <div style="display:grid;grid-template-columns:minmax(220px,1.3fr) 140px 100px 1fr 84px 64px 74px 96px;gap:12px;padding:10px 20px;background:var(--surface-row-alt);font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary)">
+        <span>Project</span><span>Client</span><span>Phase</span><span>Progress</span><span>Target</span><span style="text-align:right">Open</span><span style="text-align:right">Tickets</span><span>Status</span>
+      </div>
+      <sc-for list="{{ rows }}" as="p" hint-placeholder-count="8">
+        <div sc-camel-on-click="{{ p.open }}" style="display:grid;grid-template-columns:minmax(220px,1.3fr) 140px 100px 1fr 84px 64px 74px 96px;gap:12px;align-items:center;padding:12px 20px;border-top:1px solid var(--border-thin);cursor:pointer;transition:background-color var(--transition-fast)" style-hover="background:var(--surface-hover)">
+          <span style="min-width:0">
+            <span style="display:block;font-weight:600;font-size:var(--text-md);color:var(--text-link);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ p.name }}</span>
+            <span style="display:block;font-size:var(--text-xs);color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px">{{ p.milestone }}</span>
+          </span>
+          <span style="font-size:var(--text-sm);color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ p.client }}</span>
+          <span style="font-family:var(--font-mono);font-size:var(--text-xs)">{{ p.phase }}</span>
+          <span style="display:flex;align-items:center;gap:8px">
+            <span style="flex:1;display:flex;height:6px;border-radius:var(--radius-pill);overflow:hidden;background:var(--surface-row-alt)"><span style="width:{{ p.pct }};background:{{ p.barColor }}"></span></span>
+            <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary);width:34px;text-align:right">{{ p.pct }}</span>
+          </span>
+          <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:{{ p.dueColor }}">{{ p.due }}</span>
+          <span style="font-family:var(--font-mono);font-size:var(--text-sm);text-align:right">{{ p.openItems }}</span>
+          <span style="font-family:var(--font-mono);font-size:var(--text-sm);text-align:right">{{ p.ticketCount }}</span>
+          <span><span style="background:{{ p.chipBg }};color:{{ p.chipFg }};font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;padding:2px 8px;border-radius:var(--radius-pill)">{{ p.status }}</span></span>
+        </div>
+      </sc-for>
+      <sc-if value="{{ rowsEmpty }}" hint-placeholder-val="{{ false }}">
+        <div style="padding:40px 20px;text-align:center;font-size:var(--text-base);color:var(--text-secondary);border-top:1px solid var(--border-thin)">No projects match. Clear the search or pick another phase.</div>
+      </sc-if>
+      </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;padding:10px 16px;border-top:1px solid var(--border-thin)">
+        <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary)">{{ pageInfo }}</span>
+        <span style="flex:1"></span>
+        <span style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary)">Per page</span>
+        <div style="width:90px"><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Select" options="{{ perPageOpts }}" value="{{ perPage }}" sc-camel-on-change="{{ setPerPage }}" hint-size="90px,34px"></x-import></div>
+        <button sc-camel-on-click="{{ prevPage }}" style="padding:6px 12px;background:var(--surface-card);border:1px solid var(--border-strong);border-radius:var(--radius-sm);cursor:pointer;font-family:var(--font-sans);font-size:var(--text-sm);font-weight:500;color:{{ prevColor }};transition:background-color var(--transition-fast)" style-hover="background:var(--surface-hover)">Prev</button>
+        <button sc-camel-on-click="{{ nextPage }}" style="padding:6px 12px;background:var(--surface-card);border:1px solid var(--border-strong);border-radius:var(--radius-sm);cursor:pointer;font-family:var(--font-sans);font-size:var(--text-sm);font-weight:500;color:{{ nextColor }};transition:background-color var(--transition-fast)" style-hover="background:var(--surface-hover)">Next</button>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ isProject }}" hint-placeholder-val="{{ false }}">
+    <div style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary)"><a href="#" sc-camel-on-click="{{ backToList }}" style="color:var(--text-link);text-decoration:none">Projects</a> / {{ d.name }}</div>
+    <div style="display:flex;align-items:center;gap:12px;margin-top:8px;flex-wrap:wrap">
+      <h1 style="font-size:var(--text-2xl);font-weight:700;margin:0">{{ d.name }}</h1>
+      <span style="background:{{ d.chipBg }};color:{{ d.chipFg }};font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;padding:3px 10px;border-radius:var(--radius-pill)">{{ d.status }}</span>
+      <span style="flex:1"></span>
+      <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="secondary" size="sm" on-click="{{ noop }}" hint-size="auto,32px">Edit project</x-import>
+      <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="primary" size="sm" on-click="{{ noop }}" hint-size="auto,32px">{{ advanceLabel }}</x-import>
+    </div>
+    <div style="font-size:var(--text-sm);color:var(--text-secondary);margin-top:6px">{{ d.client }} · next milestone {{ d.milestone }} · target close {{ d.due }}</div>
+
+    <div style="margin-top:20px;padding:14px 20px;background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-lg);box-shadow:var(--shadow-card)">
+      <div style="display:flex;align-items:center;overflow-x:auto">
+        <sc-for list="{{ lifecycle }}" as="lc" hint-placeholder-count="5">
+          <button sc-camel-on-click="{{ lc.pick }}" title="View this stage without advancing" style="display:inline-flex;align-items:center;gap:8px;white-space:nowrap;padding:5px 12px;background:{{ lc.bg }};border:1px solid {{ lc.border }};border-radius:var(--radius-pill);cursor:pointer;font-family:var(--font-sans);transition:background-color var(--transition-fast)" style-hover="background:var(--navy-50)">
+            <span style="display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:{{ lc.dotBg }};color:{{ lc.dotFg }};border:1.5px solid {{ lc.dotBorder }};font-family:var(--font-mono);font-size:var(--text-xs)">{{ lc.n }}</span>
+            <span style="font-size:var(--text-sm);font-weight:{{ lc.w }};color:{{ lc.fg }}">{{ lc.label }}</span>
+          </button>
+          <sc-if value="{{ lc.hasBar }}" hint-placeholder-val="{{ true }}">
+            <span style="flex:1;min-width:20px;height:2px;background:{{ lc.barBg }};margin:0 10px"></span>
+          </sc-if>
+        </sc-for>
+      </div>
+      <div style="margin-top:10px;font-size:var(--text-sm);color:var(--text-secondary)">{{ stageNote }}</div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-top:16px">
+      <sc-for list="{{ pStats }}" as="st" hint-placeholder-count="5">
+        <div style="min-width:0;padding:13px 16px;background:var(--surface-card);border:1px solid var(--border-thin);border-left:3px solid {{ st.accent }};border-radius:var(--radius-md);box-shadow:var(--shadow-card)">
+          <div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ st.label }}</div>
+          <div style="font-family:var(--font-mono);font-size:var(--text-lg);margin-top:5px;color:{{ st.color }};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ st.value }}</div>
+        </div>
+      </sc-for>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:16px;margin-top:16px;align-items:start">
+      <div style="display:flex;flex-direction:column;gap:16px">
+        <div style="padding:20px 24px;background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-lg);box-shadow:var(--shadow-card)">
+          <h2 style="font-size:var(--text-lg);font-weight:700;margin:0 0 12px">Details</h2>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px 24px">
+            <sc-for list="{{ pDetails }}" as="dp" hint-placeholder-count="6">
+              <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:3px">{{ dp.label }}</div><div style="font-size:var(--text-sm)">{{ dp.value }}</div></div>
+            </sc-for>
+          </div>
+          <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border-thin);font-size:var(--text-sm);line-height:1.6">{{ d.brief }}</div>
+        </div>
+
+        <div style="padding:20px 24px;background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-lg);box-shadow:var(--shadow-card)">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
+            <h2 style="font-size:var(--text-lg);font-weight:700;margin:0">Milestones</h2>
+            <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary)">{{ d.msMeta }}</span>
+          </div>
+          <sc-for list="{{ milestones }}" as="ms" hint-placeholder-count="4">
+            <div style="display:flex;align-items:center;gap:12px;padding:9px 0;border-top:1px solid var(--border-thin)">
+              <span style="display:inline-flex;width:9px;height:9px;border-radius:50%;background:{{ ms.dot }};flex-shrink:0"></span>
+              <span style="flex:1;font-size:var(--text-sm);font-weight:{{ ms.w }}">{{ ms.name }}</span>
+              <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:{{ ms.dateColor }}">{{ ms.date }}</span>
+            </div>
+          </sc-for>
+        </div>
+
+        <div style="padding:20px 24px;background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-lg);box-shadow:var(--shadow-card)">
+          <div style="display:flex;align-items:center;gap:10px">
+            <h2 style="font-size:var(--text-lg);font-weight:700;margin:0">Files</h2>
+            <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary)">{{ nFiles }} on file</span>
+            <span style="flex:1"></span>
+            <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="primary" size="sm" on-click="{{ uploadFiles }}" hint-size="auto,30px">Upload files</x-import>
+          </div>
+          <div sc-camel-on-click="{{ uploadFiles }}" style="margin-top:12px;padding:16px;border:1px dashed var(--border-strong);border-radius:var(--radius-md);text-align:center;cursor:pointer;font-size:var(--text-sm);color:var(--text-secondary);transition:background-color var(--transition-fast)" style-hover="background:var(--navy-50)">Drop files here or click to browse. Several at once is fine.</div>
+          <sc-for list="{{ files }}" as="f" hint-placeholder-count="3">
+            <div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-top:1px solid var(--border-thin);margin-top:10px">
+              <svg width="16" height="16" sc-camel-view-box="0 0 24 24" fill="none" stroke="var(--navy-500)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6"></path></svg>
+              <span style="flex:1;min-width:0">
+                <span style="display:block;font-size:var(--text-sm);font-weight:500;color:var(--navy-700);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ f.name }}</span>
+                <span style="display:block;font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary);margin-top:2px">{{ f.meta }}</span>
+              </span>
+              <button sc-camel-on-click="{{ noop }}" title="Download" style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;background:var(--surface-card);border:1px solid var(--border-strong);border-radius:var(--radius-sm);cursor:pointer;color:var(--navy-700);transition:background-color var(--transition-fast)" style-hover="background:var(--navy-50)"><svg width="14" height="14" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><path d="M7 10l5 5 5-5"></path><path d="M12 15V3"></path></svg></button>
+              <button sc-camel-on-click="{{ f.remove }}" title="Remove" style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;background:transparent;border:none;border-radius:var(--radius-sm);cursor:pointer;color:var(--muted);transition:background-color var(--transition-fast)" style-hover="background:var(--surface-hover)"><svg width="14" height="14" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"></path></svg></button>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:16px">
+        <div style="background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-lg);box-shadow:var(--shadow-card);overflow:hidden">
+          <div style="display:flex;align-items:center;gap:10px;padding:16px 20px">
+            <h2 style="font-size:var(--text-lg);font-weight:700;margin:0">Action items</h2>
+            <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary)">{{ d.aiMeta }}</span>
+            <span style="flex:1"></span>
+            <a href="#" sc-camel-on-click="{{ noop2 }}" style="font-size:var(--text-sm);font-weight:500">Open in tracker</a>
+          </div>
+          <sc-for list="{{ actionItems }}" as="ai" hint-placeholder-count="5">
+            <div style="display:flex;align-items:center;gap:12px;padding:10px 20px;border-top:1px solid var(--border-thin)">
+              <span style="flex:1;min-width:0">
+                <span style="display:block;font-size:var(--text-sm);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ ai.title }}</span>
+                <span style="display:block;font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary);margin-top:2px">{{ ai.meta }}</span>
+              </span>
+              <span style="background:{{ ai.chipBg }};color:{{ ai.chipFg }};font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;padding:2px 8px;border-radius:var(--radius-pill);flex-shrink:0">{{ ai.chip }}</span>
+            </div>
+          </sc-for>
+        </div>
+
+        <div style="background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-lg);box-shadow:var(--shadow-card);overflow:hidden">
+          <div style="display:flex;align-items:center;gap:8px;padding:16px 20px;flex-wrap:wrap">
+            <h2 style="font-size:var(--text-lg);font-weight:700;margin:0">Tickets</h2>
+            <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary)">{{ tMeta }}</span>
+            <span style="flex:1"></span>
+            <div style="width:150px"><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Select" options="{{ stageOpts }}" value="{{ stageFilter }}" sc-camel-on-change="{{ setStageFilter }}" hint-size="150px,34px"></x-import></div>
+            <sc-for list="{{ ticketFilters }}" as="tf" hint-placeholder-count="3">
+              <button sc-camel-on-click="{{ tf.pick }}" style="padding:4px 12px;background:{{ tf.bg }};border:1px solid {{ tf.border }};border-radius:var(--radius-pill);cursor:pointer;font-family:var(--font-sans);font-size:var(--text-sm);font-weight:500;color:var(--navy-700);transition:background-color var(--transition-fast)" style-hover="background:var(--navy-50)">{{ tf.label }}</button>
+            </sc-for>
+            <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="primary" size="sm" on-click="{{ toggleNewTicket }}" hint-size="auto,32px">New ticket</x-import>
+          </div>
+
+          <sc-for list="{{ tickets }}" as="tk" hint-placeholder-count="4">
+            <div sc-camel-on-click="{{ tk.open }}" style="display:flex;align-items:center;gap:12px;padding:11px 20px;border-top:1px solid var(--border-thin);cursor:pointer;transition:background-color var(--transition-fast)" style-hover="background:var(--surface-hover)">
+              <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-link);width:52px;flex-shrink:0">{{ tk.id }}</span>
+              <span style="flex:1;min-width:0">
+                <span style="display:block;font-size:var(--text-sm);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ tk.title }}</span>
+                <span style="display:block;font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary);margin-top:2px">{{ tk.meta }}</span>
+              </span>
+              <span style="background:{{ tk.priBg }};color:{{ tk.priFg }};font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;padding:2px 8px;border-radius:var(--radius-pill);flex-shrink:0">{{ tk.pri }}</span>
+              <span style="background:{{ tk.stBg }};color:{{ tk.stFg }};font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;padding:2px 8px;border-radius:var(--radius-pill);flex-shrink:0">{{ tk.st }}</span>
+            </div>
+          </sc-for>
+          <sc-if value="{{ ticketsEmpty }}" hint-placeholder-val="{{ false }}">
+            <div style="padding:24px 20px;text-align:center;font-size:var(--text-sm);color:var(--text-secondary);border-top:1px solid var(--border-thin)">No tickets in this filter.</div>
+          </sc-if>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ isTicket }}" hint-placeholder-val="{{ false }}">
+    <div style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary)"><a href="#" sc-camel-on-click="{{ backToList }}" style="color:var(--text-link);text-decoration:none">Projects</a> / <a href="#" sc-camel-on-click="{{ backToProject }}" style="color:var(--text-link);text-decoration:none">{{ d.name }}</a> / {{ t.id }}</div>
+    <div style="display:flex;align-items:center;gap:12px;margin-top:8px;flex-wrap:wrap">
+      <h1 style="font-size:var(--text-2xl);font-weight:700;margin:0;min-width:0">{{ t.title }}</h1>
+      <span style="background:{{ t.stBg }};color:{{ t.stFg }};font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;padding:3px 10px;border-radius:var(--radius-pill)">{{ t.st }}</span>
+      <span style="background:{{ t.priBg }};color:{{ t.priFg }};font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;padding:3px 10px;border-radius:var(--radius-pill)">{{ t.pri }}</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:6px;margin-top:12px;flex-wrap:wrap">
+      <sc-for list="{{ tActions }}" as="ta" hint-placeholder-count="4">
+        <button sc-camel-on-click="{{ ta.pick }}" style="padding:5px 14px;background:var(--surface-card);border:1px solid var(--border-strong);border-radius:var(--radius-pill);cursor:pointer;font-family:var(--font-sans);font-size:var(--text-sm);font-weight:500;color:var(--navy-700);transition:background-color var(--transition-fast),border-color var(--transition-fast)" style-hover="background:var(--navy-50);border-color:var(--navy-500)">{{ ta.label }}</button>
+      </sc-for>
+      <span style="flex:1"></span>
+      <span style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary)">Acting as</span>
+      <div style="width:150px"><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Select" options="{{ actorOpts }}" value="{{ actor }}" sc-camel-on-change="{{ setActor }}" hint-size="150px,34px"></x-import></div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:minmax(0,2.4fr) minmax(270px,1fr);gap:16px;margin-top:20px;align-items:start">
+      <div style="display:flex;flex-direction:column;gap:16px">
+        <div style="padding:20px 24px;background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-lg);box-shadow:var(--shadow-card)">
+          <h2 style="font-size:var(--text-lg);font-weight:700;margin:0 0 10px">Description</h2>
+          {{ tDescNode }}
+        </div>
+
+        <div style="padding:20px 24px;background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-lg);box-shadow:var(--shadow-card)">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+            <h2 style="font-size:var(--text-lg);font-weight:700;margin:0">Linked tickets</h2>
+            <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary)">{{ tLinkTicketMeta }}</span>
+          </div>
+          <sc-for list="{{ tTicketLinks }}" as="tl" hint-placeholder-count="2">
+            <div style="display:flex;align-items:center;gap:12px;padding:9px 0;border-top:1px solid var(--border-thin)">
+              <span style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);width:110px;flex-shrink:0">{{ tl.rel }}</span>
+              <a href="#" sc-camel-on-click="{{ tl.open }}" style="font-family:var(--font-mono);font-size:var(--text-xs);width:52px;flex-shrink:0">{{ tl.id }}</a>
+              <span style="flex:1;font-size:var(--text-sm);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ tl.title }}</span>
+              <span style="background:{{ tl.stBg }};color:{{ tl.stFg }};font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;padding:2px 8px;border-radius:var(--radius-pill)">{{ tl.st }}</span>
+              <button sc-camel-on-click="{{ tl.remove }}" title="Remove link" style="display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;background:transparent;border:none;border-radius:var(--radius-sm);cursor:pointer;color:var(--muted);transition:background-color var(--transition-fast)" style-hover="background:var(--surface-hover)"><svg width="12" height="12" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"></path></svg></button>
+            </div>
+          </sc-for>
+          <div style="display:flex;gap:8px;align-items:center;padding-top:10px;border-top:1px solid var(--border-thin);margin-top:4px">
+            <div style="width:150px"><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Select" options="{{ relOpts }}" value="{{ alRel }}" sc-camel-on-change="{{ setAlRel }}" hint-size="150px,34px"></x-import></div>
+            <div style="flex:1"><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Select" options="{{ linkTargets }}" value="{{ alTo }}" sc-camel-on-change="{{ setAlTo }}" hint-size="100%,34px"></x-import></div>
+            <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="secondary" size="sm" on-click="{{ addLink }}" hint-size="auto,30px">Add link</x-import>
+          </div>
+        </div>
+
+        <div style="padding:20px 24px;background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-lg);box-shadow:var(--shadow-card)">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
+            <h2 style="font-size:var(--text-lg);font-weight:700;margin:0">Linked action items</h2>
+            <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary)">{{ t.linkMeta }}</span>
+          </div>
+          <sc-for list="{{ tLinks }}" as="lk" hint-placeholder-count="2">
+            <div style="display:flex;align-items:center;gap:12px;padding:9px 0;border-top:1px solid var(--border-thin)">
+              <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-link);width:64px;flex-shrink:0">{{ lk.id }}</span>
+              <span style="flex:1;font-size:var(--text-sm);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ lk.title }}</span>
+              <span style="background:{{ lk.chipBg }};color:{{ lk.chipFg }};font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;padding:2px 8px;border-radius:var(--radius-pill)">{{ lk.chip }}</span>
+            </div>
+          </sc-for>
+        </div>
+
+        <div style="padding:20px 24px;background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-lg);box-shadow:var(--shadow-card)">
+          <h2 style="font-size:var(--text-lg);font-weight:700;margin:0 0 12px">Activity</h2>
+          <div style="border:1px solid var(--border-strong);border-radius:var(--radius-sm);overflow:hidden;margin-bottom:10px">
+            <div style="display:flex;gap:2px;padding:5px 8px;background:var(--surface-row-alt);border-bottom:1px solid var(--border-thin)">
+              <sc-for list="{{ cmButtons }}" as="cb" hint-placeholder-count="4">
+                <button sc-camel-on-click="{{ cb.pick }}" title="{{ cb.tip }}" style="display:inline-flex;align-items:center;justify-content:center;min-width:26px;height:24px;padding:0 7px;background:transparent;border:none;border-radius:var(--radius-sm);cursor:pointer;font-family:var(--font-mono);font-size:var(--text-sm);font-weight:{{ cb.w }};font-style:{{ cb.fs }};color:var(--ink);transition:background-color var(--transition-fast)" style-hover="background:var(--navy-50)">{{ cb.label }}</button>
+              </sc-for>
+              <span style="flex:1"></span>
+              <span style="align-self:center;font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary)">Rich text</span>
+            </div>
+            <div id="cm-desc" sc-camel-content-editable="{{ true }}" style="display:block;width:100%;box-sizing:border-box;min-height:56px;padding:10px 12px;font-family:var(--font-sans);font-size:var(--text-sm);line-height:1.6;color:var(--ink);background:var(--surface-card);outline:none"></div>
+          </div>
+          <div style="display:flex;justify-content:flex-end;margin-bottom:14px">
+            <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="primary" size="sm" on-click="{{ addComment }}" hint-size="auto,32px">Comment as {{ actor }}</x-import>
+          </div>
+          <sc-for list="{{ tActivity }}" as="ev" hint-placeholder-count="4">
+            <div style="display:flex;gap:12px;padding:9px 0;border-top:1px solid var(--border-thin);font-size:var(--text-sm)">
+              <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary);width:110px;flex-shrink:0">{{ ev.when }}</span>
+              <span style="flex:1"><span style="font-weight:600">{{ ev.who }}</span> {{ ev.whatNode }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:16px">
+        <div style="padding:20px 24px;background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-lg);box-shadow:var(--shadow-card)">
+          <h2 style="font-size:var(--text-lg);font-weight:700;margin:0 0 8px">People and dates</h2>
+          <sc-for list="{{ tMetaPairs }}" as="mp" hint-placeholder-count="7">
+            <div style="display:flex;align-items:baseline;gap:12px;padding:8px 0;border-top:1px solid var(--border-thin)">
+              <span style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);width:96px;flex-shrink:0">{{ mp.label }}</span>
+              <span style="font-size:var(--text-sm)">{{ mp.value }}</span>
+            </div>
+          </sc-for>
+        </div>
+        <div style="padding:20px 24px;background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-lg);box-shadow:var(--shadow-card)">
+          <h2 style="font-size:var(--text-lg);font-weight:700;margin:0 0 8px">Time tracking</h2>
+          <div style="display:flex;height:8px;border-radius:var(--radius-pill);overflow:hidden;background:var(--surface-row-alt);margin-top:6px">
+            <div style="width:{{ ttPct }};background:{{ ttBarColor }}"></div>
+          </div>
+          <div style="display:flex;justify-content:space-between;margin-top:8px;font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary)">
+            <span>{{ ttLogged }} logged</span><span>{{ ttRemaining }}</span>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;margin-top:12px;padding-top:12px;border-top:1px solid var(--border-thin)">
+            <div style="width:80px"><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Input" value="{{ logHours }}" sc-camel-on-change="{{ setLogHours }}" mono="{{ true }}" placeholder="1.5" hint-size="80px,34px"></x-import></div>
+            <div style="flex:1"><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Input" value="{{ logNote }}" sc-camel-on-change="{{ setLogNote }}" placeholder="What the time went to" hint-size="100%,34px"></x-import></div>
+            <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="primary" size="sm" on-click="{{ logTime }}" hint-size="auto,30px">Log</x-import>
+          </div>
+        </div>
+        <div style="padding:20px 24px;background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-lg);box-shadow:var(--shadow-card)">
+          <div style="display:flex;align-items:center;gap:10px">
+            <h2 style="font-size:var(--text-lg);font-weight:700;margin:0">Attachments</h2>
+            <span style="flex:1"></span>
+            <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="secondary" size="sm" on-click="{{ uploadTicketFile }}" hint-size="auto,30px">Attach</x-import>
+          </div>
+          <sc-for list="{{ tFiles }}" as="tf2" hint-placeholder-count="2">
+            <div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--border-thin);margin-top:9px">
+              <svg width="15" height="15" sc-camel-view-box="0 0 24 24" fill="none" stroke="var(--navy-500)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path></svg>
+              <span style="flex:1;font-size:var(--text-sm);font-weight:500;color:var(--navy-700);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ tf2.name }}</span>
+              <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary)">{{ tf2.size }}</span>
+            </div>
+          </sc-for>
+          <sc-if value="{{ tFilesEmpty }}" hint-placeholder-val="{{ false }}">
+            <div style="padding:10px 0 0;font-size:var(--text-sm);color:var(--text-secondary)">Nothing attached yet.</div>
+          </sc-if>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ newTicketOpen }}" hint-placeholder-val="{{ false }}">
+    <div sc-camel-on-click="{{ toggleNewTicket }}" style="position:fixed;inset:0;z-index:80;background:rgba(16,42,76,.38)"></div>
+    <div style="position:fixed;top:6vh;left:50%;transform:translateX(-50%);z-index:90;width:min(720px,92vw);max-height:86vh;overflow-y:auto;background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-lg);box-shadow:var(--shadow-pop);padding:24px 28px;box-sizing:border-box">
+      <div style="display:flex;align-items:center;gap:10px">
+        <h2 style="font-size:var(--text-lg);font-weight:700;margin:0">{{ modalTitle }}</h2>
+        <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary)">{{ d.name }}</span>
+        <span style="flex:1"></span>
+        <button sc-camel-on-click="{{ toggleNewTicket }}" title="Close" style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;background:transparent;border:none;border-radius:var(--radius-sm);cursor:pointer;color:var(--muted);transition:background-color var(--transition-fast)" style-hover="background:var(--surface-hover)"><svg width="15" height="15" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"></path></svg></button>
+      </div>
+      <div style="margin-top:16px">
+        <div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Title</div>
+        <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Input" value="{{ ntTitle }}" sc-camel-on-change="{{ setNtTitle }}" placeholder="What is wrong or needed" hint-size="100%,38px"></x-import>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px 16px;margin-top:14px">
+        <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Stage</div><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Select" options="{{ phaseOpts }}" value="{{ ntStage }}" sc-camel-on-change="{{ setNtStage }}" hint-size="100%,38px"></x-import></div>
+        <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Type</div><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Select" options="{{ typeOpts }}" value="{{ ntType }}" sc-camel-on-change="{{ setNtType }}" hint-size="100%,38px"></x-import></div>
+        <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Category</div><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Select" options="{{ catOpts }}" value="{{ ntCat }}" sc-camel-on-change="{{ setNtCat }}" hint-size="100%,38px"></x-import></div>
+        <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Assignee</div><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Select" options="{{ people }}" value="{{ ntAssignee }}" sc-camel-on-change="{{ setNtAssignee }}" hint-size="100%,38px"></x-import></div>
+        <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Reporter</div><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Select" options="{{ people }}" value="{{ ntReporter }}" sc-camel-on-change="{{ setNtReporter }}" hint-size="100%,38px"></x-import></div>
+        <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Priority</div><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Select" options="{{ priOpts }}" value="{{ ntPri }}" sc-camel-on-change="{{ setNtPri }}" hint-size="100%,38px"></x-import></div>
+        <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Due date</div><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Input" value="{{ ntDue }}" sc-camel-on-change="{{ setNtDue }}" mono="{{ true }}" placeholder="Sep 14" hint-size="100%,38px"></x-import></div>
+        <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Estimate, hours</div><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Input" value="{{ ntEst }}" sc-camel-on-change="{{ setNtEst }}" mono="{{ true }}" placeholder="4" hint-size="100%,38px"></x-import></div>
+        <div style="grid-column:1/-1"><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Labels</div><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Input" value="{{ ntLabels }}" sc-camel-on-change="{{ setNtLabels }}" placeholder="migration, client-facing. Comma separated." hint-size="100%,38px"></x-import></div>
+        <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Link relation</div><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Select" options="{{ relOpts }}" value="{{ ntLinkRel }}" sc-camel-on-change="{{ setNtLinkRel }}" hint-size="100%,38px"></x-import></div>
+        <div style="grid-column:span 2"><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Link to ticket</div><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Select" options="{{ linkTargets }}" value="{{ ntLinkTo }}" sc-camel-on-change="{{ setNtLinkTo }}" hint-size="100%,38px"></x-import></div>
+      </div>
+      <div style="margin-top:14px">
+        <div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Description</div>
+        <div style="border:1px solid var(--border-strong);border-radius:var(--radius-sm);overflow:hidden">
+          <div style="display:flex;gap:2px;padding:6px 8px;background:var(--surface-row-alt);border-bottom:1px solid var(--border-thin)">
+            <sc-for list="{{ fmtButtons }}" as="fb" hint-placeholder-count="7">
+              <button sc-camel-on-click="{{ fb.pick }}" title="{{ fb.tip }}" style="display:inline-flex;align-items:center;justify-content:center;min-width:28px;height:26px;padding:0 7px;background:transparent;border:none;border-radius:var(--radius-sm);cursor:pointer;font-family:var(--font-mono);font-size:var(--text-sm);font-weight:{{ fb.w }};font-style:{{ fb.fs }};color:var(--ink);transition:background-color var(--transition-fast)" style-hover="background:var(--navy-50)">{{ fb.label }}</button>
+            </sc-for>
+            <span style="flex:1"></span>
+            <span style="align-self:center;font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary)">Rich text</span>
+          </div>
+          <div id="nt-desc" sc-camel-content-editable="{{ true }}" data-placeholder="Steps to reproduce, expected and actual, context." style="display:block;width:100%;box-sizing:border-box;min-height:140px;padding:10px 12px;font-family:var(--font-sans);font-size:var(--text-sm);line-height:1.6;color:var(--ink);background:var(--surface-card);outline:none"></div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:16px">
+        <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="primary" size="sm" on-click="{{ createTicket }}" hint-size="auto,32px">{{ modalSaveLabel }}</x-import>
+        <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="ghost" size="sm" on-click="{{ toggleNewTicket }}" hint-size="auto,32px">Cancel</x-import>
+        <button sc-camel-on-click="{{ ntAttach }}" style="display:inline-flex;align-items:center;gap:6px;padding:6px 12px;background:transparent;border:1px dashed var(--border-strong);border-radius:var(--radius-sm);cursor:pointer;font-family:var(--font-sans);font-size:var(--text-sm);font-weight:500;color:var(--navy-700);transition:background-color var(--transition-fast)" style-hover="background:var(--navy-50)"><svg width="14" height="14" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path></svg>{{ ntAttachLabel }}</button>
+        <span style="font-size:var(--text-sm);color:var(--text-secondary)">{{ ntHint }}</span>
+      </div>
+    </div>
+  </sc-if>
+
+  </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script="" data-props="{}">
+class Component extends DCLogic {
+  CHIP = { 'on track': ['var(--chip-ontrack-bg)', 'var(--chip-ontrack-fg)'], 'at risk': ['var(--chip-overdue-bg)', 'var(--chip-overdue-fg)'], blocked: ['#F9E2DE', '#A2311F'], done: ['var(--chip-done-bg)', 'var(--chip-done-fg)'], waiting: ['var(--chip-waiting-bg)', 'var(--chip-waiting-fg)'], overdue: ['var(--chip-overdue-bg)', 'var(--chip-overdue-fg)'], open: ['var(--chip-open-bg)', 'var(--chip-open-fg)'],
+    high: ['#F9E2DE', '#A2311F'], medium: ['var(--gold-100)', 'var(--gold-600)'], low: ['var(--navy-50)', 'var(--navy-500)'], normal: ['var(--navy-50)', 'var(--navy-500)'],
+    'in progress': ['var(--chip-open-bg)', 'var(--chip-open-fg)'], resolved: ['var(--chip-done-bg)', 'var(--chip-done-fg)'], closed: ['var(--chip-waiting-bg)', 'var(--chip-waiting-fg)'] };
+  PHASES = ['Initiating', 'Planning', 'Executing', 'Monitoring', 'Closing'];
+  PEOPLE = ['Unassigned', 'Paul', 'Dana Okafor', 'Beatriz Haddad', 'Ethan Lindqvist', 'Sofia Okafor', 'Ravi Novak', 'Rue Mbeki'];
+
+  INIT = [
+    { id: 1, name: 'Beacon quarterly review', client: 'Beacon Analytics', phase: 'Initiating', pct: 18, due: 'Aug 31', late: true, status: 'blocked', milestone: 'Final report', owner: 'Paul', started: 'Jun 2, 2026', budget: '$18,400 of $24,000', hours: '61.5 of 80 h',
+      brief: 'Quarterly operations review for Beacon Analytics. Scope covers the Q3 evidence pack, vendor spend audit, and the final report to the board. Blocked on the client data export since Aug 28.',
+      details: [['Owner', 'Paul'], ['Client PoC', 'Maria Voss'], ['Started', 'Jun 2, 2026'], ['Target close', 'Mon, Aug 31'], ['Budget', '$18,400 of $24,000'], ['Hours', '61.5 of 80 logged']],
+      milestones: [['Kickoff and scope', 'Jun 5', 'done'], ['Evidence pack complete', 'Jul 24', 'done'], ['Vendor audit signed off', 'Aug 21', 'late'], ['Final report', 'Aug 31', 'late']],
+      msMeta: '2 of 4 done',
+      files: [{ name: 'Beacon SOW countersigned.pdf', meta: '312 KB · uploaded Jun 2 · Paul' }, { name: 'Q3 evidence pack v4.xlsx', meta: '1.2 MB · uploaded Jul 24 · Beatriz Haddad' }, { name: 'Vendor spend export raw.csv', meta: '844 KB · uploaded Aug 12 · Sofia Okafor' }],
+      aiMeta: '6 open, 3 done',
+      actionItems: [
+        ['AI-2214 · Draft the invoice batch for Ashcombe', 'Overdue by 13 days · Beatriz Haddad', 'overdue'],
+        ['AI-2231 · Investigate the data export for Ashcombe', 'Overdue by 3 days · Sofia Okafor', 'overdue'],
+        ['AI-2246 · Schedule the closure note for Ashcombe', 'Due Sat, Oct 3 · Ethan Lindqvist', 'open'],
+        ['AI-2250 · Confirm the contract redline for Ashcombe', 'Due Sat, Oct 17 · Ravi Novak', 'open'],
+        ['AI-2260 · Confirm the stakeholder map for Ashcombe', 'Due Fri, Nov 13 · Rue Mbeki', 'open']
+      ],
+      tickets: [
+        { id: 'T-118', title: 'Client portal login fails for Beacon PoC', st: 'in progress', pri: 'high', assignee: 'Dana Okafor', reporter: 'Maria Voss', opened: 'Aug 27', due: 'Sep 1', estimate: '4 h', logged: '2.5 h', files: [{ name: 'login-error-screen.png', size: '212 KB' }],
+          desc: 'Maria cannot log in to the client portal since the Aug 26 deploy. Error appears after the 2FA step, session drops back to the sign-in page.\nAffects the whole Beacon PoC team, so evidence pack review is stalled. Workaround: none found.',
+          category: 'Client request', tlinks: [['Is blocked by', 'T-126'], ['Relates to', 'T-124']],
+          links: [['AI-2231', 'Investigate the data export for Ashcombe', 'overdue']],
+          activity: [['Aug 29, 4:10 PM', 'Dana Okafor', 'logged 1.5 h and moved the ticket to in progress.'], ['Aug 28, 9:22 AM', 'Paul', 'raised priority to high, the review is blocked on this.'], ['Aug 27, 5:40 PM', 'Maria Voss', 'reported the issue by mail, filed from the thread.']] },
+        { id: 'T-124', title: 'Evidence pack export drops the summary tab', st: 'open', pri: 'medium', stage: 'Planning', assignee: 'Beatriz Haddad', reporter: 'Paul', opened: 'Aug 29', due: 'Sep 4', estimate: '2 h', logged: '0 h', files: [],
+          desc: 'Exporting the evidence pack to XLSX drops the summary tab when charts are present. Reproduced on v4 of the pack.',
+          links: [],
+          activity: [['Aug 29, 10:02 AM', 'Paul', 'created the ticket from the weekly review.']] },
+        { id: 'T-109', title: 'Vendor spend categories mismatch ledger', st: 'resolved', pri: 'low', assignee: 'Sofia Okafor', reporter: 'Paul', opened: 'Aug 18', due: 'Aug 25', estimate: '3 h', logged: '3.5 h', files: [{ name: 'mapping-fix.xlsx', size: '96 KB' }],
+          desc: 'Vendor spend export used old category names, so the audit did not reconcile with the ledger. Fixed by remapping to the current category list.',
+          links: [],
+          activity: [['Aug 24, 3:15 PM', 'Sofia Okafor', 'resolved the ticket, mapping fixed and re-run.'], ['Aug 18, 11:00 AM', 'Paul', 'created the ticket.']] }
+      ] },
+    { id: 2, name: 'Brightmoor onboarding programme', client: 'Brightmoor Logistics', phase: 'Initiating', pct: 32, due: 'Sep 28', late: false, status: 'on track', milestone: 'Sign off the scope', owner: 'Paul', started: 'Aug 4, 2026', budget: '$6,100 of $32,000', hours: '22 of 120 h',
+      brief: 'Warehouse team onboarding programme, from scope sign-off through the first training cohort.',
+      details: [['Owner', 'Paul'], ['Client PoC', 'Dana Okafor'], ['Started', 'Aug 4, 2026'], ['Target close', 'Mon, Sep 28'], ['Budget', '$6,100 of $32,000'], ['Hours', '22 of 120 logged']],
+      milestones: [['Kickoff', 'Aug 6', 'done'], ['Sign off the scope', 'Sep 7', 'next'], ['First cohort trained', 'Sep 21', 'open'], ['Handover', 'Sep 28', 'open']],
+      msMeta: '1 of 4 done',
+      files: [{ name: 'Brightmoor onboarding scope v2.docx', meta: '188 KB · uploaded Aug 20 · Paul' }],
+      aiMeta: '2 open, 4 done',
+      actionItems: [
+        ['AI-2290 · Sign off the scope with Dana', 'Due Mon, Sep 7 · Paul', 'open'],
+        ['AI-2295 · Book the training venue', 'Due Fri, Sep 11 · Rue Mbeki', 'open']
+      ],
+      tickets: [
+        { id: 'T-131', title: 'LMS seats not provisioned for cohort one', st: 'open', pri: 'medium', assignee: 'Rue Mbeki', reporter: 'Dana Okafor', opened: 'Aug 30', due: 'Sep 8', estimate: '2 h', logged: '0 h', files: [],
+          desc: 'Cohort one has 14 trainees but only 6 LMS seats are active. Need the remaining seats provisioned before Sep 14.',
+          links: [], activity: [['Aug 30, 2:20 PM', 'Dana Okafor', 'reported by mail, filed from the thread.']] }
+      ] },
+    { id: 3, name: 'Dunmore data warehouse', client: 'Dunmore Studio', phase: 'Executing', pct: 58, due: 'Aug 23', late: true, status: 'at risk', milestone: 'Evidence pack complete', owner: 'Paul', started: 'Mar 9, 2026', budget: '$41,200 of $48,000', hours: '188 of 220 h',
+      brief: 'Data warehouse build for Dunmore Studio, six overdue items concentrated in the migration workstream.',
+      details: [['Owner', 'Paul'], ['Client PoC', 'Ethan Lindqvist'], ['Started', 'Mar 9, 2026'], ['Target close', 'Sun, Aug 23'], ['Budget', '$41,200 of $48,000'], ['Hours', '188 of 220 logged']],
+      milestones: [['Schema agreed', 'Apr 14', 'done'], ['Pipelines live', 'Jun 30', 'done'], ['Evidence pack complete', 'Aug 23', 'late'], ['Closure', 'Sep 15', 'open']],
+      msMeta: '2 of 4 done',
+      files: [{ name: 'Dunmore schema final.pdf', meta: '402 KB · uploaded Apr 14 · Paul' }, { name: 'Migration runbook.docx', meta: '246 KB · uploaded Jun 28 · Ethan Lindqvist' }],
+      aiMeta: '6 open, 12 done',
+      actionItems: [
+        ['AI-2201 · Publish the revised timeline', 'Overdue by 45 days · Dana Okafor', 'overdue'],
+        ['AI-2244 · Approve the data export', 'Due Wed, Sep 2 · Sofia Okafor', 'open'],
+        ['AI-2251 · Draft the revised timeline', 'Due Tue, Sep 1 · Ethan Lindqvist', 'open']
+      ],
+      tickets: [
+        { id: 'T-119', title: 'Timeline chart renders blank for Halcyon', st: 'in progress', pri: 'low', assignee: 'Ethan Lindqvist', reporter: 'Paul', opened: 'Aug 27', due: 'Sep 10', estimate: '1.5 h', logged: '0.5 h', files: [],
+          desc: 'The timeline chart in the client view renders blank when the phase has no end date. Reproduced on staging.',
+          links: [['AI-2251', 'Draft the revised timeline', 'open']],
+          activity: [['Aug 28, 1:12 PM', 'Ethan Lindqvist', 'reproduced and started on a fix.'], ['Aug 27, 9:30 AM', 'Paul', 'created the ticket.']] },
+        { id: 'T-126', title: 'Nightly sync misses late entries', st: 'open', pri: 'high', assignee: 'Unassigned', reporter: 'Sofia Okafor', opened: 'Aug 30', due: 'Sep 2', estimate: '6 h', logged: '0 h', files: [{ name: 'sync-log-aug29.txt', size: '31 KB' }],
+          desc: 'Entries created after 11 PM are skipped by the nightly sync and never backfilled. Data in the warehouse is short roughly 2% per day.',
+          links: [], activity: [['Aug 30, 8:05 AM', 'Sofia Okafor', 'created the ticket with the sync log attached.']] }
+      ] },
+    { id: 4, name: 'Fairwater reporting pack', client: 'Fairwater Systems', phase: 'Planning', pct: 24, due: 'Oct 13', late: false, status: 'on track', milestone: 'Sign off the scope', owner: 'Paul', started: 'Aug 11, 2026', budget: '$3,900 of $21,000', hours: '14 of 90 h',
+      brief: 'Monthly reporting pack automation for Fairwater. Scope being finalised.',
+      details: [['Owner', 'Paul'], ['Client PoC', 'Rue Mbeki'], ['Started', 'Aug 11, 2026'], ['Target close', 'Tue, Oct 13'], ['Budget', '$3,900 of $21,000'], ['Hours', '14 of 90 logged']],
+      milestones: [['Kickoff', 'Aug 13', 'done'], ['Sign off the scope', 'Sep 9', 'next'], ['First pack shipped', 'Sep 30', 'open'], ['Closure', 'Oct 13', 'open']],
+      msMeta: '1 of 4 done',
+      files: [],
+      aiMeta: '2 open, 1 done',
+      actionItems: [
+        ['AI-2307 · Validate the invoice batch', 'Due Tue, Sep 1 · Rue Mbeki', 'open'],
+        ['AI-2312 · Validate the vendor escalation', 'Unassigned', 'waiting']
+      ],
+      tickets: [
+        { id: 'T-121', title: 'Invoice batch export mismatch', st: 'open', pri: 'high', assignee: 'Rue Mbeki', reporter: 'Paul', opened: 'Aug 28', due: 'Aug 31', estimate: '3 h', logged: '1 h', files: [],
+          desc: 'The invoice batch export totals do not match the ledger for August. Difference is $1,763.85, concentrated in the retainer category.',
+          links: [['AI-2307', 'Validate the invoice batch', 'open']],
+          activity: [['Aug 29, 11:45 AM', 'Rue Mbeki', 'narrowed the mismatch to three invoices, logged 1 h.'], ['Aug 28, 4:00 PM', 'Paul', 'created the ticket, breach risk noted.']] }
+      ] },
+    { id: 5, name: 'Ilkley training rollout', client: 'Ilkley Health', phase: 'Monitoring', pct: 84, due: 'Sep 6', late: false, status: 'on track', milestone: 'Vendor decision', owner: 'Paul', started: 'May 18, 2026', budget: '$26,300 of $28,000', hours: '112 of 118 h',
+      brief: 'Training rollout across three Ilkley Health sites. Final vendor decision pending.',
+      details: [['Owner', 'Paul'], ['Client PoC', 'Ravi Novak'], ['Started', 'May 18, 2026'], ['Target close', 'Sun, Sep 6'], ['Budget', '$26,300 of $28,000'], ['Hours', '112 of 118 logged']],
+      milestones: [['Site one live', 'Jun 20', 'done'], ['Site two live', 'Jul 25', 'done'], ['Site three live', 'Aug 22', 'done'], ['Vendor decision', 'Sep 4', 'next']],
+      msMeta: '3 of 4 done',
+      files: [{ name: 'Training deck v7.pptx', meta: '4.1 MB · uploaded Aug 20 · Paul' }],
+      aiMeta: '1 open, 9 done',
+      actionItems: [['AI-2288 · Send the training deck', 'Stalled 6 days · Sofia Okafor', 'waiting']],
+      tickets: [] },
+    { id: 6, name: 'Lyndhurst capacity plan', client: 'Lyndhurst Collective', phase: 'Closing', pct: 96, due: 'Sep 2', late: false, status: 'on track', milestone: 'Closure note', owner: 'Paul', started: 'Feb 2, 2026', budget: '$44,800 of $45,000', hours: '201 of 205 h',
+      brief: 'Capacity plan engagement, in closing. Only the closure note and final invoice remain.',
+      details: [['Owner', 'Paul'], ['Client PoC', 'Dana Okafor'], ['Started', 'Feb 2, 2026'], ['Target close', 'Wed, Sep 2'], ['Budget', '$44,800 of $45,000'], ['Hours', '201 of 205 logged']],
+      milestones: [['Plan approved', 'Jun 12', 'done'], ['Handover done', 'Aug 14', 'done'], ['Closure note', 'Sep 1', 'next']],
+      msMeta: '2 of 3 done',
+      files: [{ name: 'Capacity plan final.pdf', meta: '1.8 MB · uploaded Jun 12 · Paul' }, { name: 'Handover pack.zip', meta: '6.4 MB · uploaded Aug 14 · Paul' }],
+      aiMeta: '1 open, 14 done',
+      actionItems: [['AI-2320 · Write the closure note', 'Due Tue, Sep 1 · Paul', 'open']],
+      tickets: [] }
+  ];
+
+  state = { projects: this.INIT, view: 'list', selId: null, ticketId: null, tab: 'all', search: '', page: 0, perPage: '20',
+    tFilter: 'open', stageFilter: 'All stages', newTicket: false, commentDraft: '', nextT: 132,
+    ntTitle: '', ntType: 'Task', ntStage: 'Initiating', ntCat: 'Delivery', ntAssignee: 'Unassigned', ntReporter: 'Paul', ntPri: 'Normal', ntDue: '', ntEst: '', ntLabels: '', ntLinkRel: 'Relates to', ntLinkTo: '', ntFiles: [], ntHint: '',
+    alRel: 'Relates to', alTo: '', logHours: '', logNote: '', actor: 'Paul', editTid: null };
+
+  REL_OPTS = ['Blocks', 'Is blocked by', 'Relates to', 'Depends on', 'Is a dependency of', 'Duplicates', 'Is duplicated by', 'Causes', 'Is caused by', 'Clones', 'Splits to'];
+  CAT_OPTS = ['Delivery', 'Client request', 'Internal', 'Finance', 'Compliance', 'Data'];
+
+  execCmdOn(id, cmd, val) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.focus();
+    document.execCommand(cmd, false, val);
+  }
+  execCmd(cmd, val) { this.execCmdOn('nt-desc', cmd, val); }
+
+  modalVals(p) {
+    const s = this.state;
+    return {
+      phaseOpts: this.PHASES, typeOpts: ['Contract', 'Epic', 'Task', 'Sub task', 'Story'],
+      catOpts: this.CAT_OPTS, relOpts: this.REL_OPTS,
+      linkTargets: [''].concat(this.allTickets().map(x => x.t.id + ' · ' + x.t.title)),
+      newTicketOpen: s.newTicket,
+      modalTitle: s.editTid ? 'Edit ' + s.editTid : 'New ticket',
+      modalSaveLabel: s.editTid ? 'Save changes' : 'Create ticket',
+      toggleNewTicket: () => this.setState({ newTicket: false, editTid: null }),
+      ntTitle: s.ntTitle, setNtTitle: (e) => this.setState({ ntTitle: e.target.value }),
+      ntType: s.ntType, setNtType: (e) => this.setState({ ntType: e.target.value }),
+      ntStage: s.ntStage, setNtStage: (e) => this.setState({ ntStage: e.target.value }),
+      ntCat: s.ntCat, setNtCat: (e) => this.setState({ ntCat: e.target.value }),
+      ntAssignee: s.ntAssignee, setNtAssignee: (e) => this.setState({ ntAssignee: e.target.value }),
+      ntReporter: s.ntReporter, setNtReporter: (e) => this.setState({ ntReporter: e.target.value }),
+      ntPri: s.ntPri, setNtPri: (e) => this.setState({ ntPri: e.target.value }),
+      ntDue: s.ntDue, setNtDue: (e) => this.setState({ ntDue: e.target.value }),
+      ntEst: s.ntEst, setNtEst: (e) => this.setState({ ntEst: e.target.value }),
+      ntLabels: s.ntLabels, setNtLabels: (e) => this.setState({ ntLabels: e.target.value }),
+      ntLinkRel: s.ntLinkRel, setNtLinkRel: (e) => this.setState({ ntLinkRel: e.target.value }),
+      ntLinkTo: s.ntLinkTo, setNtLinkTo: (e) => this.setState({ ntLinkTo: e.target.value }),
+      ntHint: s.ntHint,
+      ntAttachLabel: s.ntFiles.length ? s.ntFiles.length + ' file' + (s.ntFiles.length > 1 ? 's' : '') + ' attached' : 'Attach files',
+      ntAttach: () => this.pickFiles(fs => this.setState(x => ({ ntFiles: x.ntFiles.concat(fs.map(f => ({ name: f.name, size: Math.max(1, Math.round(f.size / 1024)) + ' KB' }))) }))),
+      fmtButtons: [
+        { label: 'B', tip: 'Bold', w: 700, fs: 'normal', pick: () => this.execCmd('bold') },
+        { label: 'I', tip: 'Italic', w: 400, fs: 'italic', pick: () => this.execCmd('italic') },
+        { label: 'U', tip: 'Underline', w: 400, fs: 'normal', pick: () => this.execCmd('underline') },
+        { label: 'H2', tip: 'Heading', w: 700, fs: 'normal', pick: () => this.execCmd('formatBlock', 'h3') },
+        { label: '• list', tip: 'Bullet list', w: 400, fs: 'normal', pick: () => this.execCmd('insertUnorderedList') },
+        { label: '1. list', tip: 'Numbered list', w: 400, fs: 'normal', pick: () => this.execCmd('insertOrderedList') },
+        { label: '<>', tip: 'Code block', w: 400, fs: 'normal', pick: () => this.execCmd('formatBlock', 'pre') },
+        { label: 'link', tip: 'Link', w: 400, fs: 'normal', pick: () => { const u = prompt('Link URL'); if (u) this.execCmd('createLink', u); } },
+        { label: 'clear', tip: 'Clear formatting', w: 400, fs: 'normal', pick: () => this.execCmd('removeFormat') }
+      ],
+      createTicket: () => {
+        const s2 = this.state;
+        if (!s2.ntTitle.trim()) { this.setState({ ntHint: 'A title is required.' }); return; }
+        const el = document.getElementById('nt-desc');
+        const html = el && el.textContent.trim() ? el.innerHTML : 'No description yet.';
+        if (s2.editTid) {
+          const old = p.tickets.find(x => x.id === s2.editTid);
+          if (old) this.patchProject(p.id, { tickets: p.tickets.map(x => x.id !== old.id ? x : { ...old,
+            title: s2.ntTitle.trim(), type: s2.ntType, stage: s2.ntStage, category: s2.ntCat,
+            assignee: s2.ntAssignee, reporter: s2.ntReporter, pri: s2.ntPri.toLowerCase(),
+            due: s2.ntDue || 'Not set', estimate: s2.ntEst ? s2.ntEst + ' h' : old.estimate,
+            labels: s2.ntLabels, files: s2.ntFiles, desc: html, isHtml: true,
+            activity: [[this.now(), s2.actor, 'edited the ticket.']].concat(old.activity) }) });
+          this.setState({ newTicket: false, editTid: null });
+          return;
+        }
+        const tlinks = s2.ntLinkTo ? [[s2.ntLinkRel, s2.ntLinkTo.split(' · ')[0]]] : [];
+        const t = { id: 'T-' + s2.nextT, title: s2.ntTitle.trim(), st: 'open', pri: s2.ntPri.toLowerCase(), stage: s2.ntStage, type: s2.ntType,
+          category: s2.ntCat, labels: s2.ntLabels, assignee: s2.ntAssignee, reporter: s2.ntReporter, opened: 'Aug 31', due: s2.ntDue || 'Not set',
+          estimate: s2.ntEst ? s2.ntEst + ' h' : 'Not set', logged: '0 h', files: s2.ntFiles,
+          desc: html, isHtml: true, links: [], tlinks,
+          activity: [[this.now(), s2.actor, 'created the ticket in the ' + s2.ntStage + ' stage.']] };
+        this.patchProject(p.id, { tickets: [t].concat(p.tickets) });
+        this.setState(x => ({ newTicket: false, nextT: x.nextT + 1 }));
+      }
+    };
+  }
+  hoursOf(v) { const m = String(v || '').match(/[\d.]+/); return m ? parseFloat(m[0]) : 0; }
+  allTickets() { return this.state.projects.flatMap(p => p.tickets.map(t => ({ p, t }))); }
+  findTicket(id) { return this.allTickets().find(x => x.t.id === id); }
+
+  chip(k) { return this.CHIP[k.toLowerCase()] || this.CHIP.waiting; }
+  patchProject(id, patch) { this.setState(s => ({ projects: s.projects.map(p => p.id === id ? { ...p, ...patch } : p) })); }
+  pickFiles(cb) { const i = document.createElement('input'); i.type = 'file'; i.multiple = true; i.onchange = () => { if (i.files.length) cb(Array.from(i.files)); }; i.click(); }
+  now() { return 'Aug 31, ' + new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }); }
+
+  renderVals() {
+    const s = this.state;
+    const navItems = ['Dashboard', 'Action items', 'Projects', 'Meetings', 'Calendar', 'SOPs', 'Templates', 'Clients', 'Mail', 'Invoicing', 'Ledger', 'Reports', 'Settings']
+      .map(l => ({ id: l.toLowerCase().replace(' ', '-'), label: l }));
+    const TABS = [['all', 'All', 192], ['Initiating', 'Initiating', 44], ['Planning', 'Planning', 38], ['Executing', 'Executing', 52], ['Monitoring', 'Monitoring', 31], ['Closing', 'Closing', 27]];
+    const phaseTabs = TABS.map(([id, label, count]) => {
+      const active = s.tab === id;
+      return { label, count: String(count), bg: active ? 'var(--navy)' : 'transparent', fg: active ? '#FFFFFF' : 'var(--ink)',
+        countFg: active ? 'var(--text-inverse-muted)' : 'var(--muted)', hoverBg: active ? 'var(--navy)' : 'var(--navy-50)',
+        pick: () => this.setState({ tab: id, page: 0 }) };
+    });
+    const q = s.search.trim().toLowerCase();
+    const filtered = s.projects
+      .filter(p => s.tab === 'all' || p.phase === s.tab)
+      .filter(p => !q || (p.name + ' ' + p.client).toLowerCase().includes(q));
+    const per = parseInt(s.perPage, 10) || 20;
+    const totalPages = Math.max(1, Math.ceil(filtered.length / per));
+    const page = Math.min(s.page, totalPages - 1);
+    const start = page * per;
+    const rows = filtered.slice(start, start + per).map(p => {
+      const [b, f] = this.chip(p.status);
+      return { name: p.name, client: p.client, phase: p.phase, milestone: 'Next: ' + p.milestone, due: p.due,
+        pct: p.pct + '%', barColor: p.status === 'blocked' ? '#A2311F' : p.status === 'at risk' ? 'var(--gold-600)' : '#2E7D5B',
+        dueColor: p.late ? 'var(--text-warn)' : 'var(--text-secondary)',
+        openItems: String(p.actionItems.filter(a => a[2] !== 'done').length), ticketCount: String(p.tickets.length),
+        status: p.status, chipBg: b, chipFg: f,
+        open: () => this.setState({ view: 'project', selId: p.id, tFilter: 'open', newTicket: false }) };
+    });
+    const vals = { navItems, phaseTabs, rows, rowsEmpty: rows.length === 0,
+      isList: s.view === 'list', isProject: s.view === 'project', isTicket: s.view === 'ticket',
+      search: s.search, setSearch: (e) => this.setState({ search: e.target.value, page: 0 }),
+      pageInfo: filtered.length === 0 ? 'No projects' : (start + 1) + ' to ' + Math.min(start + per, filtered.length) + ' of ' + filtered.length + ' shown, 192 in total',
+      perPageOpts: ['10', '20', '50', '100'], perPage: s.perPage,
+      setPerPage: (e) => this.setState({ perPage: e.target.value, page: 0 }),
+      prevPage: () => this.setState({ page: Math.max(0, page - 1) }),
+      nextPage: () => this.setState({ page: Math.min(totalPages - 1, page + 1) }),
+      prevColor: page > 0 ? 'var(--ink)' : 'var(--muted)',
+      nextColor: page < totalPages - 1 ? 'var(--ink)' : 'var(--muted)',
+      people: this.PEOPLE, priOpts: ['Normal', 'Low', 'Medium', 'High'],
+      noop: () => {}, noop2: (e) => e.preventDefault(),
+      backToList: (e) => { e.preventDefault(); this.setState({ view: 'list' }); } };
+    if (s.view === 'list') return vals;
+    const p = s.projects.find(x => x.id === s.selId) || s.projects[0];
+    const [pb, pf] = this.chip(p.status);
+    const phaseIdx = this.PHASES.indexOf(p.phase);
+    vals.d = { name: p.name, client: p.client, status: p.status, chipBg: pb, chipFg: pf, milestone: p.milestone, due: p.due, brief: p.brief, msMeta: p.msMeta, aiMeta: p.aiMeta };
+    vals.backToProject = (e) => { e.preventDefault(); this.setState({ view: 'project' }); };
+    if (s.view === 'project') {
+      const viewedStage = s.stageFilter;
+      Object.assign(vals, {
+        advanceLabel: phaseIdx < 4 ? 'Advance to ' + this.PHASES[phaseIdx + 1] : 'Close project',
+        lifecycle: this.PHASES.map((label, i) => {
+          const viewed = viewedStage === label;
+          return { label, n: String(i + 1), hasBar: i < 4,
+            dotBg: i <= phaseIdx ? 'var(--navy)' : 'var(--surface-card)',
+            dotFg: i <= phaseIdx ? '#FFFFFF' : 'var(--muted)',
+            dotBorder: i <= phaseIdx ? 'var(--navy)' : 'var(--border-strong)',
+            barBg: i < phaseIdx ? 'var(--navy)' : 'var(--border-thin)',
+            bg: viewed ? 'var(--navy-50)' : 'transparent',
+            border: viewed ? 'var(--navy-500)' : 'transparent',
+            w: i === phaseIdx || viewed ? 700 : 400, fg: i === phaseIdx || viewed ? 'var(--ink)' : 'var(--text-secondary)',
+            pick: () => this.setState(x => ({ stageFilter: x.stageFilter === label ? 'All stages' : label })) };
+        }),
+        stageNote: viewedStage === 'All stages'
+          ? 'The project is in ' + p.phase + '. Click any stage to view or plan its tickets without advancing.'
+          : 'Viewing ' + viewedStage + (viewedStage === p.phase ? ', the current stage.' : '. The project is still in ' + p.phase + ', nothing has been advanced.') + ' Tickets below are filtered to this stage.',
+        stageOpts: ['All stages'].concat(this.PHASES),
+        stageFilter: s.stageFilter,
+        setStageFilter: (e) => this.setState({ stageFilter: e.target.value }),
+        phaseOpts: this.PHASES, typeOpts: ['Contract', 'Epic', 'Task', 'Sub task', 'Story'],
+        catOpts: this.CAT_OPTS, relOpts: this.REL_OPTS,
+        linkTargets: [''].concat(this.allTickets().map(x => x.t.id + ' · ' + x.t.title)),
+        ntCat: s.ntCat, setNtCat: (e) => this.setState({ ntCat: e.target.value }),
+        ntReporter: s.ntReporter, setNtReporter: (e) => this.setState({ ntReporter: e.target.value }),
+        ntLinkRel: s.ntLinkRel, setNtLinkRel: (e) => this.setState({ ntLinkRel: e.target.value }),
+        ntLinkTo: s.ntLinkTo, setNtLinkTo: (e) => this.setState({ ntLinkTo: e.target.value }),
+        pStats: [
+          { label: 'Progress', value: p.pct + '%', accent: 'var(--navy-500)', color: 'var(--ink)' },
+          { label: 'Open items', value: String(p.actionItems.filter(a => a[2] !== 'done').length), accent: 'var(--gold-600)', color: 'var(--ink)' },
+          { label: 'Open tickets', value: String(p.tickets.filter(t => t.st !== 'resolved' && t.st !== 'closed').length), accent: '#A2311F', color: 'var(--ink)' },
+          { label: 'Budget used', value: p.budget.split(' of ')[0], accent: 'var(--border-strong)', color: 'var(--ink)' },
+          { label: 'Hours logged', value: p.hours.split(' of ')[0], accent: '#2E7D5B', color: 'var(--ink)' }
+        ],
+        pDetails: p.details.map(([label, value]) => ({ label, value })),
+        milestones: p.milestones.map(([name, date, k]) => ({ name, date,
+          dot: k === 'done' ? '#2E7D5B' : k === 'late' ? '#A2311F' : k === 'next' ? 'var(--gold-600)' : 'var(--border-strong)',
+          dateColor: k === 'late' ? 'var(--text-warn)' : 'var(--text-secondary)', w: k === 'next' ? 600 : 400 })),
+        nFiles: String(p.files.length),
+        uploadFiles: () => this.pickFiles(fs => this.patchProject(p.id, { files: fs.map(f => ({ name: f.name, meta: Math.max(1, Math.round(f.size / 1024)) + ' KB · uploaded Aug 31 · Paul' })).concat(p.files) })),
+        files: p.files.map((f, i) => ({ ...f, remove: () => this.patchProject(p.id, { files: p.files.filter((_, j) => j !== i) }) })),
+        actionItems: p.actionItems.map(([title, meta, k]) => { const [b, f] = this.chip(k); return { title, meta, chip: k, chipBg: b, chipFg: f }; }),
+        tMeta: p.tickets.filter(t => t.st !== 'resolved' && t.st !== 'closed').length + ' open, ' + p.tickets.filter(t => t.st === 'resolved' || t.st === 'closed').length + ' closed',
+        ticketFilters: [['open', 'Open'], ['closed', 'Closed'], ['all', 'All']].map(([id, label]) => {
+          const active = s.tFilter === id;
+          return { label, bg: active ? 'var(--navy-50)' : 'var(--surface-card)', border: active ? 'var(--navy-500)' : 'var(--border-strong)',
+            pick: () => this.setState({ tFilter: id }) };
+        }),
+        newTicketOpen: s.newTicket,
+        toggleNewTicket: () => this.setState(x => ({ newTicket: !x.newTicket, ntTitle: '', ntType: 'Task', ntStage: s.stageFilter !== 'All stages' ? s.stageFilter : p.phase, ntCat: 'Delivery', ntAssignee: 'Unassigned', ntReporter: 'Paul', ntPri: 'Normal', ntDue: '', ntEst: '', ntLabels: '', ntLinkRel: 'Relates to', ntLinkTo: '', ntFiles: [], ntHint: '' })),
+        ntTitle: s.ntTitle, setNtTitle: (e) => this.setState({ ntTitle: e.target.value }),
+        ntType: s.ntType, setNtType: (e) => this.setState({ ntType: e.target.value }),
+        ntStage: s.ntStage, setNtStage: (e) => this.setState({ ntStage: e.target.value }),
+        ntAssignee: s.ntAssignee, setNtAssignee: (e) => this.setState({ ntAssignee: e.target.value }),
+        ntPri: s.ntPri, setNtPri: (e) => this.setState({ ntPri: e.target.value }),
+        ntDue: s.ntDue, setNtDue: (e) => this.setState({ ntDue: e.target.value }),
+        ntEst: s.ntEst, setNtEst: (e) => this.setState({ ntEst: e.target.value }),
+        ntLabels: s.ntLabels, setNtLabels: (e) => this.setState({ ntLabels: e.target.value }),
+        ntHint: s.ntHint,
+        ntAttachLabel: s.ntFiles.length ? s.ntFiles.length + ' file' + (s.ntFiles.length > 1 ? 's' : '') + ' attached' : 'Attach files',
+        ntAttach: () => this.pickFiles(fs => this.setState(x => ({ ntFiles: x.ntFiles.concat(fs.map(f => ({ name: f.name, size: Math.max(1, Math.round(f.size / 1024)) + ' KB' }))) }))),
+        fmtButtons: [
+          { label: 'B', tip: 'Bold', w: 700, fs: 'normal', pick: () => this.execCmd('bold') },
+          { label: 'I', tip: 'Italic', w: 400, fs: 'italic', pick: () => this.execCmd('italic') },
+          { label: 'U', tip: 'Underline', w: 400, fs: 'normal', pick: () => this.execCmd('underline') },
+          { label: 'H2', tip: 'Heading', w: 700, fs: 'normal', pick: () => this.execCmd('formatBlock', 'h3') },
+          { label: '• list', tip: 'Bullet list', w: 400, fs: 'normal', pick: () => this.execCmd('insertUnorderedList') },
+          { label: '1. list', tip: 'Numbered list', w: 400, fs: 'normal', pick: () => this.execCmd('insertOrderedList') },
+          { label: '<>', tip: 'Code block', w: 400, fs: 'normal', pick: () => this.execCmd('formatBlock', 'pre') },
+          { label: 'link', tip: 'Link', w: 400, fs: 'normal', pick: () => { const u = prompt('Link URL'); if (u) this.execCmd('createLink', u); } },
+          { label: 'clear', tip: 'Clear formatting', w: 400, fs: 'normal', pick: () => this.execCmd('removeFormat') }
+        ],
+        createTicket: () => {
+          if (!s.ntTitle.trim()) { this.setState({ ntHint: 'A title is required.' }); return; }
+          const el = document.getElementById('nt-desc');
+          const html = el && el.innerHTML.trim() ? el.innerHTML : 'No description yet.';
+          const tlinks = s.ntLinkTo ? [[s.ntLinkRel, s.ntLinkTo.split(' · ')[0]]] : [];
+          const t = { id: 'T-' + s.nextT, title: s.ntTitle.trim(), st: 'open', pri: s.ntPri.toLowerCase(), stage: s.ntStage, type: s.ntType,
+            category: s.ntCat, labels: s.ntLabels, assignee: s.ntAssignee, reporter: s.ntReporter, opened: 'Aug 31', due: s.ntDue || 'Not set',
+            estimate: s.ntEst ? s.ntEst + ' h' : 'Not set', logged: '0 h', files: s.ntFiles,
+            desc: html, isHtml: true, links: [], tlinks,
+            activity: [[this.now(), 'Paul', 'created the ticket in the ' + s.ntStage + ' stage' + (tlinks.length ? ', linked as "' + s.ntLinkRel.toLowerCase() + ' ' + tlinks[0][1] + '"' : '') + '.']] };
+          this.patchProject(p.id, { tickets: [t].concat(p.tickets) });
+          this.setState(x => ({ newTicket: false, nextT: x.nextT + 1, stageFilter: s.ntStage }));
+        },
+        tickets: p.tickets.filter(t => {
+          const closed = t.st === 'resolved' || t.st === 'closed';
+          if (!(s.tFilter === 'all' || (s.tFilter === 'closed' ? closed : !closed))) return false;
+          return s.stageFilter === 'All stages' || (t.stage || p.phase) === s.stageFilter;
+        }).map(t => {
+          const [sb, sf] = this.chip(t.st); const [prb, prf] = this.chip(t.pri);
+          return { id: t.id, title: t.title, meta: (t.stage || p.phase) + ' · ' + t.assignee + ' · opened ' + t.opened + ' · due ' + t.due,
+            st: t.st, stBg: sb, stFg: sf, pri: t.pri, priBg: prb, priFg: prf,
+            open: () => this.setState({ view: 'ticket', ticketId: t.id, commentDraft: '' }) };
+        }),
+        ticketsEmpty: p.tickets.filter(t => { const c = t.st === 'resolved' || t.st === 'closed'; if (!(s.tFilter === 'all' || (s.tFilter === 'closed' ? c : !c))) return false; return s.stageFilter === 'All stages' || (t.stage || p.phase) === s.stageFilter; }).length === 0
+      });
+      return vals;
+    }
+    const t = p.tickets.find(x => x.id === s.ticketId) || p.tickets[0];
+    const [sb, sf] = this.chip(t.st); const [prb, prf] = this.chip(t.pri);
+    const patchTicket = (upd) => this.patchProject(p.id, { tickets: p.tickets.map(x => x.id === t.id ? upd : x) });
+    const act = (what, extra) => patchTicket({ ...t, ...extra, activity: [[this.now(), this.state.actor, what]].concat(t.activity) });
+    const est = this.hoursOf(t.estimate), logged = this.hoursOf(t.logged);
+    const remaining = est > 0 ? est - logged : null;
+    Object.assign(vals, this.modalVals(p));
+    Object.assign(vals, {
+      t: { id: t.id, title: t.title, st: t.st, stBg: sb, stFg: sf, pri: t.pri, priBg: prb, priFg: prf, linkMeta: t.links.length + ' linked' },
+      tDescNode: t.isHtml
+        ? React.createElement('div', { style: { fontSize: 'var(--text-sm)', lineHeight: 1.6 }, dangerouslySetInnerHTML: { __html: t.desc } })
+        : React.createElement('p', { style: { margin: 0, fontSize: 'var(--text-sm)', lineHeight: 1.6, whiteSpace: 'pre-line' } }, t.desc),
+      tActions: [
+        { label: 'Edit ticket', pick: () => this.setState({ newTicket: true, editTid: t.id, ntTitle: t.title, ntType: t.type || 'Task', ntStage: t.stage || p.phase, ntCat: t.category || 'Delivery', ntAssignee: t.assignee, ntReporter: t.reporter, ntPri: t.pri.charAt(0).toUpperCase() + t.pri.slice(1), ntDue: t.due === 'Not set' ? '' : t.due, ntEst: est ? String(est) : '', ntLabels: t.labels || '', ntFiles: t.files, ntHint: '' }, () => { const el = document.getElementById('nt-desc'); if (el) el.innerHTML = t.isHtml ? t.desc : (t.desc || '').replace(/\n/g, '<br>'); }) },
+        t.assignee !== this.state.actor ? { label: 'Assign to me', pick: () => act('changed the assignee from ' + t.assignee + ' to ' + this.state.actor + '.', { assignee: this.state.actor }) } : null,
+        t.st === 'open' ? { label: 'Start progress', pick: () => act('moved the ticket to in progress.', { st: 'in progress' }) } : null,
+        (t.st === 'open' || t.st === 'in progress') ? { label: 'Resolve', pick: () => act('resolved the ticket.', { st: 'resolved' }) } : null,
+        t.st === 'resolved' ? { label: 'Reopen', pick: () => act('reopened the ticket.', { st: 'open' }) } : null,
+        t.st === 'resolved' ? { label: 'Close', pick: () => act('closed the ticket.', { st: 'closed' }) } : null,
+        { label: 'Delete ticket', pick: () => { this.patchProject(p.id, { tickets: p.tickets.filter(x => x.id !== t.id) }); this.setState({ view: 'project' }); } }
+      ].filter(Boolean),
+      relOpts: this.REL_OPTS,
+      linkTargets: [''].concat(this.allTickets().filter(x => x.t.id !== t.id).map(x => x.t.id + ' · ' + x.t.title)),
+      tLinkTicketMeta: (t.tlinks || []).length + ' linked',
+      tTicketLinks: (t.tlinks || []).map(([rel, id], i) => {
+        const hit = this.findTicket(id);
+        const st2 = hit ? hit.t.st : 'open';
+        const [b2, f2] = this.chip(st2);
+        return { rel, id, title: hit ? hit.t.title : 'Ticket in another project', st: st2, stBg: b2, stFg: f2,
+          open: (e) => { e.preventDefault(); if (hit) this.setState({ view: 'ticket', selId: hit.p.id, ticketId: id, commentDraft: '' }); },
+          remove: () => act('removed the "' + rel.toLowerCase() + ' ' + id + '" link.', { tlinks: t.tlinks.filter((_, j) => j !== i) }) };
+      }),
+      alRel: s.alRel, setAlRel: (e) => this.setState({ alRel: e.target.value }),
+      alTo: s.alTo, setAlTo: (e) => this.setState({ alTo: e.target.value }),
+      addLink: () => {
+        if (!s.alTo) return;
+        const id = s.alTo.split(' · ')[0];
+        act('linked this ticket as "' + s.alRel.toLowerCase() + ' ' + id + '".', { tlinks: (t.tlinks || []).concat([[s.alRel, id]]) });
+        this.setState({ alTo: '' });
+      },
+      ttLogged: logged + ' h',
+      ttRemaining: remaining == null ? 'No estimate set' : remaining >= 0 ? remaining.toFixed(1).replace(/\.0$/, '') + ' h remaining of ' + est + ' h' : Math.abs(remaining).toFixed(1).replace(/\.0$/, '') + ' h over the ' + est + ' h estimate',
+      ttPct: remaining == null ? '0%' : Math.min(100, Math.round(logged / est * 100)) + '%',
+      ttBarColor: remaining != null && remaining < 0 ? '#A2311F' : logged / (est || 1) > 0.8 ? 'var(--gold-600)' : '#2E7D5B',
+      logHours: s.logHours, setLogHours: (e) => this.setState({ logHours: e.target.value }),
+      logNote: s.logNote, setLogNote: (e) => this.setState({ logNote: e.target.value }),
+      logTime: () => {
+        const h = parseFloat(s.logHours);
+        if (!h || h <= 0) return;
+        act('logged ' + h + ' h' + (s.logNote.trim() ? ', ' + s.logNote.trim() : '') + '.', { logged: (logged + h) + ' h' });
+        this.setState({ logHours: '', logNote: '' });
+      },
+      tMetaPairs: [
+        ['Stage', t.stage || p.phase], ['Type', t.type || 'Task'], ['Category', t.category || 'Delivery'], ['Assignee', t.assignee], ['Reporter', t.reporter], ['Opened', t.opened], ['Due', t.due],
+        ['Labels', t.labels || 'None'], ['Project', p.name]
+      ].map(([label, value]) => ({ label, value })),
+      tLinks: t.links.map(([id, title, k]) => { const [b, f] = this.chip(k); return { id, title, chip: k, chipBg: b, chipFg: f }; }),
+      cmButtons: [
+        { label: 'B', tip: 'Bold', w: 700, fs: 'normal', pick: () => this.execCmdOn('cm-desc', 'bold') },
+        { label: 'I', tip: 'Italic', w: 400, fs: 'italic', pick: () => this.execCmdOn('cm-desc', 'italic') },
+        { label: '• list', tip: 'Bullet list', w: 400, fs: 'normal', pick: () => this.execCmdOn('cm-desc', 'insertUnorderedList') },
+        { label: '1. list', tip: 'Numbered list', w: 400, fs: 'normal', pick: () => this.execCmdOn('cm-desc', 'insertOrderedList') },
+        { label: 'link', tip: 'Link', w: 400, fs: 'normal', pick: () => { const u = prompt('Link URL'); if (u) this.execCmdOn('cm-desc', 'createLink', u); } }
+      ],
+      addComment: () => {
+        const el = document.getElementById('cm-desc');
+        if (!el || !el.textContent.trim()) return;
+        patchTicket({ ...t, activity: [[this.now(), this.state.actor, 'commented:', el.innerHTML]].concat(t.activity) });
+        el.innerHTML = '';
+      },
+      actor: s.actor, setActor: (e) => this.setState({ actor: e.target.value }),
+      actorOpts: this.PEOPLE.filter(x => x !== 'Unassigned'),
+      tActivity: t.activity.map(([when, who, what, html]) => ({ when, who,
+        whatNode: html ? React.createElement('span', null, 'commented: ', React.createElement('span', { dangerouslySetInnerHTML: { __html: html } })) : what })),
+      uploadTicketFile: () => this.pickFiles(fs => patchTicket({ ...t, files: fs.map(f => ({ name: f.name, size: Math.max(1, Math.round(f.size / 1024)) + ' KB' })).concat(t.files) })),
+      tFiles: t.files, tFilesEmpty: t.files.length === 0
+    });
+    return vals;
+  }
+}
+</script>
+
+
+</body></html>

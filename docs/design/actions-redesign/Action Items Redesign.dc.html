@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="../support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/tokens/fonts.css">
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/tokens/colors.css">
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/tokens/typography.css">
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/tokens/spacing.css">
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/tokens/effects.css">
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/tokens/base.css">
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/styles.css">
+  <script src="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/_ds_bundle.js"></script>
+  <style>
+    body{margin:0;background:var(--surface-page);}
+    a{color:var(--text-link);} a:hover{color:var(--navy);}
+  </style>
+</helmet>
+<div style="display:flex;min-height:100vh;font-family:var(--font-sans);color:var(--text-body)">
+  <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Sidebar" items="{{ navItems }}" active-id="action-items" on-quick-add="{{ openNew }}" hint-size="224px,100%" style="height:100vh;position:sticky;top:0"></x-import>
+  <main style="flex:1;height:100vh;overflow-y:auto;box-sizing:border-box">
+  <div style="padding:32px 48px 64px;box-sizing:border-box">
+
+    <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap">
+      <div>
+        <h1 style="font-size:var(--text-2xl);font-weight:700;margin:0 0 6px">Action items</h1>
+        <div style="font-size:var(--text-sm);color:var(--text-secondary)">Every commitment from client calls, tracked to done. Today is Mon, Aug 31.</div>
+      </div>
+      <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="primary" on-click="{{ openNew }}" hint-size="auto,38px">Capture an item</x-import>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-top:20px">
+      <sc-for list="{{ kpis }}" as="k" hint-placeholder-count="5">
+        <div sc-camel-on-click="{{ k.go }}" style="min-width:0;padding:13px 16px;background:var(--surface-card);border:1px solid var(--border-thin);border-left:3px solid {{ k.accent }};border-radius:var(--radius-md);box-shadow:var(--shadow-card);cursor:pointer;transition:background-color var(--transition-fast)" style-hover="background:var(--surface-hover)">
+          <div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ k.label }}</div>
+          <div style="font-family:var(--font-mono);font-size:var(--text-xl);margin:6px 0 4px;color:{{ k.color }}">{{ k.value }}</div>
+          <div style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ k.sub }}</div>
+        </div>
+      </sc-for>
+    </div>
+
+    <div style="display:flex;gap:12px;margin-top:16px;align-items:center;flex-wrap:wrap">
+      <div style="display:flex;flex-wrap:wrap;gap:4px;padding:4px;max-width:100%;box-sizing:border-box;width:fit-content;background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-md);box-shadow:var(--shadow-card)">
+        <sc-for list="{{ tabs }}" as="tb" hint-placeholder-count="6">
+          <button sc-camel-on-click="{{ tb.pick }}" style="display:inline-flex;align-items:center;gap:8px;padding:7px 14px;border:none;border-radius:var(--radius-sm);cursor:pointer;white-space:nowrap;font-family:var(--font-sans);font-size:var(--text-base);font-weight:500;background:{{ tb.bg }};color:{{ tb.fg }};transition:background-color var(--transition-fast)" style-hover="background:{{ tb.hoverBg }}">{{ tb.label }}<span style="font-family:var(--font-mono);font-size:var(--text-xs);color:{{ tb.countFg }}">{{ tb.count }}</span></button>
+        </sc-for>
+      </div>
+      <div style="flex:1;min-width:220px">
+        <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Input" value="{{ search }}" sc-camel-on-change="{{ setSearch }}" placeholder="Search titles, context and owners. Filters as you type." hint-size="100%,38px"></x-import>
+      </div>
+      <div style="width:170px"><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Select" options="{{ projOpts }}" value="{{ projF }}" sc-camel-on-change="{{ setProjF }}" hint-size="170px,38px"></x-import></div>
+      <div style="width:150px"><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Select" options="{{ ownerOpts2 }}" value="{{ ownerF }}" sc-camel-on-change="{{ setOwnerF }}" hint-size="150px,38px"></x-import></div>
+      <div style="width:170px"><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Select" options="{{ sortOpts }}" value="{{ sortBy }}" sc-camel-on-change="{{ setSortBy }}" hint-size="170px,38px"></x-import></div>
+    </div>
+
+    <sc-if value="{{ hasSel }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;align-items:center;gap:8px;margin-top:12px;padding:10px 16px;background:var(--navy-50);border:1px solid var(--navy-500);border-radius:var(--radius-md);flex-wrap:wrap">
+        <span style="font-size:var(--text-sm);font-weight:600">{{ selCount }} selected</span>
+        <span style="flex:1"></span>
+        <sc-for list="{{ bulkActions }}" as="ba" hint-placeholder-count="4">
+          <button sc-camel-on-click="{{ ba.pick }}" style="padding:4px 12px;background:var(--surface-card);border:1px solid var(--border-strong);border-radius:var(--radius-pill);cursor:pointer;font-family:var(--font-sans);font-size:var(--text-sm);font-weight:500;color:var(--navy-700);transition:background-color var(--transition-fast)" style-hover="background:var(--surface-hover)">{{ ba.label }}</button>
+        </sc-for>
+      </div>
+    </sc-if>
+
+    <div style="margin-top:16px;background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-lg);box-shadow:var(--shadow-card);overflow:hidden">
+      <div style="overflow-x:auto">
+      <div style="min-width:920px">
+      <div style="display:grid;grid-template-columns:36px minmax(240px,1.6fr) 110px 150px 120px 86px 84px 130px;gap:10px;padding:10px 20px;background:var(--surface-row-alt);font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary)">
+        <span></span><span>Item</span><span>Owner</span><span>Project</span><span>Deadline</span><span>Priority</span><span>Source</span><span>Status</span>
+      </div>
+      <sc-for list="{{ rows }}" as="it" hint-placeholder-count="9">
+        <div style="border-top:1px solid var(--border-thin)">
+          <div sc-camel-on-click="{{ it.toggle }}" style="display:grid;grid-template-columns:36px minmax(240px,1.6fr) 110px 150px 120px 86px 84px 130px;gap:10px;align-items:center;padding:10px 20px;cursor:pointer;background:{{ it.bg }};transition:background-color var(--transition-fast)" style-hover="background:var(--surface-hover)">
+            <button sc-camel-on-click="{{ it.check }}" title="Select" style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;background:{{ it.boxBg }};border:1.5px solid {{ it.boxBorder }};border-radius:5px;cursor:pointer;padding:0">
+              <sc-if value="{{ it.sel }}" hint-placeholder-val="{{ false }}"><svg width="11" height="11" sc-camel-view-box="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"></path></svg></sc-if>
+            </button>
+            <span style="min-width:0">
+              <span style="display:block;font-size:var(--text-sm);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:{{ it.titleFg }};text-decoration:{{ it.deco }}">{{ it.id }} · {{ it.title }}</span>
+              <span style="display:block;font-size:var(--text-xs);color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px">{{ it.context }}</span>
+            </span>
+            <span style="font-size:var(--text-sm);color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ it.owner }}</span>
+            <span style="font-size:var(--text-sm);color:var(--text-link);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ it.project }}</span>
+            <span style="min-width:0">
+              <span style="display:block;font-family:var(--font-mono);font-size:var(--text-xs);color:{{ it.dueColor }}">{{ it.deadline }}</span>
+              <span style="display:block;font-family:var(--font-mono);font-size:var(--text-xs);color:{{ it.dueColor }};margin-top:2px">{{ it.dueNote }}</span>
+            </span>
+            <span><span style="background:{{ it.priBg }};color:{{ it.priFg }};font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;padding:2px 8px;border-radius:var(--radius-pill)">{{ it.pri }}</span></span>
+            <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary)">{{ it.source }}</span>
+            <span><span style="background:{{ it.stBg }};color:{{ it.stFg }};font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;padding:2px 8px;border-radius:var(--radius-pill)">{{ it.status }}</span></span>
+          </div>
+          <sc-if value="{{ it.open }}" hint-placeholder-val="{{ false }}">
+            <div style="padding:14px 20px 18px 66px;background:var(--surface-row-alt);border-top:1px solid var(--border-thin)">
+              <div style="font-size:var(--text-sm);line-height:1.6">{{ it.context }}</div>
+              <sc-if value="{{ it.isWaiting }}" hint-placeholder-val="{{ false }}">
+                <div style="margin-top:6px;font-size:var(--text-sm);color:var(--gold-600)">Waiting on {{ it.waitingOn }} since {{ it.waitingSince }}.</div>
+              </sc-if>
+              <div style="display:flex;align-items:center;gap:6px;margin-top:12px;flex-wrap:wrap">
+                <sc-for list="{{ it.actions }}" as="a" hint-placeholder-count="5">
+                  <button sc-camel-on-click="{{ a.pick }}" style="padding:4px 12px;background:var(--surface-card);border:1px solid var(--border-strong);border-radius:var(--radius-pill);cursor:pointer;font-family:var(--font-sans);font-size:var(--text-sm);font-weight:500;color:var(--navy-700);transition:background-color var(--transition-fast),border-color var(--transition-fast)" style-hover="background:var(--navy-50);border-color:var(--navy-500)">{{ a.label }}</button>
+                </sc-for>
+              </div>
+              <div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin:14px 0 4px">Trail</div>
+              <sc-for list="{{ it.trail }}" as="ev" hint-placeholder-count="2">
+                <div style="display:flex;gap:12px;padding:5px 0;font-size:var(--text-sm)">
+                  <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary);width:110px;flex-shrink:0">{{ ev.when }}</span>
+                  <span>{{ ev.what }}</span>
+                </div>
+              </sc-for>
+            </div>
+          </sc-if>
+        </div>
+      </sc-for>
+      <sc-if value="{{ rowsEmpty }}" hint-placeholder-val="{{ false }}">
+        <div style="padding:40px 20px;text-align:center;font-size:var(--text-base);color:var(--text-secondary);border-top:1px solid var(--border-thin)">Nothing here. Clear the search or pick another tab.</div>
+      </sc-if>
+      </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;padding:10px 16px;border-top:1px solid var(--border-thin)">
+        <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary)">{{ pageInfo }}</span>
+        <span style="flex:1"></span>
+        <span style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary)">Per page</span>
+        <div style="width:90px"><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Select" options="{{ perPageOpts }}" value="{{ perPage }}" sc-camel-on-change="{{ setPerPage }}" hint-size="90px,34px"></x-import></div>
+        <button sc-camel-on-click="{{ prevPage }}" style="padding:6px 12px;background:var(--surface-card);border:1px solid var(--border-strong);border-radius:var(--radius-sm);cursor:pointer;font-family:var(--font-sans);font-size:var(--text-sm);font-weight:500;color:{{ prevColor }};transition:background-color var(--transition-fast)" style-hover="background:var(--surface-hover)">Prev</button>
+        <button sc-camel-on-click="{{ nextPage }}" style="padding:6px 12px;background:var(--surface-card);border:1px solid var(--border-strong);border-radius:var(--radius-sm);cursor:pointer;font-family:var(--font-sans);font-size:var(--text-sm);font-weight:500;color:{{ nextColor }};transition:background-color var(--transition-fast)" style-hover="background:var(--surface-hover)">Next</button>
+      </div>
+    </div>
+
+  <sc-if value="{{ newOpen }}" hint-placeholder-val="{{ false }}">
+    <div sc-camel-on-click="{{ closeNew }}" style="position:fixed;inset:0;z-index:80;background:rgba(16,42,76,.38)"></div>
+    <div style="position:fixed;top:6vh;left:50%;transform:translateX(-50%);z-index:90;width:min(680px,92vw);max-height:86vh;overflow-y:auto;background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-lg);box-shadow:var(--shadow-pop);padding:24px 28px;box-sizing:border-box">
+      <div style="display:flex;align-items:center;gap:10px">
+        <h2 style="font-size:var(--text-lg);font-weight:700;margin:0">{{ modalTitle }}</h2>
+        <span style="flex:1"></span>
+        <button sc-camel-on-click="{{ closeNew }}" title="Close" style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;background:transparent;border:none;border-radius:var(--radius-sm);cursor:pointer;color:var(--muted);transition:background-color var(--transition-fast)" style-hover="background:var(--surface-hover)"><svg width="15" height="15" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"></path></svg></button>
+      </div>
+      <div style="margin-top:16px">
+        <div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">What has to happen</div>
+        <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Input" value="{{ nfTitle }}" sc-camel-on-change="{{ setNfTitle }}" placeholder="Collect the revised timeline for Dovecote" hint-size="100%,38px"></x-import>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px 16px;margin-top:14px">
+        <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Owner</div><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Select" options="{{ ownerOpts }}" value="{{ nfOwner }}" sc-camel-on-change="{{ setNfOwner }}" hint-size="100%,38px"></x-import></div>
+        <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Deadline</div><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Input" value="{{ nfDue }}" sc-camel-on-change="{{ setNfDue }}" mono="{{ true }}" placeholder="Sep 2" hint-size="100%,38px"></x-import></div>
+        <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Priority</div><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Select" options="{{ priOpts }}" value="{{ nfPri }}" sc-camel-on-change="{{ setNfPri }}" hint-size="100%,38px"></x-import></div>
+        <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Status</div><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Select" options="{{ stOpts }}" value="{{ nfStatus }}" sc-camel-on-change="{{ setNfStatus }}" hint-size="100%,38px"></x-import></div>
+        <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Source</div><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Select" options="{{ srcOpts }}" value="{{ nfSource }}" sc-camel-on-change="{{ setNfSource }}" hint-size="100%,38px"></x-import></div>
+        <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Project</div><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Select" options="{{ projOpts3 }}" value="{{ nfProject }}" sc-camel-on-change="{{ setNfProject }}" hint-size="100%,38px"></x-import></div>
+        <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Waiting on, if anyone</div><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Input" value="{{ nfWaiting }}" sc-camel-on-change="{{ setNfWaiting }}" placeholder="Legal at Middleham" hint-size="100%,38px"></x-import></div>
+        <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Effort</div><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Select" options="{{ effOpts }}" value="{{ nfEffort }}" sc-camel-on-change="{{ setNfEffort }}" hint-size="100%,38px"></x-import></div>
+      </div>
+      <div style="margin-top:14px">
+        <div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Context</div>
+        <textarea value="{{ nfContext }}" sc-camel-on-change="{{ setNfContext }}" placeholder="One line of context so the item still makes sense later." style="width:100%;box-sizing:border-box;min-height:64px;padding:10px 12px;font-family:var(--font-sans);font-size:var(--text-sm);line-height:1.5;color:var(--ink);background:var(--surface-card);border:1px solid var(--border-strong);border-radius:var(--radius-sm);resize:vertical"></textarea>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:18px">
+        <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="primary" size="sm" on-click="{{ saveItem }}" hint-size="auto,32px">{{ modalSaveLabel }}</x-import>
+        <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="ghost" size="sm" on-click="{{ closeNew }}" hint-size="auto,32px">Cancel</x-import>
+        <span style="font-size:var(--text-sm);color:var(--text-secondary)">{{ nfHint }}</span>
+      </div>
+    </div>
+  </sc-if>
+
+  </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script="" data-props="{}">
+class Component extends DCLogic {
+  CH = { overdue: ['var(--chip-overdue-bg)', 'var(--chip-overdue-fg)'], open: ['var(--chip-open-bg)', 'var(--chip-open-fg)'], 'due today': ['var(--gold-100)', 'var(--gold-600)'], waiting: ['var(--chip-waiting-bg)', 'var(--chip-waiting-fg)'], done: ['var(--chip-done-bg)', 'var(--chip-done-fg)'],
+    high: ['#F9E2DE', '#A2311F'], medium: ['var(--gold-100)', 'var(--gold-600)'], low: ['var(--navy-50)', 'var(--navy-500)'] };
+  OWNERS = ['Unassigned', 'Paul', 'Dana Okafor', 'Mei Bianchi', 'Beatriz Haddad', 'Sofia Okafor', 'Ethan Lindqvist', 'Rue Mbeki'];
+  PROJECTS = ['No project', 'Orchard contract renewal', 'Tessellate cost review', 'Tewkesbury market study', 'Dunmore site build', 'Ashcombe site build', 'Fairwater cost review'];
+
+  INIT = [
+    { id: 'AI-2214', title: 'Review the handover document for Pemberton', context: 'Blocking the next milestone.', owner: 'Dana Okafor', project: 'Orchard contract renewal', due: 'Fri, Jul 17', dueN: -45, pri: 'high', source: 'Meeting', status: 'overdue',
+      trail: [['Aug 29, 9:00 AM', 'Reminder sent to Dana.'], ['Jul 3, 2:10 PM', 'Captured from the Pemberton call.']] },
+    { id: 'AI-2198', title: 'Approve the vendor escalation for Middleham', context: 'Raised on the call.', owner: 'Mei Bianchi', project: 'Tessellate cost review', due: 'Fri, Jul 17', dueN: -45, pri: 'high', source: 'Meeting', status: 'overdue',
+      trail: [['Jul 3, 11:00 AM', 'Captured from the Middleham call.']] },
+    { id: 'AI-2187', title: 'Schedule the migration plan for Pickering', context: 'Client asked directly.', owner: 'Paul', project: 'Tewkesbury market study', due: 'Fri, Jul 17', dueN: -45, pri: 'medium', source: 'Manual', status: 'overdue',
+      trail: [['Jul 2, 4:00 PM', 'Added by you.']] },
+    { id: 'AI-2201', title: 'Publish the revised timeline for Halcyon', context: 'Blocking the next milestone.', owner: 'Dana Okafor', project: 'Dunmore site build', due: 'Fri, Jul 17', dueN: -45, pri: 'high', source: 'Meeting', status: 'overdue',
+      trail: [['Jul 3, 3:30 PM', 'Captured from the Halcyon review.']] },
+    { id: 'AI-2190', title: 'Summarise the risk register for Dunmore', context: 'Feeds the Ashcombe evidence pack.', owner: 'Beatriz Haddad', project: 'Ashcombe site build', due: 'Fri, Jul 17', dueN: -45, pri: 'medium', source: 'Manual', status: 'overdue',
+      trail: [['Jul 2, 9:00 AM', 'Added by you.']] },
+    { id: 'AI-2307', title: 'Validate the invoice batch for Fairwater', context: 'August export does not reconcile.', owner: 'Rue Mbeki', project: 'Fairwater cost review', due: 'Mon, Aug 31', dueN: 0, pri: 'high', source: 'Mail', status: 'due today',
+      trail: [['Aug 28, 4:00 PM', 'Filed from the mail thread.']] },
+    { id: 'AI-2310', title: 'Send the pre-read for the Caldera scoping call', context: 'Two days before the call.', owner: 'Paul', project: 'No project', due: 'Mon, Aug 31', dueN: 0, pri: 'medium', source: 'Meeting', status: 'due today',
+      trail: [['Aug 27, 1:00 PM', 'Captured from the standup.']] },
+    { id: 'AI-2312', title: 'Validate the vendor escalation for Fairwater', context: 'Needs an owner before it slips.', owner: 'Unassigned', project: 'Fairwater cost review', due: 'Wed, Sep 2', dueN: 2, pri: 'high', source: 'Meeting', status: 'open',
+      trail: [['Aug 29, 10:00 AM', 'Captured from the steering committee.']] },
+    { id: 'AI-2246', title: 'Schedule the closure note for Ashcombe', context: 'After the final invoice lands.', owner: 'Ethan Lindqvist', project: 'Ashcombe site build', due: 'Sat, Oct 3', dueN: 33, pri: 'low', source: 'Manual', status: 'open',
+      trail: [['Aug 20, 9:30 AM', 'Added by you.']] },
+    { id: 'AI-2288', title: 'Send the training deck for Copperfield', context: 'Deck v7 is ready in the project files.', owner: 'Sofia Okafor', project: 'No project', due: 'Tue, Sep 8', dueN: 8, pri: 'medium', source: 'Meeting', status: 'waiting', waitingOn: 'client sign off', waitingSince: 'Aug 25',
+      trail: [['Aug 25, 2:00 PM', 'Moved to waiting, client reviewing.']] },
+    { id: 'AI-2264', title: 'Rework the board pack for Marlowe', context: 'New template from the September cycle.', owner: 'Beatriz Haddad', project: 'No project', due: 'Fri, Sep 11', dueN: 11, pri: 'low', source: 'Manual', status: 'waiting', waitingOn: 'template approval', waitingSince: 'Aug 23',
+      trail: [['Aug 23, 11:00 AM', 'Moved to waiting.']] },
+    { id: 'AI-2295', title: 'Book the training venue for Brightmoor', context: 'Cohort one starts Sep 14.', owner: 'Rue Mbeki', project: 'No project', due: 'Fri, Sep 11', dueN: 11, pri: 'medium', source: 'Manual', status: 'open',
+      trail: [['Aug 26, 10:00 AM', 'Added by you.']] },
+    { id: 'AI-2250', title: 'Confirm the contract redline for Ashcombe', context: 'Legal pass done, needs the client.', owner: 'Ravi Novak', project: 'Ashcombe site build', due: 'Sat, Oct 17', dueN: 47, pri: 'low', source: 'Meeting', status: 'open',
+      trail: [['Aug 18, 3:00 PM', 'Captured from the Ashcombe call.']] },
+    { id: 'AI-2260', title: 'Confirm the stakeholder map for Ashcombe', context: 'Reconciled in June, needs sign off.', owner: 'Rue Mbeki', project: 'Ashcombe site build', due: 'Fri, Nov 13', dueN: 74, pri: 'low', source: 'Meeting', status: 'done',
+      trail: [['Aug 29, 5:00 PM', 'Marked done by Rue.'], ['Jun 24, 9:00 AM', 'Captured from the kickoff.']] }
+  ];
+
+  state = { items: this.INIT, tab: 'open', search: '', projF: 'All projects', ownerF: 'Everyone', sortBy: 'Deadline, soonest',
+    page: 0, perPage: '20', sel: {}, openId: null, newOpen: false, nf: {}, nfHint: '', editId: null, nextN: 2350 };
+
+  chip(k) { return this.CH[k] || this.CH.open; }
+  patch(id, p) { this.setState(s => ({ items: s.items.map(x => x.id === id ? { ...x, ...p } : x) })); }
+  act(it, what, extra) { this.patch(it.id, { ...extra, trail: [['Aug 31, ' + new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }), what]].concat(it.trail) }); }
+
+  renderVals() {
+    const s = this.state;
+    const navItems = ['Dashboard', 'Action items', 'Projects', 'Meetings', 'Calendar', 'SOPs', 'Templates', 'Clients', 'Mail', 'Invoicing', 'Ledger', 'Reports', 'Settings']
+      .map(l => ({ id: l.toLowerCase().replace(' ', '-'), label: l }));
+    const of = (st) => s.items.filter(x => x.status === st).length;
+    const kpis = [
+      ['Open', String(s.items.filter(x => x.status !== 'done').length), 'everything not done', 'var(--navy-500)', 'var(--ink)', 'all'],
+      ['Overdue', String(of('overdue')), 'oldest Jul 17', 'var(--gold-600)', 'var(--text-warn)', 'overdue'],
+      ['Due today', String(of('due today')), 'Mon, Aug 31', '#A2311F', 'var(--ink)', 'due today'],
+      ['Waiting on', String(of('waiting')), 'someone else has it', 'var(--border-strong)', 'var(--ink)', 'waiting'],
+      ['Done this week', String(of('done')), 'nice and boring', '#2E7D5B', 'var(--text-positive)', 'done']
+    ].map(([label, value, sub, accent, color, tab]) => ({ label, value, sub, accent, color, go: () => this.setState({ tab, page: 0 }) }));
+    const TABS = [['all', 'All'], ['open', 'Open'], ['overdue', 'Overdue'], ['due today', 'Due today'], ['waiting', 'Waiting on'], ['done', 'Done']];
+    const tabs = TABS.map(([id, label]) => {
+      const active = s.tab === id;
+      const count = id === 'all' ? s.items.length : id === 'open' ? s.items.filter(x => x.status !== 'done').length : of(id);
+      return { label, count: String(count), bg: active ? 'var(--navy)' : 'transparent', fg: active ? '#FFFFFF' : 'var(--ink)',
+        countFg: active ? 'var(--text-inverse-muted)' : 'var(--muted)', hoverBg: active ? 'var(--navy)' : 'var(--navy-50)',
+        pick: () => this.setState({ tab: id, page: 0 }) };
+    });
+    const q = s.search.trim().toLowerCase();
+    let list = s.items
+      .filter(x => s.tab === 'all' || (s.tab === 'open' ? x.status !== 'done' : x.status === s.tab))
+      .filter(x => s.projF === 'All projects' || x.project === s.projF)
+      .filter(x => s.ownerF === 'Everyone' || x.owner === s.ownerF)
+      .filter(x => !q || (x.id + ' ' + x.title + ' ' + x.context + ' ' + x.owner).toLowerCase().includes(q));
+    if (s.sortBy === 'Deadline, soonest') list = list.slice().sort((a, b) => a.dueN - b.dueN);
+    else if (s.sortBy === 'Priority') { const P = { high: 0, medium: 1, low: 2 }; list = list.slice().sort((a, b) => P[a.pri] - P[b.pri]); }
+    else list = list.slice().sort((a, b) => a.owner.localeCompare(b.owner));
+    const per = parseInt(s.perPage, 10) || 20;
+    const totalPages = Math.max(1, Math.ceil(list.length / per));
+    const page = Math.min(s.page, totalPages - 1);
+    const shown = list.slice(page * per, page * per + per);
+    const selIds = Object.keys(s.sel).filter(k => s.sel[k]);
+    const rows = shown.map(it => {
+      const [pb, pf] = this.chip(it.pri); const [sb, sf] = this.chip(it.status);
+      const sel = !!s.sel[it.id];
+      const done = it.status === 'done';
+      const acts = [];
+      if (!done) acts.push({ label: 'Mark done', pick: (e) => { e.stopPropagation(); this.act(it, 'Marked done by you.', { status: 'done' }); } });
+      if (done) acts.push({ label: 'Reopen', pick: (e) => { e.stopPropagation(); this.act(it, 'Reopened by you.', { status: 'open' }); } });
+      if (!done) acts.push({ label: 'Push a week', pick: (e) => { e.stopPropagation(); this.act(it, 'Deadline pushed a week by you.', { due: 'Mon, Sep 7', dueN: 7, status: it.status === 'overdue' || it.status === 'due today' ? 'open' : it.status }); } });
+      if (it.status !== 'waiting' && !done) acts.push({ label: 'Move to waiting', pick: (e) => { e.stopPropagation(); this.act(it, 'Moved to waiting.', { status: 'waiting', waitingOn: 'the client', waitingSince: 'Aug 31' }); } });
+      acts.push({ label: 'To ticket', pick: (e) => { e.stopPropagation(); this.act(it, 'Converted to a ticket on ' + it.project + '.', {}); } });
+      acts.push({ label: 'Edit', pick: (e) => { e.stopPropagation(); this.setState({ newOpen: true, editId: it.id, nf: { title: it.title, owner: it.owner, due: it.due, pri: it.pri.charAt(0).toUpperCase() + it.pri.slice(1), status: it.status.charAt(0).toUpperCase() + it.status.slice(1), source: it.source, project: it.project, waiting: it.waitingOn || '', effort: 'Under an hour', context: it.context }, nfHint: '' }); } });
+      return { ...it, pri: it.pri, priBg: pb, priFg: pf, stBg: sb, stFg: sf,
+        deadline: it.due, dueNote: it.dueN < 0 ? 'overdue by ' + Math.abs(it.dueN) + ' days' : it.dueN === 0 ? 'today' : 'in ' + it.dueN + ' days',
+        dueColor: it.dueN < 0 ? 'var(--text-warn)' : it.dueN === 0 ? 'var(--gold-600)' : 'var(--text-secondary)',
+        titleFg: done ? 'var(--text-secondary)' : 'var(--ink)', deco: done ? 'line-through' : 'none',
+        sel, boxBg: sel ? 'var(--navy)' : 'var(--surface-card)', boxBorder: sel ? 'var(--navy)' : 'var(--border-strong)',
+        bg: s.openId === it.id ? 'var(--surface-row-alt)' : 'transparent',
+        open: s.openId === it.id, isWaiting: it.status === 'waiting',
+        check: (e) => { e.stopPropagation(); this.setState(x => ({ sel: { ...x.sel, [it.id]: !sel } })); },
+        toggle: () => this.setState(x => ({ openId: x.openId === it.id ? null : it.id })),
+        actions: acts, trail: it.trail.map(([when, what]) => ({ when, what })) };
+    });
+    const vals = { navItems, kpis, tabs, rows, rowsEmpty: rows.length === 0,
+      search: s.search, setSearch: (e) => this.setState({ search: e.target.value, page: 0 }),
+      projOpts: ['All projects'].concat(this.PROJECTS.slice(1)), projF: s.projF, setProjF: (e) => this.setState({ projF: e.target.value, page: 0 }),
+      ownerOpts2: ['Everyone'].concat(this.OWNERS.slice(1)), ownerF: s.ownerF, setOwnerF: (e) => this.setState({ ownerF: e.target.value, page: 0 }),
+      sortOpts: ['Deadline, soonest', 'Priority', 'Owner'], sortBy: s.sortBy, setSortBy: (e) => this.setState({ sortBy: e.target.value }),
+      hasSel: selIds.length > 0, selCount: String(selIds.length),
+      bulkActions: [
+        { label: 'Mark done', pick: () => { selIds.forEach(id => this.patch(id, { status: 'done' })); this.setState({ sel: {} }); } },
+        { label: 'Push a week', pick: () => { selIds.forEach(id => this.patch(id, { due: 'Mon, Sep 7', dueN: 7, status: 'open' })); this.setState({ sel: {} }); } },
+        { label: 'Assign to me', pick: () => { selIds.forEach(id => this.patch(id, { owner: 'Paul' })); this.setState({ sel: {} }); } },
+        { label: 'Clear selection', pick: () => this.setState({ sel: {} }) }
+      ],
+      pageInfo: list.length === 0 ? 'No items' : (page * per + 1) + ' to ' + Math.min(page * per + per, list.length) + ' of ' + list.length + ' shown, 3,000 in total',
+      perPageOpts: ['10', '20', '50', '100'], perPage: s.perPage, setPerPage: (e) => this.setState({ perPage: e.target.value, page: 0 }),
+      prevPage: () => this.setState({ page: Math.max(0, page - 1) }),
+      nextPage: () => this.setState({ page: Math.min(totalPages - 1, page + 1) }),
+      prevColor: page > 0 ? 'var(--ink)' : 'var(--muted)', nextColor: page < totalPages - 1 ? 'var(--ink)' : 'var(--muted)',
+      newOpen: s.newOpen,
+      modalTitle: s.editId ? 'Edit ' + s.editId : 'Capture an item',
+      modalSaveLabel: s.editId ? 'Save changes' : 'Add item',
+      openNew: () => this.setState({ newOpen: true, editId: null, nf: { title: '', owner: 'Unassigned', due: 'Sep 2', pri: 'Medium', status: 'Open', source: 'Manual', project: 'No project', waiting: '', effort: 'Under an hour', context: '' }, nfHint: '' }),
+      closeNew: () => this.setState({ newOpen: false, editId: null }),
+      ownerOpts: this.OWNERS, priOpts: ['High', 'Medium', 'Low'], stOpts: ['Open', 'Waiting', 'Done'],
+      srcOpts: ['Manual', 'Meeting', 'Mail', 'Ticket'], projOpts3: this.PROJECTS,
+      effOpts: ['Under an hour', 'Half a day', 'A day', 'Multi day'],
+      nfHint: s.nfHint,
+      saveItem: () => {
+        const n = s.nf;
+        if (!n.title || !n.title.trim()) { this.setState({ nfHint: 'A title is required.' }); return; }
+        const status = n.waiting ? 'waiting' : (n.status || 'Open').toLowerCase();
+        if (s.editId) {
+          const it = s.items.find(x => x.id === s.editId);
+          this.act(it, 'Edited by you.', { title: n.title.trim(), owner: n.owner, due: n.due, pri: n.pri.toLowerCase(), status, source: n.source, project: n.project, context: n.context, waitingOn: n.waiting || it.waitingOn, waitingSince: n.waiting ? 'Aug 31' : it.waitingSince });
+          this.setState({ newOpen: false, editId: null });
+          return;
+        }
+        const it = { id: 'AI-' + s.nextN, title: n.title.trim(), context: n.context || 'No context yet.', owner: n.owner, project: n.project,
+          due: n.due || 'Sep 2', dueN: 2, pri: n.pri.toLowerCase(), source: n.source, status,
+          waitingOn: n.waiting || undefined, waitingSince: n.waiting ? 'Aug 31' : undefined,
+          trail: [['Aug 31, ' + new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }), 'Captured by you' + (n.effort ? ', effort ' + n.effort.toLowerCase() : '') + '.']] };
+        this.setState(x => ({ items: [it].concat(x.items), newOpen: false, nextN: x.nextN + 1, tab: 'all', page: 0 }));
+      }
+    };
+    ['title', 'owner', 'due', 'pri', 'status', 'source', 'project', 'waiting', 'effort', 'context'].forEach(k => {
+      const K = k.charAt(0).toUpperCase() + k.slice(1);
+      vals['nf' + K] = s.nf[k];
+      vals['setNf' + K] = (e) => this.setState(x => ({ nf: { ...x.nf, [k]: e.target.value } }));
+    });
+    return vals;
+  }
+}
+</script>
+
+
+</body></html>

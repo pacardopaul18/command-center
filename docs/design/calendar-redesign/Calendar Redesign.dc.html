@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="../support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/tokens/fonts.css">
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/tokens/colors.css">
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/tokens/typography.css">
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/tokens/spacing.css">
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/tokens/effects.css">
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/tokens/base.css">
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/styles.css">
+  <script src="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/_ds_bundle.js"></script>
+  <style>
+    body{margin:0;background:var(--surface-page);}
+    a{color:var(--text-link);} a:hover{color:var(--navy);}
+  </style>
+</helmet>
+<div style="display:flex;min-height:100vh;font-family:var(--font-sans);color:var(--text-body)">
+  <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Sidebar" items="{{ navItems }}" active-id="calendar" on-quick-add="{{ noop }}" hint-size="224px,100%" style="height:100vh;position:sticky;top:0"></x-import>
+  <main style="flex:1;height:100vh;overflow-y:auto;box-sizing:border-box">
+  <div style="padding:32px 48px 64px;box-sizing:border-box">
+
+    <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap">
+      <div>
+        <h1 style="font-size:var(--text-2xl);font-weight:700;margin:0 0 6px">Calendar</h1>
+        <div style="font-size:var(--text-sm);color:var(--text-secondary)">Every calendar you own or follow, matched in one place. Times in Asia/Taipei (GMT+8). Writes go through the Google Calendar API.</div>
+      </div>
+      <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="primary" on-click="{{ openNew }}" hint-size="auto,38px">New invite</x-import>
+    </div>
+
+    <sc-if value="{{ needsAuth }}" hint-placeholder-val="{{ true }}">
+      <div style="display:flex;align-items:center;gap:12px;margin-top:16px;padding:12px 16px;background:var(--surface-callout);border:1px solid var(--gold);border-radius:var(--radius-md)">
+        <span style="flex:1;font-size:var(--text-sm)">paul@vantage-partners.invalid needs reconnecting. Google expires the token every seven days while the app is unpublished, which is expected rather than a fault.</span>
+        <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="secondary" size="sm" on-click="{{ reconnect }}" hint-size="auto,30px">Reconnect</x-import>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ joined }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;align-items:center;gap:12px;margin-top:16px;padding:12px 16px;background:var(--chip-done-bg);border:1px solid var(--border-thin);border-radius:var(--radius-md)">
+        <span style="width:8px;height:8px;border-radius:50%;background:#2E7D5B"></span>
+        <span style="flex:1;font-size:var(--text-sm);color:var(--chip-done-fg)">In the Google Meet room for {{ joinedTitle }}.</span>
+        <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="ghost" size="sm" on-click="{{ leave }}" hint-size="auto,30px">Leave</x-import>
+      </div>
+    </sc-if>
+
+    <div style="display:flex;gap:16px;margin-top:16px;align-items:flex-start;flex-wrap:wrap">
+
+      <div style="width:270px;flex-shrink:0;display:flex;flex-direction:column;gap:16px">
+        <div style="padding:18px 20px;background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-lg);box-shadow:var(--shadow-card)">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
+            <h2 style="font-size:var(--text-md);font-weight:700;margin:0">Calendars</h2>
+            <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary)">{{ nCals }}</span>
+          </div>
+          <sc-for list="{{ cals }}" as="c" hint-placeholder-count="4">
+            <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--border-thin)">
+              <button sc-camel-on-click="{{ c.toggle }}" title="Show or hide" style="display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;flex-shrink:0;background:{{ c.boxBg }};border:1.5px solid {{ c.color }};border-radius:4px;cursor:pointer;padding:0">
+                <sc-if value="{{ c.on }}" hint-placeholder-val="{{ true }}"><svg width="10" height="10" sc-camel-view-box="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"></path></svg></sc-if>
+              </button>
+              <span style="flex:1;min-width:0">
+                <span style="display:block;font-size:var(--text-sm);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ c.name }}</span>
+                <span style="display:block;font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary)">{{ c.kind }}</span>
+              </span>
+              <sc-if value="{{ c.canRemove }}" hint-placeholder-val="{{ false }}">
+                <button sc-camel-on-click="{{ c.remove }}" title="Unsubscribe" style="display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;background:transparent;border:none;border-radius:var(--radius-sm);cursor:pointer;color:var(--muted);transition:background-color var(--transition-fast)" style-hover="background:var(--surface-hover)"><svg width="12" height="12" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"></path></svg></button>
+              </sc-if>
+            </div>
+          </sc-for>
+          <div style="display:flex;gap:8px;align-items:center;padding-top:12px;border-top:1px solid var(--border-thin);margin-top:4px">
+            <div style="flex:1"><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Input" value="{{ subQ }}" sc-camel-on-change="{{ setSubQ }}" placeholder="name@company.com" mono="{{ true }}" hint-size="100%,34px"></x-import></div>
+            <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="secondary" size="sm" on-click="{{ subscribe }}" hint-size="auto,30px">Follow</x-import>
+          </div>
+          <div style="margin-top:8px;font-size:var(--text-xs);color:var(--text-secondary)">Following someone shows their busy blocks, never their event details, unless they share them.</div>
+        </div>
+
+        <div style="padding:18px 20px;background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-lg);box-shadow:var(--shadow-card)">
+          <h2 style="font-size:var(--text-md);font-weight:700;margin:0 0 4px">Find a time</h2>
+          <div style="font-size:var(--text-xs);color:var(--text-secondary);margin-bottom:10px">Matches free space across every calendar picked below.</div>
+          <div style="display:flex;flex-wrap:wrap;gap:6px">
+            <sc-for list="{{ ftPeople }}" as="fp" hint-placeholder-count="4">
+              <button sc-camel-on-click="{{ fp.toggle }}" style="padding:3px 10px;background:{{ fp.bg }};border:1px solid {{ fp.border }};border-radius:var(--radius-pill);cursor:pointer;font-family:var(--font-sans);font-size:var(--text-xs);font-weight:500;color:{{ fp.fg }};transition:background-color var(--transition-fast)">{{ fp.name }}</button>
+            </sc-for>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;margin-top:10px">
+            <div style="flex:1"><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Select" options="{{ ftDurOpts }}" value="{{ ftDur }}" sc-camel-on-change="{{ setFtDur }}" hint-size="100%,34px"></x-import></div>
+            <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="primary" size="sm" on-click="{{ findTime }}" hint-size="auto,30px">Match</x-import>
+          </div>
+          <sc-for list="{{ ftSlots }}" as="sl" hint-placeholder-count="0">
+            <div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-top:1px solid var(--border-thin);margin-top:8px">
+              <span style="flex:1;min-width:0">
+                <span style="display:block;font-size:var(--text-sm);font-weight:500">{{ sl.day }}</span>
+                <span style="display:block;font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary)">{{ sl.time }}</span>
+              </span>
+              <button sc-camel-on-click="{{ sl.draft }}" style="padding:3px 10px;background:var(--surface-card);border:1px solid var(--border-strong);border-radius:var(--radius-pill);cursor:pointer;font-family:var(--font-sans);font-size:var(--text-xs);font-weight:500;color:var(--navy-700);transition:background-color var(--transition-fast)" style-hover="background:var(--navy-50)">Draft invite</button>
+            </div>
+          </sc-for>
+          <sc-if value="{{ ftNote }}" hint-placeholder-val="{{ false }}">
+            <div style="margin-top:10px;font-size:var(--text-xs);color:var(--text-secondary)">{{ ftNoteText }}</div>
+          </sc-if>
+        </div>
+      </div>
+
+      <div style="flex:1;min-width:520px;background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-lg);box-shadow:var(--shadow-card);overflow:hidden">
+        <div style="display:flex;align-items:center;gap:8px;padding:14px 20px;flex-wrap:wrap">
+          <div style="display:inline-flex;gap:4px;padding:4px;background:var(--surface-row-alt);border:1px solid var(--border-thin);border-radius:var(--radius-md)">
+            <sc-for list="{{ viewTabs }}" as="vt" hint-placeholder-count="2">
+              <button sc-camel-on-click="{{ vt.pick }}" style="padding:6px 14px;border:none;border-radius:var(--radius-sm);cursor:pointer;white-space:nowrap;font-family:var(--font-sans);font-size:var(--text-sm);font-weight:500;background:{{ vt.bg }};color:{{ vt.fg }};transition:background-color var(--transition-fast)">{{ vt.label }}</button>
+            </sc-for>
+          </div>
+          <span style="flex:1"></span>
+          <span style="font-family:var(--font-mono);font-size:var(--text-sm)">Aug 31 to Sep 6</span>
+          <button sc-camel-on-click="{{ noop }}" style="padding:6px 12px;background:var(--surface-card);border:1px solid var(--border-strong);border-radius:var(--radius-sm);cursor:pointer;font-family:var(--font-sans);font-size:var(--text-sm);font-weight:500;color:var(--ink);transition:background-color var(--transition-fast)" style-hover="background:var(--surface-hover)">Today</button>
+        </div>
+
+        <sc-if value="{{ isAgenda }}" hint-placeholder-val="{{ true }}">
+          <sc-for list="{{ agenda }}" as="day" hint-placeholder-count="5">
+            <div style="padding:10px 12px 6px;border-top:1px solid var(--border-thin)">
+              <div style="display:flex;align-items:center;gap:8px;padding:0 8px 4px">
+                <span style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary)">{{ day.label }}</span>
+                <sc-if value="{{ day.today }}" hint-placeholder-val="{{ false }}">
+                  <span style="background:var(--gold-100);color:var(--gold-600);font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;padding:1px 8px;border-radius:var(--radius-pill)">Today</span>
+                </sc-if>
+              </div>
+              <sc-for list="{{ day.events }}" as="ev" hint-placeholder-count="2">
+                <div sc-camel-on-click="{{ ev.openDetail }}" style="display:flex;align-items:center;gap:12px;padding:7px 8px;border-radius:var(--radius-sm);background:{{ ev.bg }};cursor:pointer;transition:background-color var(--transition-fast)" style-hover="background:var(--surface-hover)">
+                  <span style="width:8px;height:8px;border-radius:50%;background:{{ ev.color }};flex-shrink:0"></span>
+                  <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary);width:138px;flex-shrink:0;white-space:nowrap">{{ ev.time }}</span>
+                  <span style="flex:1;min-width:0;font-size:var(--text-sm);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ ev.title }}</span>
+                  <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary);white-space:nowrap">{{ ev.who }}</span>
+                  <sc-if value="{{ ev.hasMeet }}" hint-placeholder-val="{{ false }}">
+                    <button sc-camel-on-click="{{ ev.join }}" style="flex-shrink:0;padding:3px 12px;background:var(--surface-card);border:1px solid var(--border-strong);border-radius:var(--radius-pill);cursor:pointer;font-family:var(--font-sans);font-size:var(--text-xs);font-weight:500;color:var(--navy-700);transition:background-color var(--transition-fast)" style-hover="background:var(--navy-50)">Join</button>
+                  </sc-if>
+                </div>
+              </sc-for>
+            </div>
+          </sc-for>
+        </sc-if>
+
+        <sc-if value="{{ isWeek }}" hint-placeholder-val="{{ false }}">
+          <div style="overflow-x:auto">
+          <div style="min-width:860px">
+            <div style="display:grid;grid-template-columns:56px repeat(7,1fr);border-top:1px solid var(--border-thin)">
+              <span></span>
+              <sc-for list="{{ weekDays }}" as="wd" hint-placeholder-count="7">
+                <span style="padding:8px 6px;text-align:center;border-left:1px solid var(--border-thin);font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:{{ wd.fg }};background:{{ wd.bg }}">{{ wd.label }}</span>
+              </sc-for>
+            </div>
+            <div style="display:grid;grid-template-columns:56px repeat(7,1fr);border-top:1px solid var(--border-thin)">
+              <div>
+                <sc-for list="{{ hours }}" as="h" hint-placeholder-count="14">
+                  <div style="height:44px;padding:2px 8px 0 0;text-align:right;font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary);box-sizing:border-box">{{ h }}</div>
+                </sc-for>
+              </div>
+              <sc-for list="{{ weekCols }}" as="col" hint-placeholder-count="7">
+                <div style="position:relative;border-left:1px solid var(--border-thin);background:{{ col.bg }};height:616px">
+                  <sc-for list="{{ col.lines }}" as="l" hint-placeholder-count="11">
+                    <div style="position:absolute;left:0;right:0;top:{{ l }}px;height:1px;background:var(--border-thin)"></div>
+                  </sc-for>
+                  <sc-for list="{{ col.events }}" as="ev" hint-placeholder-count="2">
+                    <div sc-camel-on-click="{{ ev.openDetail }}" title="{{ ev.tip }}" style="position:absolute;left:3px;right:3px;top:{{ ev.top }}px;height:{{ ev.h }}px;box-sizing:border-box;padding:3px 6px;border-radius:6px;background:{{ ev.bg }};border-left:3px solid {{ ev.color }};overflow:hidden;cursor:pointer">
+                      <span style="display:block;font-size:var(--text-xs);font-weight:600;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ ev.title }}</span>
+                      <span style="display:block;font-family:var(--font-mono);font-size:10px;color:var(--text-secondary);white-space:nowrap">{{ ev.time }}</span>
+                    </div>
+                  </sc-for>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+          </div>
+          <div style="display:flex;gap:16px;padding:12px 20px;border-top:1px solid var(--border-thin);flex-wrap:wrap">
+            <sc-for list="{{ legend }}" as="lg" hint-placeholder-count="4">
+              <span style="display:inline-flex;align-items:center;gap:6px;font-size:var(--text-xs);color:var(--text-secondary)"><span style="width:8px;height:8px;border-radius:50%;background:{{ lg.color }}"></span>{{ lg.name }}</span>
+            </sc-for>
+            <span style="font-size:var(--text-xs);color:var(--text-secondary)">Followed calendars show as busy blocks without details.</span>
+          </div>
+        </sc-if>
+      </div>
+    </div>
+
+  <sc-if value="{{ evOpen }}" hint-placeholder-val="{{ false }}">
+    <div sc-camel-on-click="{{ closeEv }}" style="position:fixed;inset:0;z-index:80;background:rgba(16,42,76,.38)"></div>
+    <div style="position:fixed;top:9vh;left:50%;transform:translateX(-50%);z-index:90;width:min(560px,92vw);max-height:82vh;overflow-y:auto;background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-lg);box-shadow:var(--shadow-pop);padding:24px 28px;box-sizing:border-box">
+      <div style="display:flex;align-items:flex-start;gap:10px">
+        <span style="width:10px;height:10px;border-radius:50%;background:{{ evd.calColor }};flex-shrink:0;margin-top:7px"></span>
+        <div style="flex:1;min-width:0">
+          <h2 style="font-size:var(--text-lg);font-weight:700;margin:0">{{ evd.title }}</h2>
+          <div style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary);margin-top:4px">{{ evd.time }} · {{ evd.calName }}</div>
+        </div>
+        <span style="background:{{ evd.typeBg }};color:{{ evd.typeFg }};font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;padding:2px 8px;border-radius:var(--radius-pill);flex-shrink:0">{{ evd.type }}</span>
+        <button sc-camel-on-click="{{ closeEv }}" title="Close" style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;flex-shrink:0;background:transparent;border:none;border-radius:var(--radius-sm);cursor:pointer;color:var(--muted);transition:background-color var(--transition-fast)" style-hover="background:var(--surface-hover)"><svg width="15" height="15" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"></path></svg></button>
+      </div>
+      <sc-if value="{{ evHasLink }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;align-items:center;gap:12px;margin-top:16px;padding:10px 14px;background:var(--surface-row-alt);border:1px solid var(--border-thin);border-radius:var(--radius-md)">
+          <span style="flex:1;font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-link);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ evd.link }}</span>
+          <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="primary" size="sm" on-click="{{ evJoin }}" hint-size="auto,30px">Join meeting</x-import>
+        </div>
+      </sc-if>
+      <div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin:16px 0 4px">Notes</div>
+      <div style="font-size:var(--text-sm);line-height:1.6">{{ evd.desc }}</div>
+      <sc-if value="{{ evGuestsNotEmpty }}" hint-placeholder-val="{{ true }}">
+        <div style="display:flex;align-items:baseline;gap:8px;margin:16px 0 4px">
+          <span style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary)">Guests</span>
+          <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary)">{{ evd.rsvpMeta }}</span>
+        </div>
+        <sc-for list="{{ evGuests }}" as="g" hint-placeholder-count="3">
+          <div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-top:1px solid var(--border-thin)">
+            <span style="display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:50%;background:var(--navy-100);color:var(--navy);font-size:var(--text-xs);font-weight:600;flex-shrink:0">{{ g.initials }}</span>
+            <span style="flex:1;font-size:var(--text-sm)">{{ g.name }}</span>
+            <span style="background:{{ g.chipBg }};color:{{ g.chipFg }};font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;padding:1px 8px;border-radius:var(--radius-pill)">{{ g.st }}</span>
+          </div>
+        </sc-for>
+      </sc-if>
+      <sc-if value="{{ evFilesNotEmpty }}" hint-placeholder-val="{{ false }}">
+        <div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin:16px 0 4px">Attachments</div>
+        <sc-for list="{{ evFiles }}" as="f" hint-placeholder-count="2">
+          <div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-top:1px solid var(--border-thin)">
+            <svg width="14" height="14" sc-camel-view-box="0 0 24 24" fill="none" stroke="var(--navy-500)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path></svg>
+            <span style="flex:1;font-size:var(--text-sm);font-weight:500;color:var(--navy-700)">{{ f.name }}</span>
+            <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary)">{{ f.size }}</span>
+          </div>
+        </sc-for>
+      </sc-if>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ newOpen }}" hint-placeholder-val="{{ false }}">
+    <div sc-camel-on-click="{{ closeNew }}" style="position:fixed;inset:0;z-index:80;background:rgba(16,42,76,.38)"></div>
+    <div style="position:fixed;top:5vh;left:50%;transform:translateX(-50%);z-index:90;width:min(680px,92vw);max-height:88vh;overflow-y:auto;background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-lg);box-shadow:var(--shadow-pop);padding:24px 28px;box-sizing:border-box">
+      <div style="display:flex;align-items:center;gap:10px">
+        <h2 style="font-size:var(--text-lg);font-weight:700;margin:0">New invite</h2>
+        <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary)">sent through the Google Calendar API</span>
+        <span style="flex:1"></span>
+        <button sc-camel-on-click="{{ closeNew }}" title="Close" style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;background:transparent;border:none;border-radius:var(--radius-sm);cursor:pointer;color:var(--muted);transition:background-color var(--transition-fast)" style-hover="background:var(--surface-hover)"><svg width="15" height="15" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"></path></svg></button>
+      </div>
+      <div style="margin-top:16px">
+        <div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Title</div>
+        <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Input" value="{{ nvTitle }}" sc-camel-on-change="{{ setNvTitle }}" placeholder="What the meeting is for" hint-size="100%,38px"></x-import>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px 16px;margin-top:14px">
+        <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Type</div><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Select" options="{{ etypeOpts }}" value="{{ nvType }}" sc-camel-on-change="{{ setNvType }}" hint-size="100%,38px"></x-import></div>
+        <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Day</div><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Select" options="{{ dayOpts }}" value="{{ nvDay }}" sc-camel-on-change="{{ setNvDay }}" hint-size="100%,38px"></x-import></div>
+        <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Start</div><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Input" value="{{ nvStart }}" sc-camel-on-change="{{ setNvStart }}" mono="{{ true }}" placeholder="10:00 AM" hint-size="100%,38px"></x-import></div>
+        <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Duration</div><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Select" options="{{ ftDurOpts }}" value="{{ nvDur }}" sc-camel-on-change="{{ setNvDur }}" hint-size="100%,38px"></x-import></div>
+        <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Calendar</div><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Select" options="{{ ownCalOpts }}" value="{{ nvCal }}" sc-camel-on-change="{{ setNvCal }}" hint-size="100%,38px"></x-import></div>
+        <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Repeats</div><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Select" options="{{ recurOpts }}" value="{{ nvRecur }}" sc-camel-on-change="{{ setNvRecur }}" hint-size="100%,38px"></x-import></div>
+        <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Reminder</div><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Select" options="{{ remOpts }}" value="{{ nvRem }}" sc-camel-on-change="{{ setNvRem }}" hint-size="100%,38px"></x-import></div>
+        <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Visibility</div><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Select" options="{{ visOpts }}" value="{{ nvVis }}" sc-camel-on-change="{{ setNvVis }}" hint-size="100%,38px"></x-import></div>
+        <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Guests can</div><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Select" options="{{ permOpts }}" value="{{ nvPerm }}" sc-camel-on-change="{{ setNvPerm }}" hint-size="100%,38px"></x-import></div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;margin-top:14px;padding:10px 12px;background:var(--surface-row-alt);border:1px solid var(--border-thin);border-radius:var(--radius-sm)">
+        <button sc-camel-on-click="{{ meetToggle.toggle }}" title="Toggle" style="width:38px;height:22px;flex-shrink:0;border-radius:var(--radius-pill);border:none;cursor:pointer;background:{{ meetToggle.bg }};position:relative;transition:background-color var(--transition-base)"><span style="position:absolute;top:3px;left:{{ meetToggle.knob }}px;width:16px;height:16px;border-radius:50%;background:#FFFFFF;box-shadow:0 1px 2px rgba(0,0,0,.2);transition:left var(--transition-base)"></span></button>
+        <span style="flex:1;font-size:var(--text-sm)">Add Google Meet video conferencing</span>
+        <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary)">{{ meetHint }}</span>
+      </div>
+      <div style="margin-top:14px">
+        <div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Guests</div>
+        <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Input" value="{{ nvGuests }}" sc-camel-on-change="{{ setNvGuests }}" placeholder="Emails, comma separated. Availability is checked against followed calendars." hint-size="100%,38px"></x-import>
+        <sc-if value="{{ guestWarn }}" hint-placeholder-val="{{ false }}">
+          <div style="margin-top:6px;font-size:var(--text-xs);color:var(--gold-600)">{{ guestWarnText }}</div>
+        </sc-if>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px 16px;margin-top:14px">
+        <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Location</div><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Input" value="{{ nvLoc }}" sc-camel-on-change="{{ setNvLoc }}" placeholder="Optional, for in-person" hint-size="100%,38px"></x-import></div>
+        <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Client</div><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Select" options="{{ clientOpts }}" value="{{ nvClient }}" sc-camel-on-change="{{ setNvClient }}" hint-size="100%,38px"></x-import></div>
+      </div>
+      <div style="margin-top:14px">
+        <div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Description</div>
+        <textarea value="{{ nvDesc }}" sc-camel-on-change="{{ setNvDesc }}" placeholder="Agenda and context. Goes into the invite body." style="width:100%;box-sizing:border-box;min-height:64px;padding:10px 12px;font-family:var(--font-sans);font-size:var(--text-sm);line-height:1.5;color:var(--ink);background:var(--surface-card);border:1px solid var(--border-strong);border-radius:var(--radius-sm);resize:vertical"></textarea>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:18px">
+        <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="primary" size="sm" on-click="{{ sendInvite }}" hint-size="auto,32px">Send invite</x-import>
+        <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="ghost" size="sm" on-click="{{ closeNew }}" hint-size="auto,32px">Cancel</x-import>
+        <span style="font-size:var(--text-sm);color:var(--text-secondary)">{{ nvHint }}</span>
+      </div>
+    </div>
+  </sc-if>
+
+  </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script="" data-props="{}">
+class Component extends DCLogic {
+  DAYS = ['Mon, Aug 31', 'Tue, Sep 1', 'Wed, Sep 2', 'Thu, Sep 3', 'Fri, Sep 4', 'Sat, Sep 5', 'Sun, Sep 6'];
+  CALS = [
+    { id: 'north', name: 'paul@northsideops.invalid', kind: 'yours, primary', color: '#2E4E7E', on: true },
+    { id: 'vantage', name: 'paul@vantage-partners.invalid', kind: 'yours, needs reconnect', color: '#8A6D1E', on: true },
+    { id: 'mei', name: 'Mei Bianchi', kind: 'followed, busy only', color: '#2E7D5B', on: true, sub: true },
+    { id: 'dana', name: 'Dana Okafor', kind: 'followed, busy only', color: '#A2311F', on: true, sub: true }
+  ];
+  EVENTS = [
+    { d: 0, s: 17, e: 17.5, title: 'Standup', cal: 'north', meet: true, who: '3 going', type: 'Meeting', link: 'meet.google.com/std-aug31', desc: 'Daily sync. Blockers first, then the board.',
+      guests: [['Paul', 'accepted'], ['Sofia Okafor', 'accepted'], ['Rue Mbeki', 'accepted']], files: [] },
+    { d: 0, s: 19, e: 20, title: 'Caldera scoping call', cal: 'north', meet: true, who: '3 going', type: 'Meeting', link: 'meet.google.com/caldera-scope', desc: 'First scoping pass with Caldera. Agenda: current tooling, pain points, a rough phase plan and who owns what.',
+      guests: [['Paul', 'accepted'], ['Mei Bianchi', 'accepted'], ['Tom Whitfield', 'pending'], ['Dana Okafor', 'declined']],
+      files: [{ name: 'Caldera pre-read.pdf', size: '312 KB' }, { name: 'Scope questions.docx', size: '84 KB' }] },
+    { d: 0, s: 19, e: 19.5, title: 'Vendor demo', cal: 'vantage', meet: true, who: '2, not going', type: 'Meeting', link: 'meet.google.com/vendor-demo', desc: 'Optional demo. Declined, overlaps the Caldera call.',
+      guests: [['Paul', 'declined'], ['Hugo Ahmed', 'accepted']], files: [] },
+    { d: 1, s: 10, e: 13, title: 'Migration dry run', cal: 'north', meet: true, who: '5 going', type: 'Meeting', link: 'meet.google.com/migration-dry', desc: 'Full rehearsal of the cutover runbook. Screen share from staging, roll back at the end.',
+      guests: [['Paul', 'accepted'], ['Ethan Lindqvist', 'accepted'], ['Sofia Okafor', 'accepted'], ['Ravi Novak', 'accepted'], ['Kofi Sorensen', 'pending']],
+      files: [{ name: 'Cutover runbook v3.pdf', size: '1.1 MB' }] },
+    { d: 2, s: 15, e: 17, title: 'Deep work, no meetings', cal: 'north', meet: false, who: '', type: 'Blocked', desc: 'Held for the Fairwater reporting pack.', guests: [], files: [] },
+    { d: 3, s: 12, e: 13, title: 'Pineda invoice discussion', cal: 'north', meet: false, who: '2 going', type: 'Meeting', link: '', desc: 'Phone call about the disputed August lines.',
+      guests: [['Paul', 'accepted'], ['R. Pineda', 'accepted']], files: [{ name: 'August statement.pdf', size: '96 KB' }] },
+    { d: 4, s: 8, e: 9, title: 'Out of office, school run', cal: 'north', meet: false, who: '', type: 'Out of office', desc: '', guests: [], files: [] },
+    { d: 5, s: 9, e: 10.5, title: 'Twin Peaks reporting workshop', cal: 'vantage', meet: true, who: '6 going', type: 'Meeting', link: 'meet.google.com/twinpeaks-ws', desc: 'Working session on the monthly reporting pack.',
+      guests: [['Paul', 'accepted'], ['Lena Vega', 'accepted'], ['Alex Farrell', 'pending'], ['Tom Whitfield', 'accepted'], ['Rue Mbeki', 'accepted'], ['Hugo Ahmed', 'pending']], files: [] },
+    { d: 0, s: 14, e: 16, title: 'Busy', cal: 'mei', meet: false, who: '' },
+    { d: 1, s: 9, e: 11.5, title: 'Busy', cal: 'mei', meet: false, who: '' },
+    { d: 2, s: 13, e: 15, title: 'Busy', cal: 'mei', meet: false, who: '' },
+    { d: 1, s: 14, e: 17, title: 'Busy', cal: 'dana', meet: false, who: '' },
+    { d: 2, s: 9, e: 10, title: 'Busy', cal: 'dana', meet: false, who: '' },
+    { d: 4, s: 10, e: 12, title: 'Busy', cal: 'dana', meet: false, who: '' }
+  ];
+  H0 = 8; H1 = 22; PPH = 44;
+
+  state = { cals: this.CALS, events: this.EVENTS, view: 'agenda', needsAuth: true, joinedTitle: '',
+    subQ: '', ftSel: { north: true, mei: true, dana: true }, ftDur: '30 minutes', ftSlots: [], ftRan: false,
+    newOpen: false, nv: {}, nvHint: '', meet: true, evSel: null };
+
+  RSVP = { accepted: ['var(--chip-done-bg)', 'var(--chip-done-fg)'], declined: ['var(--chip-overdue-bg)', 'var(--chip-overdue-fg)'], pending: ['var(--chip-waiting-bg)', 'var(--chip-waiting-fg)'] };
+  TYPE_CHIP = { Meeting: ['var(--navy-50)', 'var(--navy-500)'], Blocked: ['var(--chip-waiting-bg)', 'var(--chip-waiting-fg)'], 'Out of office': ['var(--gold-100)', 'var(--gold-600)'], Note: ['var(--chip-open-bg)', 'var(--chip-open-fg)'] };
+
+  hourLabel(h) { const w = Math.floor(h); const m = h % 1 ? ':30' : ':00'; const ap = w >= 12 ? 'PM' : 'AM'; const d = w > 12 ? w - 12 : w; return d + m + ' ' + ap; }
+  span(ev) { return this.hourLabel(ev.s) + ' to ' + this.hourLabel(ev.e); }
+  calOf(id) { return this.state.cals.find(c => c.id === id) || this.CALS[0]; }
+  tint(hex) { return hex + '22'; }
+
+  freeSlots(dur) {
+    const sel = Object.keys(this.state.ftSel).filter(k => this.state.ftSel[k]);
+    const out = [];
+    for (let d = 0; d < 5 && out.length < 3; d++) {
+      for (let h = 9; h + dur <= 17 && out.length < 3; h += 0.5) {
+        const clash = this.state.events.some(ev => sel.includes(ev.cal) && ev.d === d && ev.s < h + dur && ev.e > h);
+        if (!clash) { out.push({ d, h, dur }); h += dur; }
+      }
+    }
+    return out;
+  }
+
+  renderVals() {
+    const s = this.state;
+    const navItems = ['Dashboard', 'Action items', 'Projects', 'Meetings', 'Calendar', 'SOPs', 'Templates', 'Clients', 'Mail', 'Invoicing', 'Ledger', 'Reports', 'Settings']
+      .map(l => ({ id: l.toLowerCase().replace(' ', '-'), label: l }));
+    const onCals = s.cals.filter(c => c.on).map(c => c.id);
+    const visible = s.events.filter(ev => onCals.includes(ev.cal));
+    const durVal = parseFloat(s.ftDur) >= 15 ? parseFloat(s.ftDur) / 60 : s.ftDur === '1 hour' ? 1 : s.ftDur === '90 minutes' ? 1.5 : 0.5;
+    const vals = {
+      navItems, noop: () => {}, noop2: (e) => e.preventDefault(),
+      needsAuth: s.needsAuth, reconnect: () => this.setState(x => ({ needsAuth: false, cals: x.cals.map(c => c.id === 'vantage' ? { ...c, kind: 'yours, connected' } : c) })),
+      joined: !!s.joinedTitle, joinedTitle: s.joinedTitle, leave: () => this.setState({ joinedTitle: '' }),
+      nCals: s.cals.length + ' shown',
+      cals: s.cals.map(c => ({ ...c, boxBg: c.on ? c.color : 'var(--surface-card)', canRemove: !!c.sub,
+        toggle: () => this.setState(x => ({ cals: x.cals.map(y => y.id === c.id ? { ...y, on: !y.on } : y) })),
+        remove: () => this.setState(x => ({ cals: x.cals.filter(y => y.id !== c.id), events: x.events.filter(e => e.cal !== c.id) })) })),
+      subQ: s.subQ, setSubQ: (e) => this.setState({ subQ: e.target.value }),
+      subscribe: () => {
+        const q = s.subQ.trim();
+        if (!q) return;
+        const colors = ['#77590F', '#4E2E7E', '#2E6E7E'];
+        const id = 'sub' + s.cals.length;
+        this.setState(x => ({ cals: x.cals.concat([{ id, name: q, kind: 'followed, busy only', color: colors[x.cals.length % 3], on: true, sub: true }]),
+          events: x.events.concat([{ d: 2, s: 10, e: 11, title: 'Busy', cal: id, meet: false, who: '' }, { d: 4, s: 14, e: 15.5, title: 'Busy', cal: id, meet: false, who: '' }]),
+          subQ: '', ftSel: { ...x.ftSel, [id]: true } }));
+      },
+      ftPeople: s.cals.filter(c => !c.id.startsWith('vantage')).map(c => {
+        const on = !!s.ftSel[c.id];
+        return { name: c.sub ? c.name : 'You', toggle: () => this.setState(x => ({ ftSel: { ...x.ftSel, [c.id]: !on }, ftRan: false, ftSlots: [] })),
+          bg: on ? 'var(--navy-50)' : 'var(--surface-card)', border: on ? 'var(--navy-500)' : 'var(--border-strong)', fg: on ? 'var(--navy-700)' : 'var(--text-secondary)' };
+      }),
+      ftDurOpts: ['30 minutes', '1 hour', '90 minutes'], ftDur: s.ftDur, setFtDur: (e) => this.setState({ ftDur: e.target.value }),
+      findTime: () => this.setState({ ftSlots: this.freeSlots(durVal), ftRan: true }),
+      ftSlots: s.ftSlots.map(sl => ({ day: this.DAYS[sl.d], time: this.hourLabel(sl.h) + ' to ' + this.hourLabel(sl.h + sl.dur) + ', everyone free',
+        draft: () => this.setState({ newOpen: true, nv: { title: '', day: this.DAYS[sl.d], start: this.hourLabel(sl.h), dur: s.ftDur, cal: 'paul@northsideops.invalid', recur: 'Does not repeat', rem: '10 minutes before', vis: 'Default visibility', perm: 'See guest list', guests: 'mei@client.invalid, dana@client.invalid', loc: '', client: 'No client', desc: '' }, meet: true, nvHint: '' }) })),
+      ftNote: s.ftRan && s.ftSlots.length === 0, ftNoteText: 'No shared gap this week at that length. Try a shorter slot.',
+      viewTabs: [['agenda', 'Agenda'], ['week', 'Week']].map(([id, label]) => {
+        const active = s.view === id;
+        return { label, bg: active ? 'var(--navy)' : 'transparent', fg: active ? '#FFFFFF' : 'var(--ink)', pick: () => this.setState({ view: id }) };
+      }),
+      isAgenda: s.view === 'agenda', isWeek: s.view === 'week',
+      agenda: this.DAYS.map((label, d) => ({ label, today: d === 0,
+        events: visible.filter(ev => ev.d === d).sort((a, b) => a.s - b.s).map(ev => {
+          const c = this.calOf(ev.cal);
+          const conflict = visible.some(o => o !== ev && o.d === ev.d && o.s < ev.e && o.e > ev.s && !o.title.startsWith('Busy') && !ev.title.startsWith('Busy'));
+          return { time: this.span(ev), title: ev.title === 'Busy' ? 'Busy, ' + c.name : ev.title, who: ev.who,
+            color: c.color, hasMeet: ev.meet, bg: conflict ? 'var(--gold-100)' : 'transparent',
+            openDetail: () => this.setState({ evSel: this.state.events.indexOf(ev) }),
+            join: (e) => { e.stopPropagation(); this.setState({ joinedTitle: ev.title }); } };
+        }) })).filter(day => day.events.length),
+      weekDays: this.DAYS.map((label, d) => ({ label: label.replace(', ', ' '), fg: d === 0 ? 'var(--ink)' : 'var(--text-secondary)', bg: d === 0 ? 'var(--gold-100)' : 'transparent' })),
+      hours: Array.from({ length: this.H1 - this.H0 }, (_, i) => this.hourLabel(this.H0 + i)),
+      weekCols: this.DAYS.map((_, d) => ({ bg: d === 0 ? 'var(--surface-callout)' : 'transparent',
+        lines: Array.from({ length: this.H1 - this.H0 }, (_, i) => i * this.PPH),
+        events: visible.filter(ev => ev.d === d).map(ev => {
+          const c = this.calOf(ev.cal);
+          const blocked = ev.type === 'Blocked' || ev.type === 'Out of office';
+          return { title: ev.title === 'Busy' ? c.name : ev.title, time: this.span(ev), tip: ev.title + ', ' + this.span(ev),
+            top: (ev.s - this.H0) * this.PPH + 1, h: Math.max(20, (ev.e - ev.s) * this.PPH - 2),
+            bg: blocked ? 'var(--surface-row-alt)' : this.tint(c.color), color: blocked ? 'var(--border-strong)' : c.color,
+            openDetail: () => this.setState({ evSel: this.state.events.indexOf(ev) }) };
+        }) })),
+      legend: s.cals.filter(c => c.on).map(c => ({ name: c.name, color: c.color })),
+      newOpen: s.newOpen,
+      openNew: () => this.setState({ newOpen: true, nv: { title: '', type: 'Meeting invite', day: this.DAYS[0], start: '10:00 AM', dur: '30 minutes', cal: 'paul@northsideops.invalid', recur: 'Does not repeat', rem: '10 minutes before', vis: 'Default visibility', perm: 'See guest list', guests: '', loc: '', client: 'No client', desc: '' }, meet: true, nvHint: '' }),
+      etypeOpts: ['Meeting invite', 'Blocked time', 'Out of office', 'Note'],
+      closeNew: () => this.setState({ newOpen: false }),
+      dayOpts: this.DAYS, ownCalOpts: ['paul@northsideops.invalid', 'paul@vantage-partners.invalid'],
+      recurOpts: ['Does not repeat', 'Daily', 'Weekly', 'Fortnightly', 'Monthly'],
+      remOpts: ['No reminder', '10 minutes before', '30 minutes before', '1 day before'],
+      visOpts: ['Default visibility', 'Public', 'Private'],
+      permOpts: ['See guest list', 'Invite others', 'Modify event'],
+      clientOpts: ['No client', 'Caldera', 'Pineda', 'Twin Peaks'],
+      meetToggle: { bg: s.meet ? 'var(--navy)' : 'var(--border-strong)', knob: s.meet ? 19 : 3, toggle: () => this.setState(x => ({ meet: !x.meet })) },
+      meetHint: s.meet ? 'a Meet link is created on send' : 'no video link',
+      guestWarn: !!(s.nv.guests && s.nv.guests.toLowerCase().includes('mei') && s.nv.day === this.DAYS[0] && s.nv.start && s.nv.start.indexOf('2:') === 0),
+      guestWarnText: 'Mei Bianchi looks busy at that time on her followed calendar. Find a time can suggest a clear slot.',
+      nvHint: s.nvHint,
+      sendInvite: () => {
+        const n = s.nv;
+        if (!n.title || !n.title.trim()) { this.setState({ nvHint: 'A title is required.' }); return; }
+        const d = this.DAYS.indexOf(n.day);
+        const m = (n.start || '10:00 AM').match(/(\d+):?(\d*)\s*(AM|PM)?/i);
+        let h = m ? parseInt(m[1], 10) : 10;
+        if (m && /pm/i.test(m[3] || '') && h < 12) h += 12;
+        if (m && m[2] === '30') h += 0.5;
+        const dur = n.dur === '1 hour' ? 1 : n.dur === '90 minutes' ? 1.5 : 0.5;
+        const type = n.type === 'Blocked time' ? 'Blocked' : n.type === 'Out of office' ? 'Out of office' : n.type === 'Note' ? 'Note' : 'Meeting';
+        const isMeeting = type === 'Meeting';
+        this.setState(x => ({ events: x.events.concat([{ d: Math.max(0, d), s: h, e: h + dur, title: n.title.trim(),
+          cal: n.cal === 'paul@vantage-partners.invalid' ? 'vantage' : 'north', meet: s.meet && isMeeting, type,
+          link: s.meet && isMeeting ? 'meet.google.com/new-' + Date.now().toString(36).slice(-5) : '',
+          desc: n.desc || '', files: [],
+          guests: isMeeting && n.guests ? [['Paul', 'accepted']].concat(n.guests.split(',').map(g => [g.trim(), 'pending']).filter(g => g[0])) : [],
+          who: isMeeting ? (n.guests ? n.guests.split(',').length + ' invited' : 'just you') : '' }]), newOpen: false, view: 'week' }));
+      }
+    };
+    if (s.evSel != null && s.events[s.evSel]) {
+      const ev = s.events[s.evSel];
+      const c = this.calOf(ev.cal);
+      const isBusy = ev.title === 'Busy';
+      const [tb, tf] = this.TYPE_CHIP[ev.type] || this.TYPE_CHIP.Meeting;
+      Object.assign(vals, {
+        evOpen: true, closeEv: () => this.setState({ evSel: null }),
+        evd: { title: isBusy ? 'Busy' : ev.title, time: this.DAYS[ev.d] + ' · ' + this.span(ev), calName: c.name, calColor: c.color,
+          type: ev.type || 'Meeting', typeBg: tb, typeFg: tf, link: ev.link || '', desc: isBusy ? 'Details are hidden. This person shares free and busy only.' : (ev.desc || 'No notes on this invite.'),
+          rsvpMeta: (ev.guests || []).filter(g => g[1] === 'accepted').length + ' accepted, ' + (ev.guests || []).filter(g => g[1] === 'declined').length + ' declined, ' + (ev.guests || []).filter(g => g[1] === 'pending').length + ' pending' },
+        evHasLink: !!ev.link, evNoLink: !ev.link && !isBusy,
+        evJoin: () => this.setState({ joinedTitle: ev.title, evSel: null }),
+        evGuests: (ev.guests || []).map(([name, st]) => { const [b, f] = this.RSVP[st]; return { name, st, chipBg: b, chipFg: f,
+          initials: name.split(' ').map(w => w[0]).slice(0, 2).join('') }; }),
+        evGuestsNotEmpty: (ev.guests || []).length > 0,
+        evFiles: ev.files || [], evFilesNotEmpty: (ev.files || []).length > 0
+      });
+    } else vals.evOpen = false;
+    ['title', 'type', 'day', 'start', 'dur', 'cal', 'recur', 'rem', 'vis', 'perm', 'guests', 'loc', 'client', 'desc'].forEach(k => {
+      const K = k.charAt(0).toUpperCase() + k.slice(1);
+      vals['nv' + K] = s.nv[k];
+      vals['setNv' + K] = (e) => this.setState(x => ({ nv: { ...x.nv, [k]: e.target.value } }));
+    });
+    return vals;
+  }
+}
+</script>
+
+
+</body></html>

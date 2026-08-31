@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="../support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/tokens/fonts.css">
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/tokens/colors.css">
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/tokens/typography.css">
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/tokens/spacing.css">
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/tokens/effects.css">
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/tokens/base.css">
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/styles.css">
+  <script src="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/_ds_bundle.js"></script>
+  <style>
+    body{margin:0;background:var(--surface-page);}
+    a{color:var(--text-link);} a:hover{color:var(--navy);}
+  </style>
+</helmet>
+<div style="display:flex;min-height:100vh;font-family:var(--font-sans);color:var(--text-body)">
+  <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Sidebar" items="{{ navItems }}" active-id="dashboard" on-quick-add="{{ noop }}" hint-size="224px,100%" style="height:100vh;position:sticky;top:0"></x-import>
+  <main style="flex:1;height:100vh;overflow-y:auto;box-sizing:border-box">
+  <div style="padding:32px 48px 64px;box-sizing:border-box">
+
+    <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap">
+      <div>
+        <h1 style="font-size:var(--text-2xl);font-weight:700;margin:0 0 6px">Dashboard</h1>
+        <div style="font-size:var(--text-sm);color:var(--text-secondary)">Monday morning view. Start with what is overdue, then the projects at risk.</div>
+      </div>
+      <span style="font-family:var(--font-mono);font-size:var(--text-sm);color:var(--text-secondary)">Mon, Aug 31</span>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-top:20px">
+      <sc-for list="{{ kpis }}" as="k" hint-placeholder-count="6">
+        <div sc-camel-on-click="{{ k.go }}" style="min-width:0;padding:14px 16px;background:var(--surface-card);border:1px solid var(--border-thin);border-left:3px solid {{ k.accent }};border-radius:var(--radius-md);box-shadow:var(--shadow-card);cursor:pointer;transition:background-color var(--transition-fast)" style-hover="background:var(--surface-hover)">
+          <div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ k.label }}</div>
+          <div style="font-family:var(--font-mono);font-size:var(--text-xl);margin:6px 0 4px;color:{{ k.color }};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ k.value }}</div>
+          <div style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ k.sub }}</div>
+        </div>
+      </sc-for>
+    </div>
+
+    <div style="margin-top:16px;background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-lg);box-shadow:var(--shadow-card);overflow:hidden">
+      <div style="display:flex;align-items:center;gap:10px;padding:16px 20px">
+        <h2 style="font-size:var(--text-lg);font-weight:700;margin:0">Projects</h2>
+        <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary)">8 active, sorted by risk</span>
+        <span style="flex:1"></span>
+        <a href="#" sc-camel-on-click="{{ noop2 }}" style="font-size:var(--text-sm);font-weight:500">Open projects</a>
+      </div>
+      <div style="overflow-x:auto">
+      <div style="min-width:900px">
+      <div style="display:grid;grid-template-columns:minmax(210px,1.2fr) 130px 90px 1fr 92px 86px 96px;gap:12px;padding:8px 20px;background:var(--surface-row-alt);border-top:1px solid var(--border-thin);font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary)">
+        <span>Project</span><span>Client</span><span>Due</span><span>Progress</span><span style="text-align:right">Open items</span><span style="text-align:right">Tickets</span><span>Status</span>
+      </div>
+      <sc-for list="{{ projects }}" as="p" hint-placeholder-count="6">
+        <div style="display:grid;grid-template-columns:minmax(210px,1.2fr) 130px 90px 1fr 92px 86px 96px;gap:12px;align-items:center;padding:11px 20px;border-top:1px solid var(--border-thin);cursor:pointer;transition:background-color var(--transition-fast)" style-hover="background:var(--surface-hover)">
+          <span style="min-width:0">
+            <span style="display:block;font-weight:600;font-size:var(--text-md);color:var(--text-link);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ p.name }}</span>
+            <span style="display:block;font-size:var(--text-xs);color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px">{{ p.next }}</span>
+          </span>
+          <span style="font-size:var(--text-sm);color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ p.client }}</span>
+          <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:{{ p.dueColor }}">{{ p.due }}</span>
+          <span style="display:flex;align-items:center;gap:8px">
+            <span style="flex:1;display:flex;height:6px;border-radius:var(--radius-pill);overflow:hidden;background:var(--surface-row-alt)"><span style="width:{{ p.pct }};background:{{ p.barColor }}"></span></span>
+            <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary);width:34px;text-align:right">{{ p.pct }}</span>
+          </span>
+          <span style="font-family:var(--font-mono);font-size:var(--text-sm);text-align:right">{{ p.items }}</span>
+          <span style="font-family:var(--font-mono);font-size:var(--text-sm);text-align:right;color:{{ p.ticketColor }}">{{ p.tickets }}</span>
+          <span><span style="background:{{ p.chipBg }};color:{{ p.chipFg }};font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;padding:2px 8px;border-radius:var(--radius-pill)">{{ p.status }}</span></span>
+        </div>
+      </sc-for>
+      </div>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:16px;margin-top:16px;align-items:start">
+
+      <div style="display:flex;flex-direction:column;gap:16px">
+        <div style="background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-lg);box-shadow:var(--shadow-card);overflow:hidden">
+          <div style="display:flex;align-items:center;gap:10px;padding:16px 20px">
+            <h2 style="font-size:var(--text-lg);font-weight:700;margin:0">Needs you now</h2>
+            <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary)">6 of 842</span>
+            <span style="flex:1"></span>
+            <a href="#" sc-camel-on-click="{{ noop2 }}" style="font-size:var(--text-sm);font-weight:500">Open tracker</a>
+          </div>
+          <sc-for list="{{ needsNow }}" as="n" hint-placeholder-count="6">
+            <div style="display:flex;align-items:center;gap:12px;padding:10px 20px;border-top:1px solid var(--border-thin);cursor:pointer;transition:background-color var(--transition-fast)" style-hover="background:var(--surface-hover)">
+              <button sc-camel-on-click="{{ n.done }}" title="Mark done" style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;flex-shrink:0;background:var(--surface-card);border:1.5px solid var(--border-strong);border-radius:5px;cursor:pointer;color:transparent;transition:border-color var(--transition-fast)" style-hover="border-color:var(--navy-500)"></button>
+              <span style="flex:1;min-width:0">
+                <span style="display:block;font-size:var(--text-sm);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ n.title }}</span>
+                <span style="display:block;font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary);margin-top:2px">{{ n.meta }}</span>
+              </span>
+              <span style="background:{{ n.chipBg }};color:{{ n.chipFg }};font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;padding:2px 8px;border-radius:var(--radius-pill);flex-shrink:0">{{ n.chip }}</span>
+            </div>
+          </sc-for>
+        </div>
+
+        <div style="background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-lg);box-shadow:var(--shadow-card);overflow:hidden">
+          <div style="display:flex;align-items:center;gap:10px;padding:16px 20px">
+            <h2 style="font-size:var(--text-lg);font-weight:700;margin:0">Open tickets</h2>
+            <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary)">9 open, 2 breaching</span>
+            <span style="flex:1"></span>
+            <a href="#" sc-camel-on-click="{{ noop2 }}" style="font-size:var(--text-sm);font-weight:500">All tickets</a>
+          </div>
+          <sc-for list="{{ tickets }}" as="tk" hint-placeholder-count="5">
+            <div style="display:flex;align-items:center;gap:12px;padding:10px 20px;border-top:1px solid var(--border-thin);cursor:pointer;transition:background-color var(--transition-fast)" style-hover="background:var(--surface-hover)">
+              <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-link);width:56px;flex-shrink:0">{{ tk.id }}</span>
+              <span style="flex:1;min-width:0">
+                <span style="display:block;font-size:var(--text-sm);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ tk.title }}</span>
+                <span style="display:block;font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary);margin-top:2px">{{ tk.meta }}</span>
+              </span>
+              <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:{{ tk.slaColor }};white-space:nowrap">{{ tk.sla }}</span>
+              <span style="background:{{ tk.chipBg }};color:{{ tk.chipFg }};font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;padding:2px 8px;border-radius:var(--radius-pill);flex-shrink:0">{{ tk.pri }}</span>
+            </div>
+          </sc-for>
+        </div>
+
+        <div style="background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-lg);box-shadow:var(--shadow-card);overflow:hidden">
+          <div style="display:flex;align-items:center;gap:10px;padding:16px 20px">
+            <h2 style="font-size:var(--text-lg);font-weight:700;margin:0">The week ahead</h2>
+            <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary)">6 of 126</span>
+            <span style="flex:1"></span>
+            <a href="#" sc-camel-on-click="{{ noop2 }}" style="font-size:var(--text-sm);font-weight:500">Calendar</a>
+          </div>
+          <sc-for list="{{ weekAhead }}" as="w" hint-placeholder-count="6">
+            <div style="display:flex;align-items:center;gap:12px;padding:9px 20px;border-top:1px solid var(--border-thin)">
+              <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary);width:56px;flex-shrink:0">{{ w.day }}</span>
+              <span style="flex:1;font-size:var(--text-sm);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ w.title }}</span>
+              <span style="font-size:var(--text-xs);color:var(--text-secondary);white-space:nowrap">{{ w.who }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:16px">
+        <div style="background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-lg);box-shadow:var(--shadow-card);overflow:hidden">
+          <div style="display:flex;align-items:center;gap:10px;padding:16px 20px">
+            <h2 style="font-size:var(--text-lg);font-weight:700;margin:0">Today's meetings</h2>
+            <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary)">3 today, 2 need prep</span>
+            <span style="flex:1"></span>
+            <a href="#" sc-camel-on-click="{{ noop2 }}" style="font-size:var(--text-sm);font-weight:500">Meetings log</a>
+          </div>
+          <sc-for list="{{ meetings }}" as="m" hint-placeholder-count="3">
+            <div style="display:flex;align-items:center;gap:12px;padding:11px 20px;border-top:1px solid var(--border-thin);cursor:pointer;transition:background-color var(--transition-fast)" style-hover="background:var(--surface-hover)">
+              <span style="font-family:var(--font-mono);font-size:var(--text-xs);width:64px;flex-shrink:0">{{ m.time }}</span>
+              <span style="flex:1;min-width:0">
+                <span style="display:block;font-size:var(--text-sm);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ m.title }}</span>
+                <span style="display:block;font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary);margin-top:2px">{{ m.meta }}</span>
+              </span>
+              <span style="background:{{ m.chipBg }};color:{{ m.chipFg }};font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;padding:2px 8px;border-radius:var(--radius-pill);flex-shrink:0">{{ m.chip }}</span>
+            </div>
+          </sc-for>
+        </div>
+
+        <div style="background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-lg);box-shadow:var(--shadow-card);overflow:hidden">
+          <div style="display:flex;align-items:center;gap:10px;padding:16px 20px">
+            <h2 style="font-size:var(--text-lg);font-weight:700;margin:0">Money</h2>
+            <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary)">USD</span>
+            <span style="flex:1"></span>
+            <a href="#" sc-camel-on-click="{{ noop2 }}" style="font-size:var(--text-sm);font-weight:500">Invoicing</a>
+          </div>
+          <div style="padding:4px 20px 14px">
+            <div style="display:flex;height:10px;border-radius:var(--radius-pill);overflow:hidden;background:var(--surface-row-alt)">
+              <sc-for list="{{ moneySegs }}" as="seg" hint-placeholder-count="3">
+                <div title="{{ seg.title }}" style="width:{{ seg.w }};background:{{ seg.bg }}"></div>
+              </sc-for>
+            </div>
+            <div style="display:flex;gap:16px;margin-top:10px;flex-wrap:wrap">
+              <sc-for list="{{ moneyLegend }}" as="lg" hint-placeholder-count="3">
+                <span style="display:inline-flex;align-items:center;gap:6px;font-size:var(--text-sm)"><span style="width:8px;height:8px;border-radius:50%;background:{{ lg.dot }}"></span>{{ lg.label }}<span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary)">{{ lg.amount }}</span></span>
+              </sc-for>
+            </div>
+          </div>
+          <sc-for list="{{ pastDue }}" as="pd" hint-placeholder-count="4">
+            <div style="display:flex;align-items:center;gap:12px;padding:9px 20px;border-top:1px solid var(--border-thin);cursor:pointer;transition:background-color var(--transition-fast)" style-hover="background:var(--surface-hover)">
+              <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-link);width:56px;flex-shrink:0">{{ pd.n }}</span>
+              <span style="flex:1;font-size:var(--text-sm);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ pd.client }}</span>
+              <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-warn);white-space:nowrap">{{ pd.age }}</span>
+              <span style="font-family:var(--font-mono);font-size:var(--text-sm);width:92px;text-align:right">{{ pd.amount }}</span>
+            </div>
+          </sc-for>
+        </div>
+
+        <div style="background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-lg);box-shadow:var(--shadow-card);overflow:hidden">
+          <div style="display:flex;align-items:center;gap:10px;padding:16px 20px">
+            <h2 style="font-size:var(--text-lg);font-weight:700;margin:0">Mail needing you</h2>
+            <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary)">3 urgent of 45</span>
+            <span style="flex:1"></span>
+            <a href="#" sc-camel-on-click="{{ noop2 }}" style="font-size:var(--text-sm);font-weight:500">Open mail</a>
+          </div>
+          <sc-for list="{{ mail }}" as="ml" hint-placeholder-count="4">
+            <div style="display:flex;align-items:center;gap:12px;padding:9px 20px;border-top:1px solid var(--border-thin);cursor:pointer;transition:background-color var(--transition-fast)" style-hover="background:var(--surface-hover)">
+              <span style="background:{{ ml.chipBg }};color:{{ ml.chipFg }};font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;padding:2px 8px;border-radius:var(--radius-pill);flex-shrink:0">{{ ml.chip }}</span>
+              <span style="flex:1;font-size:var(--text-sm);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ ml.title }}</span>
+              <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary);white-space:nowrap">{{ ml.date }}</span>
+            </div>
+          </sc-for>
+        </div>
+
+        <div style="background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-lg);box-shadow:var(--shadow-card);overflow:hidden">
+          <div style="display:flex;align-items:center;gap:10px;padding:16px 20px">
+            <h2 style="font-size:var(--text-lg);font-weight:700;margin:0">What will slip</h2>
+            <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary)">unassigned or stalled</span>
+            <span style="flex:1"></span>
+            <a href="#" sc-camel-on-click="{{ noop2 }}" style="font-size:var(--text-sm);font-weight:500">Full report</a>
+          </div>
+          <sc-for list="{{ slip }}" as="sl" hint-placeholder-count="4">
+            <div style="display:flex;align-items:center;gap:12px;padding:9px 20px;border-top:1px solid var(--border-thin);cursor:pointer;transition:background-color var(--transition-fast)" style-hover="background:var(--surface-hover)">
+              <span style="flex:1;font-size:var(--text-sm);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ sl.title }}</span>
+              <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary);white-space:nowrap">{{ sl.why }}</span>
+              <button sc-camel-on-click="{{ noop }}" style="padding:3px 10px;background:var(--surface-card);border:1px solid var(--border-strong);border-radius:var(--radius-pill);cursor:pointer;font-family:var(--font-sans);font-size:var(--text-xs);font-weight:500;color:var(--navy-700);transition:background-color var(--transition-fast)" style-hover="background:var(--navy-50)">Assign</button>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-top:16px;font-size:var(--text-sm);color:var(--text-secondary)">2543 open in total. 20 finished today. Stalled means a waiting item untouched for 5 days.</div>
+
+  </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script="" data-props="{}">
+class Component extends DCLogic {
+  fmt(n) { return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+
+  CHIP = { overdue: ['var(--chip-overdue-bg)', 'var(--chip-overdue-fg)'], urgent: ['#F9E2DE', '#A2311F'], today: ['var(--chip-open-bg)', 'var(--chip-open-fg)'],
+    'on track': ['var(--chip-ontrack-bg)', 'var(--chip-ontrack-fg)'], 'at risk': ['var(--chip-overdue-bg)', 'var(--chip-overdue-fg)'], blocked: ['#F9E2DE', '#A2311F'],
+    waiting: ['var(--chip-waiting-bg)', 'var(--chip-waiting-fg)'], done: ['var(--chip-done-bg)', 'var(--chip-done-fg)'],
+    'to review': ['var(--gold-100)', 'var(--gold-600)'], reviewed: ['var(--chip-done-bg)', 'var(--chip-done-fg)'], prep: ['var(--chip-open-bg)', 'var(--chip-open-fg)'],
+    high: ['#F9E2DE', '#A2311F'], medium: ['var(--gold-100)', 'var(--gold-600)'], low: ['var(--navy-50)', 'var(--navy-500)'], important: ['var(--gold-100)', 'var(--gold-600)'] };
+
+  state = { doneIds: {} };
+
+  renderVals() {
+    const navItems = ['Dashboard', 'Action items', 'Projects', 'Meetings', 'Calendar', 'SOPs', 'Templates', 'Clients', 'Mail', 'Invoicing', 'Ledger', 'Reports', 'Settings']
+      .map(l => ({ id: l.toLowerCase().replace(' ', '-'), label: l }));
+    const chip = (k) => this.CHIP[k] || this.CHIP.waiting;
+    const kpis = [
+      ['Overdue items', '816', 'oldest Jul 17', 'var(--gold-600)', 'var(--text-warn)'],
+      ['Due today', '26', '6 done already', 'var(--navy-500)', 'var(--ink)'],
+      ['Awaiting a decision', '494', '181 stalled', 'var(--border-strong)', 'var(--ink)'],
+      ['Projects at risk', '3', 'of 8 active', 'var(--gold-600)', 'var(--text-warn)'],
+      ['Tickets breaching', '2', 'of 9 open', '#A2311F', '#A2311F'],
+      ['Past due', '$6,382,885.73', '502 invoices', 'var(--gold-600)', 'var(--text-warn)']
+    ].map(([label, value, sub, accent, color]) => ({ label, value, sub, accent, color, go: () => {} }));
+    const projects = [
+      { name: 'Orchard contract renewal', client: 'Pemberton', due: 'Sep 4', late: true, pct: 72, items: '12', tickets: '3', status: 'blocked', next: 'Next: review the handover document' },
+      { name: 'Dunmore site build', client: 'Halcyon', due: 'Sep 12', late: true, pct: 45, items: '18', tickets: '2', status: 'at risk', next: 'Next: publish the revised timeline' },
+      { name: 'Tewkesbury market study', client: 'Pickering', due: 'Sep 9', late: false, pct: 38, items: '9', tickets: '1', status: 'at risk', next: 'Next: schedule the migration plan' },
+      { name: 'Fairwater cost review', client: 'Dovecote', due: 'Sep 18', late: false, pct: 61, items: '11', tickets: '2', status: 'on track', next: 'Next: validate the invoice batch' },
+      { name: 'Tessellate cost review', client: 'Middleham', due: 'Sep 22', late: false, pct: 54, items: '7', tickets: '1', status: 'on track', next: 'Next: approve the vendor escalation' },
+      { name: 'Ashcombe site build', client: 'Dunmore', due: 'Oct 2', late: false, pct: 26, items: '14', tickets: '0', status: 'on track', next: 'Next: summarise the risk register' },
+      { name: 'Ridgeline capacity plan', client: 'Meridian', due: 'Oct 9', late: false, pct: 33, items: '8', tickets: '0', status: 'waiting', next: 'Waiting on client data export' },
+      { name: 'Quenington data warehouse', client: 'Vandenberg', due: 'Oct 16', late: false, pct: 88, items: '3', tickets: '0', status: 'on track', next: 'Next: book the risk register' }
+    ].map(p => {
+      const [b, f] = chip(p.status);
+      return { ...p, pct: p.pct + '%', chipBg: b, chipFg: f,
+        dueColor: p.late ? 'var(--text-warn)' : 'var(--text-secondary)',
+        barColor: p.status === 'blocked' ? '#A2311F' : p.status === 'at risk' ? 'var(--gold-600)' : '#2E7D5B',
+        ticketColor: parseInt(p.tickets, 10) > 0 ? 'var(--ink)' : 'var(--muted)' };
+    });
+    const needsNow = [
+      ['AI-2214 · Review the handover document for Pemberton', 'Fri, Jul 17 · Dana Okafor · Orchard contract renewal', 'overdue'],
+      ['AI-2198 · Approve the vendor escalation for Middleham', 'Fri, Jul 17 · Mei Bianchi · Tessellate cost review', 'overdue'],
+      ['AI-2187 · Schedule the migration plan for Pickering', 'Fri, Jul 17 · Paul · Tewkesbury market study', 'overdue'],
+      ['AI-2201 · Publish the revised timeline for Halcyon', 'Fri, Jul 17 · Dana Okafor · Dunmore site build', 'overdue'],
+      ['AI-2190 · Summarise the risk register for Dunmore', 'Fri, Jul 17 · Beatriz Haddad · Ashcombe site build', 'overdue'],
+      ['AI-2307 · Validate the invoice batch for Fairwater', 'Tue, Sep 1 · Rue Mbeki', 'today']
+    ].filter((_, i) => !this.state.doneIds[i]).map(([title, meta, k], i) => {
+      const [b, f] = chip(k);
+      return { title, meta, chip: k, chipBg: b, chipFg: f,
+        done: (e) => { e.stopPropagation(); this.setState(x => ({ doneIds: { ...x.doneIds, [i]: true } })); } };
+    });
+    const tickets = [
+      { id: 'T-118', title: 'Client portal login fails for Pemberton PoC', meta: 'Orchard contract renewal · Dana Okafor · opened Aug 27', sla: 'breach in 4h', slaK: 'bad', pri: 'high' },
+      { id: 'T-121', title: 'Invoice batch export mismatch for Fairwater', meta: 'Fairwater cost review · Rue Mbeki · opened Aug 28', sla: 'breach in 9h', slaK: 'bad', pri: 'high' },
+      { id: 'T-115', title: 'Migration plan doc locked for Pickering', meta: 'Tewkesbury market study · Paul · opened Aug 26', sla: '2d left', slaK: 'ok', pri: 'medium' },
+      { id: 'T-122', title: 'Vendor escalation thread missing context', meta: 'Tessellate cost review · Mei Bianchi · opened Aug 29', sla: '3d left', slaK: 'ok', pri: 'medium' },
+      { id: 'T-119', title: 'Timeline chart renders blank for Halcyon', meta: 'Dunmore site build · Ethan Lindqvist · opened Aug 27', sla: '4d left', slaK: 'ok', pri: 'low' }
+    ].map(t => { const [b, f] = chip(t.pri); return { ...t, chipBg: b, chipFg: f, slaColor: t.slaK === 'bad' ? '#A2311F' : 'var(--text-secondary)' }; });
+    const meetings = [
+      { time: '9:00 AM', title: 'Lyndhurst blocker review', meta: 'Lyndhurst Collective · 2 open items', chip: 'reviewed' },
+      { time: '11:30 AM', title: 'Tewkesbury budget review', meta: 'Tewkesbury Holdings · 4 to review, 2 open', chip: 'prep' },
+      { time: '3:00 PM', title: 'Rothbury handover', meta: 'Rothbury Studio · 2 to review, 2 open', chip: 'prep' }
+    ].map(m => { const [b, f] = chip(m.chip); return { ...m, chipBg: b, chipFg: f }; });
+    const weekAhead = [
+      { day: 'Tue 1', title: 'Validate the invoice batch for Fairwater', who: 'Rue Mbeki' },
+      { day: 'Tue 1', title: 'Draft the revised timeline for Dunmore', who: 'Ethan Lindqvist' },
+      { day: 'Wed 2', title: 'Approve the data export for Dunmore', who: 'Sofia Okafor' },
+      { day: 'Wed 2', title: 'Pearl intro call before this date', who: 'Paul' },
+      { day: 'Thu 3', title: 'Rework the budget forecast for Junewell', who: 'Nadia Dubois' },
+      { day: 'Fri 4', title: 'Review the scope note for Pickering', who: 'Beatriz Haddad' }
+    ];
+    const moneySegs = [
+      { w: '62%', bg: 'var(--gold-600)', title: 'Past due, $6,382,885.73' },
+      { w: '24%', bg: 'var(--navy-500)', title: 'Open, not due, $2,471,203.10' },
+      { w: '14%', bg: '#2E7D5B', title: 'Collected in Aug, $1,442,610.44' }
+    ];
+    const moneyLegend = [
+      { dot: 'var(--gold-600)', label: 'Past due', amount: '$6,382,885.73' },
+      { dot: 'var(--navy-500)', label: 'Open, not due', amount: '$2,471,203.10' },
+      { dot: '#2E7D5B', label: 'Collected in Aug', amount: '$1,442,610.44' }
+    ];
+    const pastDue = [
+      { n: 'V-2059', client: 'Oakhaven Labs', age: '325d', amount: '$22,800.00' },
+      { n: 'V-2054', client: 'Kingsmere Health', age: '321d', amount: '$12,680.00' },
+      { n: 'V-2577', client: 'Tewkesbury Holdings', age: '321d', amount: '$3,890.00' },
+      { n: 'V-2449', client: 'Larchmont Analytics', age: '317d', amount: '$13,910.00' }
+    ];
+    const mail = [
+      { chip: 'urgent', title: 'Welcome to Pearl Talent! Intro call before Sep 2', date: 'Aug 30' },
+      { chip: 'urgent', title: 'Penbrothers AI interview, 24 hour deadline', date: 'Aug 26' },
+      { chip: 'important', title: 'BillEase loan overdue, 6 days', date: 'Aug 29' },
+      { chip: 'important', title: 'PandaDoc contract awaiting signature', date: 'Aug 29' }
+    ].map(m => { const [b, f] = chip(m.chip); return { ...m, chipBg: b, chipFg: f }; });
+    const slip = [
+      { title: 'AI-2312 · Validate the vendor escalation for Fairwater', why: 'unassigned' },
+      { title: 'AI-2315 · Validate the migration plan for Copperfield', why: 'unassigned' },
+      { title: 'AI-2288 · Send the training deck for Copperfield', why: 'Sofia Okafor · stalled 6d' },
+      { title: 'AI-2264 · Rework the board pack for Marlowe', why: 'Nadia Dubois · stalled 8d' }
+    ];
+    return { navItems, kpis, projects, needsNow, tickets, meetings, weekAhead, moneySegs, moneyLegend, pastDue, mail, slip,
+      noop: () => {}, noop2: (e) => e.preventDefault() };
+  }
+}
+</script>
+
+
+</body></html>

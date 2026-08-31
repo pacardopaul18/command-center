@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="../support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/tokens/fonts.css">
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/tokens/colors.css">
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/tokens/typography.css">
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/tokens/spacing.css">
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/tokens/effects.css">
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/tokens/base.css">
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/styles.css">
+  <script src="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/_ds_bundle.js"></script>
+  <style>
+    body{margin:0;background:var(--surface-page);}
+    a{color:var(--text-link);} a:hover{color:var(--navy);}
+  </style>
+</helmet>
+<div style="display:flex;min-height:100vh;font-family:var(--font-sans);color:var(--text-body)">
+  <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Sidebar" items="{{ navItems }}" active-id="clients" on-quick-add="{{ noop }}" hint-size="224px,100%" style="height:100vh;position:sticky;top:0"></x-import>
+  <main style="flex:1;height:100vh;overflow-y:auto;box-sizing:border-box">
+  <div style="padding:32px 48px 64px;box-sizing:border-box">
+
+  <sc-if value="{{ isList }}" hint-placeholder-val="{{ true }}">
+    <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap">
+      <div>
+        <h1 style="font-size:var(--text-2xl);font-weight:700;margin:0 0 6px">Clients</h1>
+        <div style="font-size:var(--text-sm);color:var(--text-secondary)">Who the work is for, and on what terms.</div>
+      </div>
+      <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="primary" on-click="{{ noop }}" hint-size="auto,38px">New client</x-import>
+    </div>
+
+    <div style="display:flex;gap:12px;margin-top:20px;align-items:center;flex-wrap:wrap">
+      <div style="display:inline-flex;gap:4px;padding:4px;background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-md);box-shadow:var(--shadow-card)">
+        <sc-for list="{{ tabs }}" as="tb" hint-placeholder-count="3">
+          <button sc-camel-on-click="{{ tb.pick }}" style="display:inline-flex;align-items:center;gap:8px;padding:7px 14px;border:none;border-radius:var(--radius-sm);cursor:pointer;white-space:nowrap;font-family:var(--font-sans);font-size:var(--text-base);font-weight:500;background:{{ tb.bg }};color:{{ tb.fg }};transition:background-color var(--transition-fast)" style-hover="background:{{ tb.hoverBg }}">{{ tb.label }}<span style="font-family:var(--font-mono);font-size:var(--text-xs);color:{{ tb.countFg }}">{{ tb.count }}</span></button>
+        </sc-for>
+      </div>
+      <div style="flex:1;min-width:260px">
+        <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Input" value="{{ search }}" sc-camel-on-change="{{ setSearch }}" placeholder="Search names, contacts, websites and tags. Filters as you type." hint-size="100%,38px"></x-import>
+      </div>
+    </div>
+
+    <div style="margin-top:16px;background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-lg);box-shadow:var(--shadow-card);overflow:hidden">
+      <div style="overflow-x:auto">
+      <div style="min-width:980px">
+      <div style="display:grid;grid-template-columns:minmax(200px,1.3fr) minmax(180px,1.1fr) 150px 76px 70px 120px 96px;gap:12px;padding:10px 20px;background:var(--surface-row-alt);font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary)">
+        <span>Client</span><span>Primary contact</span><span>Website</span><span>Terms</span><span style="text-align:right">Projects</span><span style="text-align:right">Open balance</span><span>Status</span>
+      </div>
+      <sc-for list="{{ rows }}" as="c" hint-placeholder-count="8">
+        <div sc-camel-on-click="{{ c.open }}" style="display:grid;grid-template-columns:minmax(200px,1.3fr) minmax(180px,1.1fr) 150px 76px 70px 120px 96px;gap:12px;align-items:center;padding:12px 20px;border-top:1px solid var(--border-thin);cursor:pointer;transition:background-color var(--transition-fast)" style-hover="background:var(--surface-hover)">
+          <span style="min-width:0">
+            <span style="display:block;font-weight:600;font-size:var(--text-md);color:var(--text-link);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ c.name }}</span>
+            <span style="display:block;font-size:var(--text-xs);color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px">{{ c.industry }} · {{ c.note }}</span>
+          </span>
+          <span style="min-width:0">
+            <span style="display:block;font-size:var(--text-sm);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ c.pocName }}</span>
+            <span style="display:block;font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px">{{ c.pocEmail }}</span>
+          </span>
+          <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-link);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ c.website }}</span>
+          <span style="font-family:var(--font-mono);font-size:var(--text-xs)">{{ c.terms }}</span>
+          <span style="font-family:var(--font-mono);font-size:var(--text-xs);text-align:right">{{ c.projects }}</span>
+          <span style="font-family:var(--font-mono);font-size:var(--text-sm);text-align:right">{{ c.balance }}</span>
+          <span><span style="background:{{ c.chipBg }};color:{{ c.chipFg }};font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;padding:2px 8px;border-radius:var(--radius-pill)">{{ c.chip }}</span></span>
+        </div>
+      </sc-for>
+      <sc-if value="{{ rowsEmpty }}" hint-placeholder-val="{{ false }}">
+        <div style="padding:40px 20px;text-align:center;font-size:var(--text-base);color:var(--text-secondary);border-top:1px solid var(--border-thin)">No clients match. Clear the search or pick another tab.</div>
+      </sc-if>
+      </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ isDetail }}" hint-placeholder-val="{{ false }}">
+    <div style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary)"><a href="#" sc-camel-on-click="{{ back }}" style="color:var(--text-link);text-decoration:none">Clients</a> / {{ d.name }}</div>
+    <div style="display:flex;align-items:center;gap:12px;margin-top:8px;flex-wrap:wrap">
+      <h1 style="font-size:var(--text-2xl);font-weight:700;margin:0">{{ d.name }}</h1>
+      <span style="background:{{ d.chipBg }};color:{{ d.chipFg }};font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;padding:3px 10px;border-radius:var(--radius-pill)">{{ d.chip }}</span>
+      <span style="font-family:var(--font-mono);font-size:var(--text-sm);color:var(--text-secondary)">{{ d.terms }}</span>
+      <a href="{{ d.webHref }}" target="_blank" style="font-family:var(--font-mono);font-size:var(--text-sm)">{{ d.website }}</a>
+      <span style="flex:1"></span>
+      <sc-if value="{{ notEditing }}" hint-placeholder-val="{{ true }}">
+        <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="secondary" size="sm" on-click="{{ startEdit }}" hint-size="auto,32px">Edit details</x-import>
+        <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="ghost" size="sm" on-click="{{ toggleArchive }}" hint-size="auto,32px">{{ archiveLabel }}</x-import>
+      </sc-if>
+      <sc-if value="{{ editing }}" hint-placeholder-val="{{ false }}">
+        <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="primary" size="sm" on-click="{{ saveEdit }}" hint-size="auto,32px">Save</x-import>
+        <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="ghost" size="sm" on-click="{{ cancelEdit }}" hint-size="auto,32px">Cancel</x-import>
+      </sc-if>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:20px">
+      <sc-for list="{{ d.stats }}" as="st" hint-placeholder-count="4">
+        <div style="padding:14px 18px;background:var(--surface-card);border:1px solid var(--border-thin);border-left:3px solid {{ st.accent }};border-radius:var(--radius-md);box-shadow:var(--shadow-card)">
+          <div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary)">{{ st.label }}</div>
+          <div style="font-family:var(--font-mono);font-size:var(--text-xl);margin-top:6px;color:{{ st.color }}">{{ st.value }}</div>
+        </div>
+      </sc-for>
+    </div>
+
+    <div style="margin-top:16px;padding:24px;background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-lg);box-shadow:var(--shadow-card)">
+      <h2 style="font-size:var(--text-lg);font-weight:700;margin:0 0 16px">Details</h2>
+      <sc-if value="{{ notEditing }}" hint-placeholder-val="{{ true }}">
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px 24px">
+          <sc-for list="{{ detailPairs }}" as="p" hint-placeholder-count="6">
+            <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:3px">{{ p.label }}</div><div style="font-size:var(--text-base)">{{ p.value }}</div></div>
+          </sc-for>
+        </div>
+      </sc-if>
+      <sc-if value="{{ editing }}" hint-placeholder-val="{{ false }}">
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px 24px">
+          <sc-for list="{{ editFields }}" as="f" hint-placeholder-count="6">
+            <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">{{ f.label }}</div><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Input" value="{{ f.value }}" sc-camel-on-change="{{ f.set }}" hint-size="100%,38px"></x-import></div>
+          </sc-for>
+          <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Payment terms</div><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Select" options="{{ termsOpts }}" value="{{ draftTerms }}" sc-camel-on-change="{{ setDraftTerms }}" hint-size="100%,38px"></x-import></div>
+        </div>
+      </sc-if>
+      <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border-thin)">
+        <div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Notes</div>
+        <textarea value="{{ notes }}" sc-camel-on-change="{{ setNotes }}" placeholder="Anything worth remembering about this client. Saved as you type." style="width:100%;box-sizing:border-box;min-height:52px;padding:10px 12px;font-family:var(--font-sans);font-size:var(--text-sm);line-height:1.5;color:var(--ink);background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-sm);resize:vertical"></textarea>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px;align-items:start">
+      <div style="padding:24px;background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-lg);box-shadow:var(--shadow-card)">
+        <div style="display:flex;align-items:center;gap:10px">
+          <h2 style="font-size:var(--text-lg);font-weight:700;margin:0">Contacts</h2>
+          <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary)">{{ nContacts }} on file</span>
+          <span style="flex:1"></span>
+          <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="secondary" size="sm" on-click="{{ toggleContactForm }}" hint-size="auto,32px">Add contact</x-import>
+        </div>
+        <sc-if value="{{ contactFormOpen }}" hint-placeholder-val="{{ false }}">
+          <div style="margin-top:14px;padding:14px;background:var(--surface-row-alt);border:1px solid var(--border-thin);border-radius:var(--radius-md)">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px 16px">
+              <sc-for list="{{ contactFields }}" as="f" hint-placeholder-count="4">
+                <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">{{ f.label }}</div><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Input" value="{{ f.value }}" sc-camel-on-change="{{ f.set }}" placeholder="{{ f.ph }}" hint-size="100%,38px"></x-import></div>
+              </sc-for>
+            </div>
+            <div style="display:flex;gap:8px;margin-top:12px">
+              <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="primary" size="sm" on-click="{{ saveContact }}" hint-size="auto,30px">Save contact</x-import>
+              <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="ghost" size="sm" on-click="{{ toggleContactForm }}" hint-size="auto,30px">Cancel</x-import>
+            </div>
+          </div>
+        </sc-if>
+        <sc-for list="{{ contacts }}" as="ct" hint-placeholder-count="2">
+          <div style="display:flex;align-items:center;gap:12px;padding:12px 0;border-top:1px solid var(--border-thin);margin-top:12px">
+            <span style="display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:50%;background:var(--navy-100);color:var(--navy);font-size:var(--text-sm);font-weight:600;flex-shrink:0">{{ ct.initials }}</span>
+            <span style="flex:1;min-width:0">
+              <span style="display:flex;align-items:center;gap:8px"><span style="font-weight:600;font-size:var(--text-base)">{{ ct.name }}</span>
+                <sc-if value="{{ ct.primary }}" hint-placeholder-val="{{ false }}"><span style="background:var(--navy-50);color:var(--navy-500);font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;padding:1px 8px;border-radius:var(--radius-pill)">Primary</span></sc-if>
+              </span>
+              <span style="display:block;font-size:var(--text-sm);color:var(--text-secondary);margin-top:2px">{{ ct.role }}</span>
+              <span style="display:block;font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary);margin-top:2px">{{ ct.email }} · {{ ct.phone }}</span>
+            </span>
+            <sc-if value="{{ ct.notPrimary }}" hint-placeholder-val="{{ false }}">
+              <button sc-camel-on-click="{{ ct.makePrimary }}" style="padding:4px 12px;background:var(--surface-card);border:1px solid var(--border-strong);border-radius:var(--radius-pill);cursor:pointer;font-family:var(--font-sans);font-size:var(--text-sm);font-weight:500;color:var(--navy-700);transition:background-color var(--transition-fast)" style-hover="background:var(--navy-50)">Make primary</button>
+            </sc-if>
+            <button sc-camel-on-click="{{ ct.remove }}" title="Remove contact" style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;background:transparent;border:none;border-radius:var(--radius-sm);cursor:pointer;color:var(--muted);transition:background-color var(--transition-fast)" style-hover="background:var(--surface-hover)"><svg width="14" height="14" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"></path></svg></button>
+          </div>
+        </sc-for>
+      </div>
+
+      <div style="padding:24px;background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-lg);box-shadow:var(--shadow-card)">
+        <div style="display:flex;align-items:center;gap:10px">
+          <h2 style="font-size:var(--text-lg);font-weight:700;margin:0">Contracts</h2>
+          <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary)">{{ nContracts }} on file</span>
+          <span style="flex:1"></span>
+          <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="primary" size="sm" on-click="{{ uploadContracts }}" hint-size="auto,32px">Upload contracts</x-import>
+        </div>
+        <div style="font-size:var(--text-sm);color:var(--text-secondary);margin-top:6px">Upload signed files as they are, several at once. Nothing is authored in here.</div>
+        <div sc-camel-on-click="{{ uploadContracts }}" style="margin-top:14px;padding:18px;border:1px dashed var(--border-strong);border-radius:var(--radius-md);text-align:center;cursor:pointer;font-size:var(--text-sm);color:var(--text-secondary);transition:background-color var(--transition-fast)" style-hover="background:var(--navy-50)">Drop files here or click to browse. PDF, DOCX and images.</div>
+        <sc-for list="{{ contracts }}" as="f" hint-placeholder-count="2">
+          <div style="display:flex;align-items:center;gap:12px;padding:11px 0;border-top:1px solid var(--border-thin);margin-top:11px">
+            <svg width="17" height="17" sc-camel-view-box="0 0 24 24" fill="none" stroke="var(--navy-500)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6"></path></svg>
+            <span style="flex:1;min-width:0">
+              <span style="display:block;font-size:var(--text-sm);font-weight:500;color:var(--navy-700);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ f.name }}</span>
+              <span style="display:block;font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary);margin-top:2px">{{ f.size }} · uploaded {{ f.date }}</span>
+            </span>
+            <span style="background:{{ f.chipBg }};color:{{ f.chipFg }};font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;padding:2px 8px;border-radius:var(--radius-pill)">{{ f.status }}</span>
+            <button sc-camel-on-click="{{ f.download }}" title="Download" style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;background:var(--surface-card);border:1px solid var(--border-strong);border-radius:var(--radius-sm);cursor:pointer;color:var(--navy-700);transition:background-color var(--transition-fast)" style-hover="background:var(--navy-50)"><svg width="14" height="14" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><path d="M7 10l5 5 5-5"></path><path d="M12 15V3"></path></svg></button>
+            <button sc-camel-on-click="{{ f.remove }}" title="Remove" style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;background:transparent;border:none;border-radius:var(--radius-sm);cursor:pointer;color:var(--muted);transition:background-color var(--transition-fast)" style-hover="background:var(--surface-hover)"><svg width="14" height="14" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"></path></svg></button>
+          </div>
+        </sc-for>
+        <sc-if value="{{ contractsEmpty }}" hint-placeholder-val="{{ false }}">
+          <div style="padding:14px 0 0;font-size:var(--text-sm);color:var(--text-secondary)">No contracts on file yet.</div>
+        </sc-if>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px;align-items:start">
+      <div style="padding:24px;background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-lg);box-shadow:var(--shadow-card)">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+          <h2 style="font-size:var(--text-lg);font-weight:700;margin:0">Projects</h2>
+          <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary)">{{ nProjects }} for this client</span>
+        </div>
+        <sc-for list="{{ projects }}" as="pj" hint-placeholder-count="2">
+          <div style="display:flex;align-items:center;gap:12px;padding:11px 0;border-top:1px solid var(--border-thin)">
+            <span style="flex:1;min-width:0">
+              <span style="display:block;font-weight:600;font-size:var(--text-base);color:var(--text-link)">{{ pj.name }}</span>
+              <span style="display:block;font-size:var(--text-sm);color:var(--text-secondary);margin-top:2px">{{ pj.meta }}</span>
+            </span>
+            <span style="background:{{ pj.chipBg }};color:{{ pj.chipFg }};font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;padding:2px 8px;border-radius:var(--radius-pill)">{{ pj.status }}</span>
+          </div>
+        </sc-for>
+      </div>
+
+      <div style="padding:24px;background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-lg);box-shadow:var(--shadow-card)">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+          <h2 style="font-size:var(--text-lg);font-weight:700;margin:0">Recent activity</h2>
+        </div>
+        <sc-for list="{{ activity }}" as="ev" hint-placeholder-count="4">
+          <div style="display:flex;gap:12px;padding:8px 0;border-top:1px solid var(--border-thin);font-size:var(--text-sm)">
+            <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary);width:76px;flex-shrink:0">{{ ev.when }}</span>
+            <span>{{ ev.what }}</span>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+
+    <div style="margin-top:16px;background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-lg);box-shadow:var(--shadow-card);overflow:hidden">
+      <div style="display:flex;align-items:center;gap:10px;padding:16px 20px">
+        <h2 style="font-size:var(--text-lg);font-weight:700;margin:0">Invoices</h2>
+        <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary)">{{ d.invMeta }}</span>
+        <span style="flex:1"></span>
+        <span style="font-size:var(--text-sm);color:var(--text-secondary)">Raised and managed from Invoicing.</span>
+      </div>
+      <div style="display:grid;grid-template-columns:90px 100px 1fr 110px 110px 92px;gap:12px;padding:8px 20px;background:var(--surface-row-alt);border-top:1px solid var(--border-thin);font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary)">
+        <span>Invoice</span><span>Due</span><span>Description</span><span style="text-align:right">Amount</span><span style="text-align:right">Outstanding</span><span>Status</span>
+      </div>
+      <sc-for list="{{ invoices }}" as="iv" hint-placeholder-count="4">
+        <div style="display:grid;grid-template-columns:90px 100px 1fr 110px 110px 92px;gap:12px;align-items:center;padding:10px 20px;border-top:1px solid var(--border-thin)">
+          <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-link)">{{ iv.n }}</span>
+          <span style="font-family:var(--font-mono);font-size:var(--text-xs)">{{ iv.due }}</span>
+          <span style="font-size:var(--text-sm);color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ iv.desc }}</span>
+          <span style="font-family:var(--font-mono);font-size:var(--text-sm);text-align:right">{{ iv.amount }}</span>
+          <span style="font-family:var(--font-mono);font-size:var(--text-sm);text-align:right">{{ iv.outstanding }}</span>
+          <span><span style="background:{{ iv.chipBg }};color:{{ iv.chipFg }};font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;padding:2px 8px;border-radius:var(--radius-pill)">{{ iv.status }}</span></span>
+        </div>
+      </sc-for>
+    </div>
+  </sc-if>
+
+  </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script="" data-props="{}">
+class Component extends DCLogic {
+  fmt(n) { return '$' + Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+  fmtSize(b) { return b >= 1048576 ? (b / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(b / 1024)) + ' KB'; }
+
+  INIT = [
+    { id: 1, name: 'Aldgate Holdings', industry: 'Real estate', note: 'Referred by a partner', website: 'aldgateholdings.com', terms: 'Net 15', source: 'Referral', address: '12 Aldgate High St, London EC3N 1AJ', since: 'Aug 2026',
+      contacts: [{ name: 'Tom Whitfield', role: 'Managing director', email: 'tom@aldgateholdings.com', phone: '+44 20 7946 0021', primary: true }],
+      contracts: [],
+      projects: [{ name: 'Aldgate contract renewal', meta: '12 open items · 0 open tickets', status: 'blocked' }],
+      invoiced: 294200, outstanding: 159075.31, pastDue: 159075.31, overdueCount: 13,
+      invoices: [
+        { n: 'V-2896', due: 'Nov 1', desc: 'Retainer, October', amount: 9790, outstanding: 9790, status: 'Overdue' },
+        { n: 'V-2428', due: 'Nov 7', desc: 'Advisory hours', amount: 14570, outstanding: 14570, status: 'Overdue' },
+        { n: 'V-2616', due: 'Jan 24', desc: 'Contract drafting', amount: 8150, outstanding: 6386.85, status: 'Part paid' },
+        { n: 'V-2021', due: 'Apr 15', desc: 'Quarterly review', amount: 20710, outstanding: 20710, status: 'Sent' }
+      ],
+      activity: [
+        ['Aug 30', 'Overdue reminder noted for V-2896.'],
+        ['Aug 29', 'Project "Aldgate contract renewal" marked blocked.'],
+        ['Aug 27', 'Meeting notes filed from renewal call.'],
+        ['Aug 24', 'Client created from referral.']
+      ] },
+    { id: 2, name: 'Ashcombe Partners', industry: 'Private equity', note: 'Quarterly advisory', website: 'ashcombe.partners', terms: 'Net 15', source: 'Outbound', address: '81 Curzon St, London W1J 7TL', since: 'Feb 2026',
+      contacts: [
+        { name: 'Priya Nandra', role: 'Operating partner', email: 'priya@ashcombe.partners', phone: '+44 20 7946 0844', primary: true },
+        { name: 'Ed Calloway', role: 'Finance lead', email: 'ed@ashcombe.partners', phone: '+44 20 7946 0845', primary: false }
+      ],
+      contracts: [
+        { name: 'Ashcombe MSA 2026 signed.pdf', bytes: 482304, date: 'Feb 3, 2026', status: 'Active' },
+        { name: 'SOW Q3 advisory.pdf', bytes: 221184, date: 'Jul 2, 2026', status: 'Active' }
+      ],
+      projects: [
+        { name: 'Portfolio ops review', meta: '4 open items · 1 open ticket', status: 'on track' },
+        { name: 'Fund reporting SOPs', meta: '2 open items · 0 open tickets', status: 'on track' }
+      ],
+      invoiced: 128400, outstanding: 18200, pastDue: 0, overdueCount: 0,
+      invoices: [
+        { n: 'V-2871', due: 'Sep 12', desc: 'Advisory hours, August', amount: 18200, outstanding: 18200, status: 'Sent' },
+        { n: 'V-2702', due: 'Aug 2', desc: 'Advisory hours, July', amount: 16400, outstanding: 0, status: 'Paid' }
+      ],
+      activity: [
+        ['Aug 29', 'Invoice V-2871 sent.'],
+        ['Aug 21', 'SOW Q3 advisory countersigned.'],
+        ['Aug 12', 'Payment received for V-2702.']
+      ] },
+    { id: 3, name: 'Beacon Analytics', industry: 'Data and analytics', note: 'Compliance heavy', website: 'beaconanalytics.io', terms: 'Net 15', source: 'Inbound', address: '400 Congress Ave, Austin, TX 78701', since: 'Mar 2026',
+      contacts: [{ name: 'Maria Voss', role: 'COO', email: 'maria@beaconanalytics.io', phone: '+1 (512) 555-0139', primary: true }],
+      contracts: [{ name: 'Beacon services agreement.pdf', bytes: 356352, date: 'Mar 14, 2026', status: 'Active' }],
+      projects: [
+        { name: 'SOC 2 readiness', meta: '9 open items · 2 open tickets', status: 'at risk' },
+        { name: 'Vendor review cycle', meta: '3 open items', status: 'on track' },
+        { name: 'Board pack automation', meta: 'Done in July', status: 'done' }
+      ],
+      invoiced: 96800, outstanding: 24300, pastDue: 8100, overdueCount: 1,
+      invoices: [
+        { n: 'V-2860', due: 'Sep 8', desc: 'Compliance retainer', amount: 16200, outstanding: 16200, status: 'Sent' },
+        { n: 'V-2731', due: 'Aug 12', desc: 'Audit prep sprint', amount: 8100, outstanding: 8100, status: 'Overdue' }
+      ],
+      activity: [
+        ['Aug 28', 'V-2731 passed due date.'],
+        ['Aug 25', 'SOC 2 readiness flagged at risk.'],
+        ['Aug 18', 'New PoC added for audit season.']
+      ] },
+    { id: 4, name: 'Blackthorn Studio', industry: 'Design agency', note: 'Retainer', website: 'blackthorn.studio', terms: 'Net 30', source: 'Referral', address: '31 Great Sutton St, London EC1V 0NB', since: 'Jan 2026',
+      contacts: [{ name: 'Marco Yealm', role: 'Founder', email: 'marco@blackthorn.studio', phone: '+44 20 7946 0958', primary: true }],
+      contracts: [{ name: 'Blackthorn retainer agreement.pdf', bytes: 198656, date: 'Jan 20, 2026', status: 'Active' }],
+      projects: [
+        { name: 'Ops retainer', meta: 'Ongoing, monthly', status: 'on track' },
+        { name: 'Studio handbook', meta: '5 open items', status: 'on track' },
+        { name: 'Hiring pipeline setup', meta: 'Waiting on client', status: 'waiting' }
+      ],
+      invoiced: 74100, outstanding: 6175, pastDue: 0, overdueCount: 0,
+      invoices: [{ n: 'V-2841', due: 'Sep 24', desc: 'Retainer, August', amount: 6175, outstanding: 6175, status: 'Open' }],
+      activity: [['Aug 25', 'Retainer invoice raised.'], ['Aug 15', 'Handbook draft shared.']] },
+    { id: 5, name: 'Brightmoor Logistics', industry: 'Logistics', note: 'Project work', website: 'brightmoor.co', terms: 'Net 45', source: 'Outbound', address: '2200 Industrial Blvd, Memphis, TN 38106', since: 'Nov 2025',
+      contacts: [
+        { name: 'Dana Okafor', role: 'VP operations', email: 'dana@brightmoor.co', phone: '+1 (901) 555-0117', primary: true },
+        { name: 'Ray Chen', role: 'AP desk', email: 'ap@brightmoor.co', phone: '+1 (901) 555-0118', primary: false }
+      ],
+      contracts: [
+        { name: 'Brightmoor MSA.pdf', bytes: 512000, date: 'Nov 12, 2025', status: 'Active' },
+        { name: 'SOW warehouse audit.pdf', bytes: 174080, date: 'Jun 8, 2026', status: 'Expired' }
+      ],
+      projects: [
+        { name: 'Warehouse audit rollout', meta: '14 open items · 3 open tickets', status: 'at risk' },
+        { name: 'Fleet onboarding', meta: '6 open items', status: 'on track' }
+      ],
+      invoiced: 212600, outstanding: 41200, pastDue: 22800, overdueCount: 2,
+      invoices: [
+        { n: 'V-2812', due: 'Oct 1', desc: 'Audit rollout, phase 2', amount: 18400, outstanding: 18400, status: 'Sent' },
+        { n: 'V-2644', due: 'Jul 18', desc: 'Audit rollout, phase 1', amount: 22800, outstanding: 22800, status: 'Overdue' }
+      ],
+      activity: [['Aug 27', 'Phase 2 invoice sent.'], ['Aug 20', 'Slow payer, watch aging noted.']] },
+    { id: 6, name: 'Castlereagh Capital', industry: 'Investment', note: 'Board support', website: 'castlereagh.com', terms: 'Net 15', source: 'Referral', address: '215 W Ohio St, Chicago, IL 60654', since: 'Jan 2026',
+      contacts: [{ name: 'Ivy Quenington', role: 'Chief of staff', email: 'ivy@castlereagh.com', phone: '+1 (312) 555-0129', primary: true }],
+      contracts: [{ name: 'Castlereagh engagement letter.pdf', bytes: 143360, date: 'Jan 12, 2026', status: 'Active' }],
+      projects: [
+        { name: 'Board pack cycle', meta: 'Monthly, ongoing', status: 'on track' },
+        { name: 'Q3 offsite logistics', meta: '8 open items', status: 'on track' }
+      ],
+      invoiced: 158900, outstanding: 8930.6, pastDue: 0, overdueCount: 0,
+      invoices: [{ n: 'V-2833', due: 'Sep 1', desc: 'Board support, August', amount: 8930.6, outstanding: 8930.6, status: 'Sent' }],
+      activity: [['Aug 26', 'August invoice sent.'], ['Aug 16', 'Payment received for July.']] },
+    { id: 7, name: 'Copperfield Collective', industry: 'Nonprofit', note: 'Retainer', website: 'copperfield.org', terms: 'Net 30', source: 'Inbound', address: '50 Milk St, Boston, MA 02109', since: 'May 2026', archived: true,
+      contacts: [{ name: 'Sam Quarry', role: 'Executive director', email: 'sam@copperfield.org', phone: '+1 (617) 555-0173', primary: true }],
+      contracts: [{ name: 'Copperfield retainer 2026.pdf', bytes: 167936, date: 'May 5, 2026', status: 'Expired' }],
+      projects: [{ name: 'Grant reporting cleanup', meta: 'Done in June', status: 'done' }],
+      invoiced: 24600, outstanding: 0, pastDue: 0, overdueCount: 0,
+      invoices: [{ n: 'V-2544', due: 'Jul 5', desc: 'Retainer, final', amount: 4100, outstanding: 0, status: 'Paid' }],
+      activity: [['Jul 10', 'Engagement closed, client archived.']] },
+    { id: 8, name: 'Cranleigh Group', industry: 'Hospitality', note: 'Slow payer, watch aging', website: 'cranleighgroup.com', terms: 'Net 30', source: 'Outbound', address: '148 Lafayette St, New York, NY 10013', since: 'Apr 2026',
+      contacts: [{ name: 'Rhea Uppingham', role: 'GM', email: 'rhea@cranleighgroup.com', phone: '+1 (212) 555-0147', primary: true }],
+      contracts: [],
+      projects: [
+        { name: 'Venue ops playbook', meta: '7 open items', status: 'on track' },
+        { name: 'Seasonal hiring surge', meta: '11 open items · 1 open ticket', status: 'at risk' },
+        { name: 'Vendor renegotiation', meta: 'Waiting on client', status: 'waiting' }
+      ],
+      invoiced: 88200, outstanding: 31400, pastDue: 12600, overdueCount: 1,
+      invoices: [
+        { n: 'V-2820', due: 'Sep 20', desc: 'Playbook sprint', amount: 18800, outstanding: 18800, status: 'Open' },
+        { n: 'V-2688', due: 'Jul 30', desc: 'Hiring surge support', amount: 12600, outstanding: 12600, status: 'Overdue' }
+      ],
+      activity: [['Aug 29', 'Aging flagged on V-2688.'], ['Aug 22', 'Vendor renegotiation paused by client.']] }
+  ];
+
+  state = { clients: this.INIT, view: 'list', selId: null, tab: 'active', search: '', editing: false, draft: {}, contactForm: false, contactDraft: {} };
+
+  PROJ_CHIPS = { 'on track': ['var(--chip-ontrack-bg)', 'var(--chip-ontrack-fg)'], 'at risk': ['var(--chip-overdue-bg)', 'var(--chip-overdue-fg)'], blocked: ['#F9E2DE', '#A2311F'], done: ['var(--chip-done-bg)', 'var(--chip-done-fg)'], waiting: ['var(--chip-waiting-bg)', 'var(--chip-waiting-fg)'] };
+  INV_CHIPS = { Open: ['var(--chip-open-bg)', 'var(--chip-open-fg)'], Sent: ['var(--chip-waiting-bg)', 'var(--chip-waiting-fg)'], Paid: ['var(--chip-done-bg)', 'var(--chip-done-fg)'], Overdue: ['var(--chip-overdue-bg)', 'var(--chip-overdue-fg)'], 'Part paid': ['var(--gold-100)', 'var(--gold-600)'] };
+  DOC_CHIPS = { Active: ['var(--chip-ontrack-bg)', 'var(--chip-ontrack-fg)'], Expired: ['var(--chip-waiting-bg)', 'var(--chip-waiting-fg)'], New: ['var(--navy-100)', 'var(--navy)'] };
+
+  patchClient(id, patch) { this.setState(s => ({ clients: s.clients.map(c => c.id === id ? { ...c, ...patch } : c) })); }
+
+  pickFiles(c) {
+    const inp = document.createElement('input');
+    inp.type = 'file'; inp.multiple = true;
+    inp.accept = '.pdf,.doc,.docx,.png,.jpg,.jpeg';
+    inp.onchange = () => {
+      const added = Array.from(inp.files).map(f => ({ name: f.name, bytes: f.size, date: 'Aug 31, 2026', status: 'New' }));
+      if (added.length) this.patchClient(c.id, { contracts: added.concat(c.contracts) });
+    };
+    inp.click();
+  }
+
+  renderVals() {
+    const s = this.state;
+    const navItems = ['Dashboard', 'Action items', 'Projects', 'Meetings', 'SOPs', 'Templates', 'Clients', 'Mail', 'Invoicing', 'Reports', 'Settings']
+      .map(l => ({ id: l.toLowerCase().replace(' ', '-'), label: l }));
+    const chipOf = (c) => c.archived ? ['archived', 'var(--navy-100)', 'var(--navy)'] : c.pastDue > 0 ? ['overdue', 'var(--chip-overdue-bg)', 'var(--chip-overdue-fg)'] : ['active', 'var(--chip-ontrack-bg)', 'var(--chip-ontrack-fg)'];
+    const nActive = s.clients.filter(c => !c.archived).length;
+    const tabs = [['active', 'Active', nActive], ['archived', 'Archived', s.clients.length - nActive], ['all', 'All', s.clients.length]].map(([id, label, count]) => {
+      const active = s.tab === id;
+      return { label, count: String(count), bg: active ? 'var(--navy)' : 'transparent', fg: active ? '#FFFFFF' : 'var(--ink)',
+        countFg: active ? 'var(--text-inverse-muted)' : 'var(--muted)', hoverBg: active ? 'var(--navy)' : 'var(--navy-50)',
+        pick: () => this.setState({ tab: id }) };
+    });
+    const q = s.search.trim().toLowerCase();
+    const rows = s.clients
+      .filter(c => s.tab === 'all' || (s.tab === 'archived' ? c.archived : !c.archived))
+      .filter(c => !q || (c.name + ' ' + c.website + ' ' + c.industry + ' ' + c.note + ' ' + c.contacts.map(x => x.name + ' ' + x.email).join(' ')).toLowerCase().includes(q))
+      .map(c => {
+        const poc = c.contacts.find(x => x.primary) || c.contacts[0] || { name: 'No contact yet', email: 'add one from the client page' };
+        const [chip, chipBg, chipFg] = chipOf(c);
+        return { name: c.name, industry: c.industry, note: c.note, pocName: poc.name, pocEmail: poc.email,
+          website: c.website, terms: c.terms, projects: String(c.projects.length), balance: this.fmt(c.outstanding),
+          chip, chipBg, chipFg, open: () => this.setState({ view: 'detail', selId: c.id, editing: false, contactForm: false }) };
+      });
+    const vals = { navItems, tabs, rows, rowsEmpty: rows.length === 0,
+      isList: s.view === 'list', isDetail: s.view === 'detail',
+      search: s.search, setSearch: (e) => this.setState({ search: e.target.value }),
+      termsOpts: ['Net 15', 'Net 7', 'Net 30', 'Net 45', 'Due on receipt'],
+      noop: () => {}, back: (e) => { e.preventDefault(); this.setState({ view: 'list' }); } };
+    if (s.view !== 'detail') return vals;
+    const c = s.clients.find(x => x.id === s.selId);
+    if (!c) return { ...vals, isDetail: false, isList: true };
+    const [chip, chipBg, chipFg] = chipOf(c);
+    Object.assign(vals, {
+      d: { name: c.name, chip, chipBg, chipFg, terms: c.terms, website: c.website, webHref: 'https://' + c.website,
+        invMeta: c.invoices.filter(i => i.outstanding > 0).length + ' unpaid of ' + c.invoices.length,
+        stats: [
+          { label: 'Invoiced', value: this.fmt(c.invoiced), accent: 'var(--border-strong)', color: 'var(--ink)' },
+          { label: 'Outstanding', value: this.fmt(c.outstanding), accent: 'var(--navy-500)', color: 'var(--ink)' },
+          { label: 'Past due', value: this.fmt(c.pastDue), accent: 'var(--gold-600)', color: c.pastDue > 0 ? 'var(--text-warn)' : 'var(--ink)' },
+          { label: 'Overdue invoices', value: String(c.overdueCount), accent: c.overdueCount > 0 ? 'var(--gold-600)' : 'var(--border-strong)', color: 'var(--ink)' }
+        ] },
+      archiveLabel: c.archived ? 'Reactivate' : 'Archive client',
+      toggleArchive: () => this.patchClient(c.id, { archived: !c.archived }),
+      editing: s.editing, notEditing: !s.editing,
+      detailPairs: [
+        ['Website', c.website], ['Industry', c.industry], ['Source', c.source],
+        ['Billing address', c.address], ['Payment terms', c.terms], ['Client since', c.since]
+      ].map(([label, value]) => ({ label, value })),
+      startEdit: () => this.setState({ editing: true, draft: { name: c.name, website: c.website, industry: c.industry, source: c.source, address: c.address, terms: c.terms } }),
+      cancelEdit: () => this.setState({ editing: false }),
+      saveEdit: () => { const d = this.state.draft; this.patchClient(c.id, { name: d.name, website: d.website, industry: d.industry, source: d.source, address: d.address, terms: d.terms }); this.setState({ editing: false }); },
+      editFields: [['Client name', 'name'], ['Website', 'website'], ['Industry', 'industry'], ['Source', 'source'], ['Billing address', 'address']]
+        .map(([label, key]) => ({ label, value: s.draft[key], set: (e) => this.setState(x => ({ draft: { ...x.draft, [key]: e.target.value } })) })),
+      draftTerms: s.draft.terms, setDraftTerms: (e) => this.setState(x => ({ draft: { ...x.draft, terms: e.target.value } })),
+      notes: c.notes || '', setNotes: (e) => this.patchClient(c.id, { notes: e.target.value }),
+      nContacts: String(c.contacts.length),
+      contactFormOpen: s.contactForm,
+      toggleContactForm: () => this.setState(x => ({ contactForm: !x.contactForm, contactDraft: { name: '', role: '', email: '', phone: '' } })),
+      contactFields: [['Name', 'name', 'Jane Smith'], ['Role', 'role', 'Finance lead'], ['Email', 'email', 'jane@client.com'], ['Phone', 'phone', '+1 (555) 000-0000']]
+        .map(([label, key, ph]) => ({ label, ph, value: s.contactDraft[key], set: (e) => this.setState(x => ({ contactDraft: { ...x.contactDraft, [key]: e.target.value } })) })),
+      saveContact: () => {
+        const d = this.state.contactDraft;
+        if (!d.name) return;
+        const ct = { name: d.name, role: d.role || 'Contact', email: d.email || 'Not set', phone: d.phone || 'Not set', primary: c.contacts.length === 0 };
+        this.patchClient(c.id, { contacts: c.contacts.concat([ct]) });
+        this.setState({ contactForm: false });
+      },
+      contacts: c.contacts.map((ct, i) => ({ ...ct, notPrimary: !ct.primary,
+        initials: ct.name.split(' ').map(w => w[0]).slice(0, 2).join(''),
+        makePrimary: () => this.patchClient(c.id, { contacts: c.contacts.map((x, j) => ({ ...x, primary: j === i })) }),
+        remove: () => this.patchClient(c.id, { contacts: c.contacts.filter((_, j) => j !== i) }) })),
+      nContracts: String(c.contracts.length),
+      contractsEmpty: c.contracts.length === 0,
+      uploadContracts: () => this.pickFiles(c),
+      contracts: c.contracts.map((f, i) => {
+        const [b, g] = this.DOC_CHIPS[f.status] || this.DOC_CHIPS.Active;
+        return { name: f.name, size: this.fmtSize(f.bytes), date: f.date, status: f.status, chipBg: b, chipFg: g,
+          download: () => {}, remove: () => this.patchClient(c.id, { contracts: c.contracts.filter((_, j) => j !== i) }) };
+      }),
+      nProjects: String(c.projects.length),
+      projects: c.projects.map(p => { const [b, g] = this.PROJ_CHIPS[p.status]; return { ...p, chipBg: b, chipFg: g }; }),
+      activity: c.activity.map(([when, what]) => ({ when, what })),
+      invoices: c.invoices.map(iv => { const [b, g] = this.INV_CHIPS[iv.status]; return { ...iv, amount: this.fmt(iv.amount), outstanding: this.fmt(iv.outstanding), chipBg: b, chipFg: g }; })
+    });
+    return vals;
+  }
+}
+</script>
+
+
+</body></html>
