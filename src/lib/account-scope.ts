@@ -51,12 +51,29 @@ export async function resolveAccountScope(
 	const active = remembered?.active;
 	if (active && (allowAll || active !== 'all')) return { account: active, connected: true };
 
-	const roster = await fetch('/api/connections')
-		.then((r) => (r.ok ? (r.json() as Promise<{ accounts?: { id: string }[] }>) : null))
-		.catch(() => null);
+	// A stored 'all' on a page that cannot union. The preference is real and
+	// must not be overwritten, so the page reads the first account for this
+	// visit without touching what Paul chose.
+	if (active === 'all') {
+		const roster = await fetch('/api/connections')
+			.then((r) => (r.ok ? (r.json() as Promise<{ accounts?: { id: string }[] }>) : null))
+			.catch(() => null);
+		const first = roster?.accounts?.[0]?.id ?? '';
+		if (first) return { account: first, connected: true };
+	}
 
-	const first = roster?.accounts?.[0]?.id ?? '';
-	return { account: first, connected: Boolean(first) };
+	// No roster fallback here, deliberately.
+	//
+	// An earlier version of this asked /api/connections and took the first
+	// account when nothing was remembered. That is a default in the request
+	// path, and D108 is the rule against exactly that: it would have made a
+	// loader that forgot to pass scope look healthy, which is how F1 survived.
+	//
+	// The first-use default belongs to the preference, not to the resolver, so
+	// it lives in GET /api/connections/active-account, which persists the
+	// choice and reports that it made one. By the time this function reads that
+	// route, a connected account has already produced an answer.
+	return { account: '', connected: false };
 }
 
 /** The query suffix for a scoped request, empty when nothing is connected. */

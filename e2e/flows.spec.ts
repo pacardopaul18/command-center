@@ -105,9 +105,25 @@ test.describe('typing before the client is ready', () => {
 		 * assertion so a failure carries its own diagnosis rather than needing a
 		 * reproduction that has not been forthcoming.
 		 */
+		/**
+		 * Whether the client is live.
+		 *
+		 * The first version of this checked `data-sveltekit-preload-data` on
+		 * <html> and `window.__sveltekit`. Neither exists here: the attribute is
+		 * not set at all and the dev global is `__sveltekit_dev`. It therefore
+		 * reported false on every run, including on a page proven hydrated by
+		 * the client-only 'n' shortcut opening its dialog.
+		 *
+		 * That mattered, because it made the one failure this instrumentation
+		 * exists to explain unreadable: the recorded "Hydration detected: false"
+		 * was not a finding, it was the detector's only answer. Verified against
+		 * a live hydrated page rather than assumed a second time.
+		 */
 		const hydrated = await page
-			.locator('body')
-			.evaluate(() => document.documentElement.hasAttribute('data-sveltekit-preload-data') || Boolean((window as unknown as { __sveltekit?: unknown }).__sveltekit))
+			.evaluate(() => {
+				const w = window as unknown as Record<string, unknown>;
+				return Boolean(w.__svelte ?? w.__sveltekit_dev ?? w.__sveltekit);
+			})
 			.catch(() => null);
 		const actual = await input.inputValue();
 
@@ -116,7 +132,9 @@ test.describe('typing before the client is ready', () => {
 			`T-W1: input value after hydration was ${JSON.stringify(actual)}, expected ` +
 				`${JSON.stringify(TITLE)}. Hydration detected: ${hydrated}. ` +
 				(actual === ''
-					? 'EMPTY means the client overwrote pre-hydration input, which is a real defect.'
+					? 'EMPTY with hydration true means the client overwrote pre-hydration input, ' +
+						'which is a real defect. EMPTY with hydration false means the field was ' +
+						'replaced before the client ran, which points at the harness.'
 					: 'A non-empty mismatch means something else edited the field.')
 		).toBe(TITLE);
 

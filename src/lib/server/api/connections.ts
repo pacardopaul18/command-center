@@ -542,10 +542,36 @@ connections.get('/active-account', async (c) => {
 	const valid =
 		stored === 'all' || (stored && accounts.some((a) => a.id === stored)) ? stored : null;
 
+	/**
+	 * A first-use default, and deliberately only that.
+	 *
+	 * D108 says a caller that omits scope with several accounts connected is
+	 * refused, because there is no sane default for a request. That stands, and
+	 * `resolveAccount` is untouched. This is the other half of the same problem:
+	 * a person who has never chosen a mailbox is not a caller omitting scope,
+	 * they are a preference that has never been set, and answering them with an
+	 * error is the D113 fault of reporting an empty precondition as a breakage.
+	 *
+	 * The distinction is where the default lives. Here it produces a stored,
+	 * visible choice that the switcher shows and the reader can change. In
+	 * `resolveAccount` it would produce a silent answer about somebody else's
+	 * mailbox on every unscoped request, which is exactly how F1 stayed
+	 * invisible: a page that forgot to pass scope would have looked healthy.
+	 *
+	 * Persisted on read, so the choice exists as a fact rather than being
+	 * recomputed per page. Idempotent: it writes only when nothing valid is
+	 * stored, and first connection order is stable.
+	 */
+	const defaulted = !valid && accounts.length > 0;
+	if (defaulted) await c.env.SESSIONS.put(ACTIVE_ACCOUNT_KEY, accounts[0].id);
+
 	return c.json({
-		active: valid ?? (accounts.length === 1 ? accounts[0].id : null),
+		active: valid ?? (accounts.length > 0 ? accounts[0].id : null),
 		remembered: stored,
-		stale: Boolean(stored && !valid)
+		stale: Boolean(stored && !valid),
+		// Whether the answer was chosen just now rather than by Paul, so a page
+		// can say so instead of presenting it as a decision he made.
+		defaulted
 	});
 });
 

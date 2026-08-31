@@ -652,6 +652,9 @@
 </Card>
 
 <Card title="Mail" subtitle="Reading only. Nothing is ever sent, drafted or labelled.">
+	{#if data.accountEmail}
+		<p class="scope mono">Showing {data.accountEmail}</p>
+	{/if}
 	{#if data.mailError}
 		<p class="error" role="alert">{data.mailError}</p>
 	{:else if !data.accountConnected}
@@ -798,6 +801,13 @@
 	}
 
 	.notice,
+	/* Which mailbox the figures on this card describe. */
+	.scope {
+		margin: 0 0 var(--space-3);
+		font-size: var(--text-xs);
+		color: var(--text-secondary);
+	}
+
 	.error {
 		margin: 0 0 var(--space-4);
 		padding: var(--space-3) var(--space-4);
