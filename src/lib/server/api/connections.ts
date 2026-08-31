@@ -2,7 +2,7 @@ import type { D1Database } from '@cloudflare/workers-types';
 import { Hono } from 'hono';
 import type { ApiEnv } from './env';
 import { nowUtc } from '../dates';
-import { ApiError } from './validate';
+import { ApiError, readJsonObject } from './validate';
 import {
 	assertOwned,
 	listAccounts,
@@ -19,6 +19,7 @@ import {
 	clearTokens,
 	consumeState,
 	exchangeCode,
+	freeBusy,
 	listCalendars,
 	listEvents,
 	readTokens,
@@ -493,6 +494,163 @@ connections.get('/google/calendar', async (c) => {
 		scope: scope.kind,
 		events: results ?? [],
 		last_read_at: (record as { last_read_at?: string } | null)?.last_read_at ?? null
+	});
+});
+
+/* -------------------------------------------------------------------------
+ * Followed calendars, and finding a time
+ * ---------------------------------------------------------------------- */
+
+/**
+ * The colours a followed person is drawn in.
+ *
+ * Fixed and small, assigned in order, so two followed people are never the same
+ * colour until there are more than six of them and so the colour a person has
+ * does not change when somebody else is unfollowed.
+ */
+const FOLLOW_COLORS = ['#2E7D5B', '#8A4B2A', '#4C5FA8', '#8A2E5B', '#5B6470', '#A8792E'];
+
+/** A calendar address, normalised the way Google compares them. */
+function normaliseAddress(raw: unknown): string {
+	const value = typeof raw === 'string' ? raw.trim().toLowerCase() : '';
+	// Deliberately loose. This is an address book entry, not an authentication
+	// boundary, and a real address Google accepts that this rejected would be a
+	// worse failure than a typo that comes back "not shared with you".
+	if (!value || !value.includes('@') || /\s/.test(value)) {
+		throw new ApiError(400, 'A followed calendar needs an email address.');
+	}
+	return value;
+}
+
+/** Who this account follows. Local to this app, never Google's CalendarList. */
+connections.get('/google/calendar/follows', async (c) => {
+	const account = await resolveAccount(c.env.DB, c.req.query('account'));
+	const { results } = await c.env.DB.prepare(
+		`SELECT id, email, display_name, color, created_at
+     FROM followed_calendars WHERE connection_id = ?
+     ORDER BY COALESCE(display_name, email)`
+	)
+		.bind(account.id)
+		.all();
+	return c.json({ account: account.id, follows: results ?? [] });
+});
+
+connections.post('/google/calendar/follows', async (c) => {
+	const account = await resolveAccount(c.env.DB, c.req.query('account'));
+	const body = await readJsonObject(c.req.raw);
+	const email = normaliseAddress(body.email);
+	const name = typeof body.display_name === 'string' ? body.display_name.trim() : '';
+	const at = nowUtc();
+
+	const existing = await c.env.DB.prepare(
+		'SELECT id FROM followed_calendars WHERE connection_id = ? AND email = ?'
+	)
+		.bind(account.id, email)
+		.first<{ id: string }>();
+
+	// Following someone already followed is not an error, it is a no-op with a
+	// name update. A duplicate row would show the same person twice.
+	if (existing) {
+		if (name) {
+			await c.env.DB.prepare('UPDATE followed_calendars SET display_name = ? WHERE id = ?')
+				.bind(name, existing.id)
+				.run();
+		}
+		return c.json({ id: existing.id, email, already: true });
+	}
+
+	const taken = await c.env.DB.prepare(
+		'SELECT COUNT(*) AS n FROM followed_calendars WHERE connection_id = ?'
+	)
+		.bind(account.id)
+		.first<{ n: number }>();
+
+	const id = crypto.randomUUID();
+	await c.env.DB.prepare(
+		`INSERT INTO followed_calendars (id, connection_id, email, display_name, color, created_at)
+     VALUES (?, ?, ?, ?, ?, ?)`
+	)
+		.bind(
+			id,
+			account.id,
+			email,
+			name || null,
+			FOLLOW_COLORS[Number(taken?.n ?? 0) % FOLLOW_COLORS.length],
+			at
+		)
+		.run();
+
+	return c.json({ id, email, already: false }, 201);
+});
+
+/**
+ * Unfollow, asserted rather than filtered.
+ *
+ * D108: asking to delete another account's row is refused, not answered with a
+ * cheerful ok that deleted nothing. Two different promises, and the second is
+ * the one segregation needs.
+ */
+connections.delete('/google/calendar/follows/:id', async (c) => {
+	const account = await resolveAccount(c.env.DB, c.req.query('account'));
+	const row = await c.env.DB.prepare(
+		'SELECT connection_id FROM followed_calendars WHERE id = ?'
+	)
+		.bind(c.req.param('id'))
+		.first<{ connection_id: string }>();
+
+	if (!row || row.connection_id !== account.id) {
+		throw new ApiError(404, 'No followed calendar with that id on this account.');
+	}
+
+	await c.env.DB.prepare('DELETE FROM followed_calendars WHERE id = ?')
+		.bind(c.req.param('id'))
+		.run();
+	return c.json({ ok: true });
+});
+
+/**
+ * Free space across a set of calendars.
+ *
+ * Live, not from the cache, and the reason is in `freeBusy`: the point of
+ * asking is the people this app does not sync. Busy blocks are all that comes
+ * back, and only for calendars whose owner has shared their free and busy.
+ *
+ * Every address that could not be read is named in the answer rather than
+ * dropped. A slot list computed over four calendars when one of them refused is
+ * a confident wrong answer, and the screen has to be able to say so.
+ */
+connections.post('/google/calendar/free-busy', async (c) => {
+	const { clientId, clientSecret } = requireConfig(c.env);
+	const account = await resolveAccount(c.env.DB, c.req.query('account'));
+	const body = await readJsonObject(c.req.raw);
+
+	const asked = Array.isArray(body.emails) ? body.emails : [];
+	const emails = [...new Set(asked.map((e) => normaliseAddress(e)))];
+	if (emails.length === 0) throw new ApiError(400, 'Pick at least one calendar to match against.');
+	if (emails.length > 20) throw new ApiError(400, 'That is more calendars than one query can match.');
+
+	const from = typeof body.from === 'string' ? body.from : new Date().toISOString();
+	const to =
+		typeof body.to === 'string'
+			? body.to
+			: new Date(Date.now() + 14 * 86_400_000).toISOString();
+
+	if (new Date(to).getTime() - new Date(from).getTime() > 45 * 86_400_000) {
+		throw new ApiError(400, 'Match a window of 45 days or less.');
+	}
+
+	const tokens = await accessToken(c.env.SESSIONS, account.id, clientId, clientSecret);
+	const answers = await freeBusy(tokens.access_token, from, to, emails);
+
+	return c.json({
+		account: account.id,
+		account_email: account.account_email,
+		from,
+		to,
+		calendars: answers,
+		// Named so the caller can say which addresses the answer is missing
+		// rather than quietly matching against fewer calendars than were asked.
+		unreadable: answers.filter((a) => a.error).map((a) => ({ id: a.id, error: a.error }))
 	});
 });
 

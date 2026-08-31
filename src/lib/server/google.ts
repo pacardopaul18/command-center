@@ -410,6 +410,94 @@ interface RawEvent {
 	organizer?: { email?: string; displayName?: string };
 }
 
+export interface BusyBlock {
+	start: string;
+	end: string;
+}
+
+export interface FreeBusyAnswer {
+	/** Calendar address, lowercased, as Google keys its answer. */
+	id: string;
+	busy: BusyBlock[];
+	/**
+	 * Why there is nothing to show, when there is nothing to show.
+	 *
+	 * Google distinguishes "this person is free" from "you may not look", and
+	 * both arrive as an empty busy list. Collapsing them would draw somebody who
+	 * has not shared their calendar as wide open all week, which is worse than
+	 * saying nothing: it is a confident wrong answer that a meeting gets booked
+	 * on top of.
+	 */
+	error: string | null;
+}
+
+/**
+ * Busy blocks for a set of calendars, from Google, live.
+ *
+ * A read, and permitted by `calendar.readonly`. It is a POST because that is
+ * the shape Google's free/busy endpoint takes, not because anything is created:
+ * the request body is the question, and the response is the answer. Nothing on
+ * either side of it changes a calendar.
+ *
+ * Not served from the cached events table on purpose. The cache holds the
+ * calendars this app syncs, and the point of asking is the people it does not
+ * sync: a followed colleague whose events this app has never read and never
+ * will. Their busy blocks are all Google will give up unless they have shared
+ * more, which is exactly the boundary the screen promises.
+ */
+export async function freeBusy(
+	token: string,
+	timeMin: string,
+	timeMax: string,
+	ids: string[]
+): Promise<FreeBusyAnswer[]> {
+	if (ids.length === 0) return [];
+
+	let res: Response;
+	try {
+		res = await fetch(`${CALENDAR_BASE}/freeBusy`, {
+			method: 'POST',
+			headers: {
+				authorization: `Bearer ${token}`,
+				'content-type': 'application/json'
+			},
+			body: JSON.stringify({ timeMin, timeMax, items: ids.map((id) => ({ id })) })
+		});
+	} catch {
+		throw new GoogleError(502, 'Could not reach Google.');
+	}
+
+	if (res.status === 401 || res.status === 403) {
+		throw new GoogleError(
+			401,
+			'Google refused the request with this connection. Reconnect the account.',
+			null,
+			true
+		);
+	}
+	if (!res.ok) throw new GoogleError(502, `Google returned an error (${res.status}).`);
+
+	const body = (await res.json()) as {
+		calendars?: Record<string, { busy?: BusyBlock[]; errors?: { reason?: string }[] }>;
+	};
+
+	return ids.map((id) => {
+		const entry = body.calendars?.[id] ?? body.calendars?.[id.toLowerCase()];
+		const reason = entry?.errors?.[0]?.reason ?? null;
+		return {
+			id,
+			busy: entry?.busy ?? [],
+			error: reason
+				? reason === 'notFound'
+					? 'No calendar at that address.'
+					: 'This calendar is not shared with you.'
+				: entry
+					? null
+					: 'Google returned nothing for this calendar.'
+		};
+	});
+}
+
 /**
  * Events between two instants, from the primary calendar.
  *

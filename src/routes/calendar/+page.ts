@@ -24,6 +24,31 @@ export interface CalendarEventRow {
 	meeting_id: string | null;
 }
 
+/** One calendar this account owns, and whether it is being read. */
+export interface CalendarListRow {
+	id: string;
+	summary: string | null;
+	provider_calendar_id: string;
+	is_primary: number;
+	sync_enabled: number;
+	background_color: string | null;
+	account_email: string | null;
+	event_count: number;
+}
+
+/**
+ * Somebody this app follows, which is a row in this app and nowhere else.
+ *
+ * Following changes what this screen shows and never touches the user's Google
+ * CalendarList, which is the D70 translation of the prototype's Follow button.
+ */
+export interface FollowRow {
+	id: string;
+	email: string;
+	display_name: string | null;
+	color: string | null;
+}
+
 /** The first of the month containing a day. */
 function monthStart(day: Date): Date {
 	const d = new Date(day);
@@ -100,6 +125,16 @@ export const load: PageLoad = async ({ fetch, url }) => {
 	const params = new URLSearchParams({ from: from.toISOString(), to: to.toISOString() });
 	const acct = accountQuery(scope.account, '&');
 
+	/**
+	 * The rail loads with the page, not after it.
+	 *
+	 * D127: the scope is resolved here and passed to every request, so a
+	 * correctly scoped route cannot be reached by a page that forgot to name the
+	 * account. The calendars and follows requests are scoped to one account even
+	 * when the events are the union, because the rail is a list of what this
+	 * account owns and follows and a union of two people's contacts is exactly
+	 * the leak D110 was.
+	 */
 	const [eventsRes, connectionsRes] = await Promise.all([
 		fetch(`/api/connections/google/calendar?${params}${acct}`),
 		fetch('/api/connections')
@@ -109,12 +144,28 @@ export const load: PageLoad = async ({ fetch, url }) => {
 		? ((await connectionsRes.json()) as { accounts: RosterAccount[] }).accounts
 		: [];
 
+	/**
+	 * The rail is always about exactly one account, even when the grid is not.
+	 *
+	 * Events can be unioned because every row carries the account it came from,
+	 * which is what D111 asks for. A list of calendars and followed people
+	 * cannot: it is an address book, the union of two of them is two clients'
+	 * contacts in one list, and no per-row label makes that the right thing to
+	 * draw. So the union view keeps its unioned grid and the rail names the one
+	 * account it belongs to, which the header says out loud.
+	 */
+	const railAccount = scope.account === 'all' ? (roster[0]?.id ?? '') : scope.account;
+	const one = accountQuery(railAccount, '?');
+
 	// No account connected is a state, not a failure. D113.
 	if (!scope.connected || eventsRes.status === 400 || eventsRes.status === 404) {
 		return {
 			events: [] as CalendarEventRow[],
+			calendars: [] as CalendarListRow[],
+			follows: [] as FollowRow[],
 			roster,
 			account: scope.account,
+			railAccount: '',
 			scope: 'one' as const,
 			view,
 			from: from.toISOString(),
@@ -125,15 +176,31 @@ export const load: PageLoad = async ({ fetch, url }) => {
 		};
 	}
 
+	const [calendarsRes, followsRes] = await Promise.all([
+		fetch(`/api/connections/google/calendars${one}`),
+		fetch(`/api/connections/google/calendar/follows${one}`)
+	]);
+
 	const error = await scopedError(eventsRes, 'the calendar');
 	const payload = eventsRes.ok
 		? ((await eventsRes.json()) as { events: CalendarEventRow[]; scope: 'one' | 'all' })
 		: { events: [] as CalendarEventRow[], scope: 'one' as const };
 
+	const calendars = calendarsRes.ok
+		? ((await calendarsRes.json()) as { calendars: CalendarListRow[] }).calendars
+		: [];
+
+	const follows = followsRes.ok
+		? ((await followsRes.json()) as { follows: FollowRow[] }).follows
+		: [];
+
 	return {
 		events: payload.events,
+		calendars,
+		follows,
 		roster,
 		account: scope.account,
+		railAccount,
 		scope: payload.scope,
 		view,
 		from: from.toISOString(),

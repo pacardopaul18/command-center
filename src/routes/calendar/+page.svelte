@@ -1,8 +1,15 @@
 <script lang="ts">
 	import { goto, invalidateAll } from '$app/navigation';
 	import { apiWrite } from '$lib/http';
+	import Button from '$lib/components/Button.svelte';
 	import Card from '$lib/components/Card.svelte';
+	import Input from '$lib/components/Input.svelte';
 	import MailboxPicker from '$lib/components/MailboxPicker.svelte';
+	import Modal from '$lib/components/Modal.svelte';
+	import Select from '$lib/components/Select.svelte';
+	import Textarea from '$lib/components/Textarea.svelte';
+	import { buildDraftInviteUrl, draftFits } from '$lib/calendar-draft';
+	import { findSlots, type Interval, type Slot } from '$lib/free-slots';
 	import { reauthNotice } from '$lib/mailbox-warning';
 	import type { PageData } from './$types';
 	import type { CalendarEventRow } from './+page';
@@ -16,7 +23,10 @@
 	 * so it belongs to the same app without needing its own prototype.
 	 *
 	 * Read only, and it says so. The app holds calendar.readonly and no route
-	 * can write to Google, which is the same boundary Mail keeps.
+	 * can write to Google, which is the same boundary Mail keeps. The redesign
+	 * draws a New invite button whose own footnote said writes go through the
+	 * Google Calendar API; it is Draft invite here, and it opens Google's event
+	 * form with everything filled in. D148.
 	 */
 
 	let { data }: { data: PageData } = $props();
@@ -190,6 +200,281 @@
 		return end ? `${fmt(start)} to ${fmt(end)}` : fmt(start);
 	}
 
+	/* ---------------------------------------------------------------------
+	 * The rail: calendars, and the people this app follows
+	 * ------------------------------------------------------------------ */
+
+	/** The address the rail belongs to, which every scoped call needs. */
+	const accountEmail = $derived(
+		data.roster.find((a) => a.id === data.railAccount)?.account_email ?? null
+	);
+
+	/**
+	 * Turning a calendar off deletes the events it put here, which the route
+	 * does deliberately. Reloading is therefore not a nicety: without it the
+	 * grid keeps drawing rows the database no longer has.
+	 */
+	async function toggleCalendar(id: string, on: boolean) {
+		busy = true;
+		errorMessage = '';
+		const res = await apiWrite(
+			`/api/connections/google/calendars/${id}/toggle?on=${on}&account=${data.railAccount}`,
+			'POST',
+			{}
+		);
+		busy = false;
+		if (res.ok) await invalidateAll();
+		else errorMessage = res.error ?? 'Could not change that calendar.';
+	}
+
+	let followEmail = $state('');
+	let followName = $state('');
+
+	async function follow(event: SubmitEvent) {
+		event.preventDefault();
+		if (!followEmail.trim()) return;
+		busy = true;
+		errorMessage = '';
+		const res = await apiWrite(
+			`/api/connections/google/calendar/follows?account=${data.railAccount}`,
+			'POST',
+			{ email: followEmail, display_name: followName }
+		);
+		busy = false;
+		if (res.ok) {
+			followEmail = '';
+			followName = '';
+			await invalidateAll();
+		} else {
+			errorMessage = res.error ?? 'Could not follow that calendar.';
+		}
+	}
+
+	async function unfollow(id: string) {
+		busy = true;
+		const res = await apiWrite(
+			`/api/connections/google/calendar/follows/${id}?account=${data.railAccount}`,
+			'DELETE',
+			null
+		);
+		busy = false;
+		if (res.ok) {
+			picked.delete(id);
+			picked = new Set(picked);
+			await invalidateAll();
+		} else {
+			errorMessage = res.error ?? 'Could not unfollow that calendar.';
+		}
+	}
+
+	/* ---------------------------------------------------------------------
+	 * Find a time
+	 * ------------------------------------------------------------------ */
+
+	/**
+	 * Who to match against. Keyed by follow id, with the account itself always
+	 * included, because a slot that is free for everyone else and not for Paul
+	 * is not a slot.
+	 */
+	let picked = $state(new Set<string>());
+
+	function togglePicked(id: string) {
+		if (picked.has(id)) picked.delete(id);
+		else picked.add(id);
+		picked = new Set(picked);
+	}
+
+	let slotMinutes = $state('30');
+	let matching = $state(false);
+	let slots = $state<Slot[]>([]);
+	let matched = $state(false);
+	let unreadable = $state<{ id: string; error: string | null }[]>([]);
+
+	/**
+	 * The working window a suggestion must fall inside, on the reader's clock.
+	 *
+	 * Nine to five, not configurable yet, and named here rather than buried in
+	 * the call so the number a reader disagrees with is findable.
+	 */
+	const DAY_START_HOUR = 9;
+	const DAY_END_HOUR = 17;
+
+	/**
+	 * Minutes to add to UTC to reach the zone the page is drawing in.
+	 *
+	 * Read in the browser, from the zone the page is on, because the toggle
+	 * above can put it on firm time and nine to five then means nine to five in
+	 * Denver. The server has no business guessing which clock a reader is on.
+	 */
+	function zoneOffsetMinutes(): number {
+		const probe = new Date();
+		const asUtc = new Date(probe.toLocaleString('en-US', { timeZone: 'UTC' }));
+		const asZone = new Date(probe.toLocaleString('en-US', { timeZone: zone }));
+		return Math.round((asZone.getTime() - asUtc.getTime()) / 60_000);
+	}
+
+	async function findTime() {
+		matching = true;
+		matched = false;
+		errorMessage = '';
+		slots = [];
+		unreadable = [];
+
+		const from = new Date();
+		const to = new Date(from.getTime() + 14 * 86_400_000);
+
+		const emails = [
+			...(accountEmail ? [accountEmail] : []),
+			...data.follows.filter((f) => picked.has(f.id)).map((f) => f.email)
+		];
+
+		if (emails.length === 0) {
+			matching = false;
+			errorMessage = 'This account has no email address on it to match against.';
+			return;
+		}
+
+		const res = await apiWrite(
+			`/api/connections/google/calendar/free-busy?account=${data.railAccount}`,
+			'POST',
+			{ emails, from: from.toISOString(), to: to.toISOString() }
+		);
+		matching = false;
+
+		if (!res.ok) {
+			errorMessage = res.error ?? 'Could not read free and busy from Google.';
+			return;
+		}
+
+		const answer = res.data as unknown as {
+			calendars: { id: string; busy: Interval[]; error: string | null }[];
+			unreadable: { id: string; error: string | null }[];
+		};
+
+		unreadable = answer.unreadable ?? [];
+
+		slots = findSlots(
+			answer.calendars.flatMap((cal) => cal.busy),
+			{
+				minutes: Number(slotMinutes),
+				from: from.toISOString(),
+				to: to.toISOString(),
+				dayStartHour: DAY_START_HOUR,
+				dayEndHour: DAY_END_HOUR,
+				zoneOffsetMinutes: zoneOffsetMinutes(),
+				limit: 12,
+				granularity: 15
+			}
+		);
+		matched = true;
+	}
+
+	function slotLabel(slot: Slot): string {
+		const start = new Date(slot.start);
+		const end = new Date(slot.end);
+		const day = start.toLocaleDateString('en-US', {
+			weekday: 'short',
+			month: 'short',
+			day: 'numeric',
+			timeZone: zone
+		});
+		const fmt = (d: Date) =>
+			d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: zone });
+		return `${day}, ${fmt(start)} to ${fmt(end)}`;
+	}
+
+	/* ---------------------------------------------------------------------
+	 * Draft invite
+	 * ------------------------------------------------------------------ */
+
+	let draftOpen = $state(false);
+	let draft = $state({
+		title: '',
+		day: '',
+		time: '10:00',
+		minutes: '30',
+		guests: '',
+		location: '',
+		description: ''
+	});
+
+	const DURATIONS = ['15', '30', '45', '60', '90', '120'];
+
+	/**
+	 * The next hour a person would actually put a meeting in.
+	 *
+	 * Opened with no slot, the dialog used the current hour, which at two in the
+	 * morning offered two in the morning. That is precisely the suggestion
+	 * `findSlots` refuses to make, and a default is a suggestion: the reader who
+	 * does not change it has been given a bad time by the app rather than by
+	 * themselves. Before the day starts it is nine today, after it ends it is
+	 * nine tomorrow, and inside it it is the top of the next hour.
+	 */
+	function nextSensibleStart(): Date {
+		const now = new Date();
+		const start = new Date(now);
+		start.setMinutes(0, 0, 0);
+		start.setHours(start.getHours() + 1);
+
+		if (start.getHours() < DAY_START_HOUR) start.setHours(DAY_START_HOUR);
+		else if (start.getHours() >= DAY_END_HOUR) {
+			start.setDate(start.getDate() + 1);
+			start.setHours(DAY_START_HOUR);
+		}
+		return start;
+	}
+
+	function openDraft(slot?: Slot) {
+		const start = slot ? new Date(slot.start) : nextSensibleStart();
+		draft = {
+			title: '',
+			// A date and time input read the browser's local clock, which is the
+			// one the reader picked the slot off the screen with.
+			day: `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}-${String(start.getDate()).padStart(2, '0')}`,
+			time: `${String(start.getHours()).padStart(2, '0')}:${String(start.getMinutes()).padStart(2, '0')}`,
+			minutes: String(
+				slot ? Math.round((new Date(slot.end).getTime() - start.getTime()) / 60_000) : 30
+			),
+			guests: data.follows
+				.filter((f) => picked.has(f.id))
+				.map((f) => f.email)
+				.join(', '),
+			location: '',
+			description: ''
+		};
+		draftOpen = true;
+	}
+
+	/**
+	 * The invite, as a link into Google's own form.
+	 *
+	 * Derived rather than built on submit, so the control is a plain anchor and
+	 * the reader can see where it goes before pressing it. Nothing is created
+	 * here and nothing is sent: Google's form opens with the fields filled and
+	 * the person presses Save there. D148.
+	 */
+	const draftStart = $derived(new Date(`${draft.day}T${draft.time}`));
+
+	const draftFields = $derived({
+		authuser: accountEmail,
+		title: draft.title.trim(),
+		startsAt: draftStart,
+		endsAt: new Date(draftStart.getTime() + Number(draft.minutes) * 60_000),
+		guests: draft.guests
+			.split(/[,;\s]+/)
+			.map((g) => g.trim())
+			.filter(Boolean),
+		location: draft.location.trim(),
+		description: draft.description.trim()
+	});
+
+	const draftReady = $derived(
+		draft.title.trim().length > 0 && Number.isFinite(draftStart.getTime())
+	);
+
+	const draftUrl = $derived(draftReady ? buildDraftInviteUrl(draftFields) : '');
+	const draftTooLong = $derived(draftReady && !draftFits(draftFields));
+
 	const RESPONSE_LABEL: Record<string, string> = {
 		accepted: 'Going',
 		declined: 'Not going',
@@ -209,8 +494,9 @@
 		<div>
 			<h1>Calendar</h1>
 			<p class="sub">
-				Read only. Nothing here changes anything in Google Calendar, because this app has no
-				permission to. Times shown in <strong>{zoneLabel}</strong>.
+				Every calendar you own or follow, in one place. Read only: nothing here changes
+				anything in Google Calendar, because this app has no permission to. Times shown in
+				<strong>{zoneLabel}</strong>.
 			</p>
 			<label class="switch">
 				<input type="checkbox" role="switch" checked={firmTime} onchange={toggleZone} />
@@ -218,12 +504,15 @@
 				<span>Show in firm time (Mountain)</span>
 			</label>
 		</div>
-		<MailboxPicker
-			accounts={data.roster}
-			active={data.account}
-			busy={busy}
-			onChange={switchAccount}
-		/>
+		<div class="head-actions">
+			<MailboxPicker
+				accounts={data.roster}
+				active={data.account}
+				busy={busy}
+				onChange={switchAccount}
+			/>
+			<Button onclick={() => openDraft()}>Draft invite</Button>
+		</div>
 	</header>
 
 	{#each data.roster as account (account.id)}
@@ -257,6 +546,152 @@
 			</span>
 		</div>
 	</div>
+
+	<div class="board">
+		<aside class="rail">
+			<!--
+				The rail is about one account even when the grid is not. A list of
+				calendars and followed people is an address book, and the union of
+				two address books is two clients' contacts in one list with nothing
+				able to label them apart.
+			-->
+			<Card title="Calendars">
+				{#snippet actions()}
+					<span class="count mono">{data.calendars.filter((c) => c.sync_enabled).length} shown</span>
+				{/snippet}
+
+				{#if data.scope === 'all'}
+					<p class="fine">
+						The grid is showing every account. This list belongs to
+						<strong>{accountEmail ?? data.railAccount}</strong>.
+					</p>
+				{/if}
+
+				{#if data.calendars.length === 0}
+					<p class="fine">
+						No calendars have been read yet. Refresh the calendar list in Settings.
+					</p>
+				{/if}
+
+				<ul class="cals">
+					{#each data.calendars as cal (cal.id)}
+						<li>
+							<label class="cal">
+								<input
+									type="checkbox"
+									checked={cal.sync_enabled === 1}
+									disabled={busy}
+									onchange={(e) =>
+										toggleCalendar(cal.id, (e.currentTarget as HTMLInputElement).checked)}
+								/>
+								<span
+									class="swatch"
+									style="background: {cal.background_color ?? 'var(--navy-500)'}"
+									aria-hidden="true"
+								></span>
+								<span class="cal-text">
+									<span class="cal-name">{cal.summary ?? cal.provider_calendar_id}</span>
+									<span class="cal-note mono">
+										{cal.is_primary ? 'yours, primary' : 'yours'}
+										{#if cal.sync_enabled}, {cal.event_count} read{/if}
+									</span>
+								</span>
+							</label>
+						</li>
+					{/each}
+
+					{#each data.follows as person (person.id)}
+						<li>
+							<div class="cal follow">
+								<input
+									type="checkbox"
+									checked={picked.has(person.id)}
+									onchange={() => togglePicked(person.id)}
+									aria-label="Match against {person.display_name ?? person.email}"
+								/>
+								<span
+									class="swatch"
+									style="background: {person.color ?? 'var(--navy-500)'}"
+									aria-hidden="true"
+								></span>
+								<span class="cal-text">
+									<span class="cal-name">{person.display_name ?? person.email}</span>
+									<span class="cal-note mono">followed, busy only</span>
+								</span>
+								<button
+									type="button"
+									class="leave"
+									disabled={busy}
+									onclick={() => unfollow(person.id)}
+									aria-label="Stop following {person.display_name ?? person.email}"
+								>
+									Leave
+								</button>
+							</div>
+						</li>
+					{/each}
+				</ul>
+
+				<form class="follow-form" onsubmit={follow}>
+					<Input
+						bind:value={followEmail}
+						type="email"
+						placeholder="name@company.com"
+						aria-label="Calendar address to follow"
+					/>
+					<Input bind:value={followName} placeholder="Name, optional" aria-label="Their name" />
+					<Button type="submit" variant="secondary" disabled={busy}>Follow</Button>
+				</form>
+
+				<p class="fine">
+					Following is this app's own list. It shows their busy blocks when they have shared
+					their free and busy, never their event details, and it changes nothing in anyone's
+					Google account.
+				</p>
+			</Card>
+
+			<Card title="Find a time">
+				<p class="fine">
+					Matches free space over the next fortnight, {DAY_START_HOUR}:00 to {DAY_END_HOUR}:00,
+					against this account and everyone ticked above.
+				</p>
+
+				<div class="match">
+					<Select bind:value={slotMinutes} aria-label="How long">
+						{#each DURATIONS as minutes (minutes)}
+							<option value={minutes}>{minutes} minutes</option>
+						{/each}
+					</Select>
+					<Button disabled={matching} onclick={findTime}>
+						{matching ? 'Matching' : 'Match'}
+					</Button>
+				</div>
+
+				{#each unreadable as miss (miss.id)}
+					<p class="fine warn">{miss.id}: {miss.error}</p>
+				{/each}
+
+				{#if matched && slots.length === 0}
+					<p class="fine">
+						Nothing free in the next fortnight at that length. Try a shorter meeting or fewer
+						calendars.
+					</p>
+				{/if}
+
+				<ul class="slots">
+					{#each slots as slot (slot.start)}
+						<li>
+							<span class="slot-when">{slotLabel(slot)}</span>
+							<button type="button" class="leave" onclick={() => openDraft(slot)}>
+								Draft invite
+							</button>
+						</li>
+					{/each}
+				</ul>
+			</Card>
+		</aside>
+
+		<div class="main">
 
 {#snippet eventRow(event: CalendarEventRow)}
 		<div class="row-wrap">
@@ -441,9 +876,309 @@
 			{/if}
 		</div>
 	{/if}
+		</div>
+	</div>
+
+	<!--
+		Draft invite, which is the redesign's New invite after the D148
+		translation. Everything below builds a link into Google's own event form.
+		No route here creates an event, and none ever can: the token holds
+		calendar.readonly.
+	-->
+	<Modal bind:open={draftOpen} title="Draft invite">
+		<div class="draft">
+			<p class="fine">
+				This fills in Google's own event form and opens it. Nothing is created or sent from
+				here, and you press Save in Google.
+			</p>
+
+			<label class="field">
+				<span>Title</span>
+				<Input bind:value={draft.title} placeholder="What the meeting is for" />
+			</label>
+
+			<div class="three">
+				<label class="field">
+					<span>Day</span>
+					<Input bind:value={draft.day} type="date" />
+				</label>
+				<label class="field">
+					<span>Start</span>
+					<Input bind:value={draft.time} type="time" />
+				</label>
+				<label class="field">
+					<span>Duration</span>
+					<Select bind:value={draft.minutes}>
+						{#each DURATIONS as minutes (minutes)}
+							<option value={minutes}>{minutes} minutes</option>
+						{/each}
+					</Select>
+				</label>
+			</div>
+
+			<label class="field">
+				<span>Guests</span>
+				<Input bind:value={draft.guests} placeholder="Emails, comma separated" />
+			</label>
+
+			<label class="field">
+				<span>Location</span>
+				<Input bind:value={draft.location} placeholder="Optional, for in person" />
+			</label>
+
+			<label class="field">
+				<span>Description</span>
+				<Textarea bind:value={draft.description} rows={3} placeholder="Agenda and context." />
+			</label>
+
+			<!--
+				Reminders, recurrence and a Meet link are drawn in the prototype and
+				are not here. Google's event form takes none of them through a URL,
+				and a control the reader fills that Google then ignores is worse
+				than one that is absent. D27.
+			-->
+			<p class="fine">
+				Set a reminder, a repeat or a Meet link in Google once the form opens. They cannot be
+				filled in from here.
+			</p>
+
+			{#if draftTooLong}
+				<p class="error" role="alert">
+					That description is too long to hand to Google in a link and would arrive cut off.
+					Shorten it, or paste it into the form yourself.
+				</p>
+			{/if}
+
+			<div class="draft-actions">
+				<Button
+					href={draftReady && !draftTooLong ? draftUrl : undefined}
+					target="_blank"
+					rel="noopener noreferrer"
+					disabled={!draftReady || draftTooLong}
+					onclick={() => (draftOpen = false)}
+				>
+					Open in Google Calendar
+				</Button>
+				<Button variant="secondary" onclick={() => (draftOpen = false)}>Cancel</Button>
+			</div>
+		</div>
+	</Modal>
 {/if}
 
 <style>
+	/*
+	 * The rail beside the grid, and gone below it on a phone.
+	 *
+	 * Two columns at a desk, one column stacked on a phone with the rail after
+	 * the grid rather than before it: on 412px a reader opening the calendar
+	 * wants today, not a list of which calendars are switched on. Source order
+	 * puts the rail first because that is where it belongs in the reading order
+	 * on a wide screen, and `order` moves it below on a narrow one.
+	 */
+	.board {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr);
+		gap: var(--space-4);
+		align-items: start;
+	}
+
+	@media (min-width: 1100px) {
+		.board {
+			grid-template-columns: 300px minmax(0, 1fr);
+		}
+	}
+
+	.rail {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-4);
+		order: 2;
+		min-width: 0;
+	}
+
+	.main {
+		order: 1;
+		min-width: 0;
+	}
+
+	@media (min-width: 1100px) {
+		.rail {
+			order: 0;
+			position: sticky;
+			top: var(--space-4);
+		}
+		.main {
+			order: 0;
+		}
+	}
+
+	.head-actions {
+		display: flex;
+		align-items: center;
+		gap: var(--space-3);
+		flex-wrap: wrap;
+	}
+
+	.count {
+		font-size: var(--text-xs);
+		color: var(--text-muted);
+	}
+
+	.cals {
+		list-style: none;
+		margin: 0 0 var(--space-3);
+		padding: 0;
+		display: flex;
+		flex-direction: column;
+	}
+
+	.cals li + li {
+		border-top: 1px solid var(--border-hairline);
+	}
+
+	.cal {
+		display: flex;
+		align-items: center;
+		gap: var(--space-2);
+		/* 44px tap floor, D22, and the row is the target rather than the box. */
+		min-height: 44px;
+		padding: var(--space-2) 0;
+		cursor: pointer;
+	}
+
+	.cal input[type='checkbox'] {
+		width: 18px;
+		height: 18px;
+		accent-color: var(--navy-600);
+		flex: none;
+	}
+
+	.swatch {
+		width: 10px;
+		height: 10px;
+		border-radius: 50%;
+		flex: none;
+	}
+
+	.cal-text {
+		display: flex;
+		flex-direction: column;
+		min-width: 0;
+		flex: 1;
+	}
+
+	.cal-name {
+		font-size: var(--text-sm);
+		color: var(--text-body);
+		overflow-wrap: anywhere;
+	}
+
+	.cal-note {
+		font-size: var(--text-xs);
+		color: var(--text-muted);
+	}
+
+	.leave {
+		border: 1px solid var(--border-thin);
+		border-radius: var(--radius-sm);
+		background: transparent;
+		color: var(--text-muted);
+		font: inherit;
+		font-size: var(--text-xs);
+		min-height: 32px;
+		padding: 0 var(--space-2);
+		cursor: pointer;
+		flex: none;
+	}
+
+	.leave:hover:not(:disabled) {
+		color: var(--text-body);
+		border-color: var(--navy-600);
+	}
+
+	.follow-form {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-2);
+		margin-bottom: var(--space-2);
+	}
+
+	.match {
+		display: flex;
+		gap: var(--space-2);
+		align-items: center;
+		margin: var(--space-3) 0;
+	}
+
+	.match :global(select) {
+		flex: 1;
+	}
+
+	.slots {
+		list-style: none;
+		margin: var(--space-2) 0 0;
+		padding: 0;
+	}
+
+	.slots li {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: var(--space-2);
+		min-height: 44px;
+		padding: var(--space-2) 0;
+		border-top: 1px solid var(--border-hairline);
+	}
+
+	.slot-when {
+		font-size: var(--text-sm);
+		color: var(--text-body);
+	}
+
+	.warn {
+		color: var(--gold-700, var(--text-muted));
+	}
+
+	.draft {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-3);
+		padding: 0 var(--space-4) var(--space-4);
+	}
+
+	.field {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-1);
+	}
+
+	.field > span {
+		font-family: var(--font-mono);
+		font-size: var(--text-xs);
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+		color: var(--text-muted);
+	}
+
+	.three {
+		display: grid;
+		grid-template-columns: 1fr;
+		gap: var(--space-3);
+	}
+
+	@media (min-width: 560px) {
+		.three {
+			grid-template-columns: repeat(3, minmax(0, 1fr));
+		}
+	}
+
+	.draft-actions {
+		display: flex;
+		gap: var(--space-2);
+		flex-wrap: wrap;
+		margin-top: var(--space-2);
+	}
+
 	.head {
 		display: flex;
 		align-items: flex-end;

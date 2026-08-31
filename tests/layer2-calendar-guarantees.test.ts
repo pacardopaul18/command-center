@@ -3,6 +3,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { SCOPES } from '../src/lib/server/google';
+import { buildDraftInviteUrl, googleStamp } from '../src/lib/calendar-draft';
 
 /**
  * What the Calendar module must not do.
@@ -51,6 +52,7 @@ function wipe() {
 			`DELETE FROM calendar_event_state WHERE event_id IN
        (SELECT id FROM calendar_events WHERE connection_id = ?)`
 		).run(acc);
+		db.prepare('DELETE FROM followed_calendars WHERE connection_id = ?').run(acc);
 		db.prepare('DELETE FROM calendar_events WHERE connection_id = ?').run(acc);
 		db.prepare('DELETE FROM calendars WHERE connection_id = ?').run(acc);
 		db.prepare('DELETE FROM connections WHERE id = ?').run(acc);
@@ -173,5 +175,133 @@ describe('the calendar module', () => {
 		const source = readFileSync('src/lib/server/google.ts', 'utf8');
 		// Nothing may create, patch or delete an event.
 		expect(source).not.toMatch(/method:\s*'(POST|PUT|PATCH|DELETE)'[\s\S]{0,400}calendars\//);
+	});
+});
+
+/**
+ * The follow list, which is this app's own and not Google's.
+ *
+ * Following is the redesign's Follow button after the D70 translation: it
+ * changes what this screen shows and never touches the user's CalendarList.
+ * Being local does not make it unscoped. A followed address is a person one
+ * account works with, and leaking the list across accounts would put a client's
+ * contacts in front of another client's screen, which is D110 again in a new
+ * table.
+ */
+describe('the follow list belongs to one account', () => {
+	const ADDRESS = 'zulu-followed@viewtest.invalid';
+
+	it('a follow made on one account is invisible to the other', async () => {
+		const made = await fetch(`${BASE}/api/connections/google/calendar/follows?account=${A}`, {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ email: ADDRESS, display_name: 'ZULU FOLLOWED PERSON' })
+		});
+		expect(made.ok, await made.text()).toBe(true);
+
+		const mine = await api(`/api/connections/google/calendar/follows?account=${A}`);
+		expect(mine.text, 'the account cannot see its own follow').toContain(ADDRESS);
+
+		const theirs = await api(`/api/connections/google/calendar/follows?account=${B}`);
+		expect(theirs.text, "account B was shown account A's follow list").not.toContain(ADDRESS);
+	});
+
+	it("refuses to unfollow another account's row rather than silently doing nothing", async () => {
+		const row = db
+			.prepare('SELECT id FROM followed_calendars WHERE connection_id = ? AND email = ?')
+			.get(A, ADDRESS) as { id: string };
+		expect(row?.id, 'the follow was never written').toBeTruthy();
+
+		const wrong = await fetch(
+			`${BASE}/api/connections/google/calendar/follows/${row.id}?account=${B}`,
+			{ method: 'DELETE' }
+		);
+		expect(wrong.status, "one account deleted another's follow").toBe(404);
+
+		// D108: still there, because a refusal that deleted the row anyway would
+		// pass a status check and fail the promise.
+		const still = db
+			.prepare('SELECT COUNT(*) AS n FROM followed_calendars WHERE id = ?')
+			.get(row.id) as { n: number };
+		expect(Number(still.n)).toBe(1);
+
+		const right = await fetch(
+			`${BASE}/api/connections/google/calendar/follows/${row.id}?account=${A}`,
+			{ method: 'DELETE' }
+		);
+		expect(right.ok, 'the owning account could not unfollow').toBe(true);
+	});
+
+	it('the same address followed twice stays one row', async () => {
+		for (let i = 0; i < 2; i++) {
+			await fetch(`${BASE}/api/connections/google/calendar/follows?account=${A}`, {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ email: ADDRESS.toUpperCase() })
+			});
+		}
+		const n = db
+			.prepare('SELECT COUNT(*) AS n FROM followed_calendars WHERE connection_id = ?')
+			.get(A) as { n: number };
+		expect(Number(n.n), 'one address became two people').toBe(1);
+	});
+});
+
+/**
+ * Draft invite is a link, asserted the way the mail compose link is.
+ *
+ * This is the control most likely to grow a convenient endpoint behind it
+ * later, because it is a dialog with a button that produces an event. The
+ * assertion is that the produced thing is a URL into Google's own form and that
+ * no route exists that could create one here.
+ */
+describe('an invite is drafted, never sent', () => {
+	const FIELDS = {
+		authuser: 'zulu-drafter@viewtest.invalid',
+		title: 'ZULU DRAFT SUBJECT',
+		startsAt: new Date('2026-09-02T15:00:00Z'),
+		endsAt: new Date('2026-09-02T15:30:00Z'),
+		guests: ['zulu-one@viewtest.invalid', 'zulu-two@viewtest.invalid'],
+		location: 'Room 2',
+		description: 'Agenda and context.'
+	};
+
+	it('produces a Google event form URL and nothing else', () => {
+		const url = buildDraftInviteUrl(FIELDS);
+		expect(url.startsWith('https://calendar.google.com/calendar/'), url).toBe(true);
+		expect(url).toContain('action=TEMPLATE');
+		expect(url).toContain(`dates=${googleStamp(FIELDS.startsAt)}/${googleStamp(FIELDS.endsAt)}`);
+	});
+
+	it('carries every guest, not just the first', () => {
+		const url = buildDraftInviteUrl(FIELDS);
+		for (const guest of FIELDS.guests) {
+			expect(url, `${guest} was dropped from the draft`).toContain(encodeURIComponent(guest));
+		}
+	});
+
+	it('writes a space as %20, never as a plus', () => {
+		const url = buildDraftInviteUrl(FIELDS);
+		expect(url).toContain('ZULU%20DRAFT%20SUBJECT');
+		expect(url, 'a space was encoded as a plus and will arrive as one').not.toMatch(
+			/text=[^&]*\+/
+		);
+	});
+
+	it('registers no route that could create an event in Google', () => {
+		/**
+		 * Calendar paths only. An invoice has a trail of events and a meeting
+		 * has follow-ups, and a rule broad enough to catch the word `event`
+		 * anywhere catches those, which is how a guard gets deleted for being
+		 * noisy rather than fixed for being wrong.
+		 */
+		const dir = 'src/lib/server/api';
+		for (const file of readdirSync(dir).filter((f) => f.endsWith('.ts'))) {
+			const source = readFileSync(join(dir, file), 'utf8');
+			expect(
+				source.match(/\.(post|put|patch|delete)\(\s*'[^']*calendar[^']*(invite|event)/i)?.[0],
+				`${file} registers a route that could write to a calendar`
+			).toBeUndefined();
+		}
 	});
 });

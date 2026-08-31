@@ -4091,3 +4091,90 @@ what Paul did. Send reminder became Log a reminder, which records a chase that
 happened in Gmail. Recording what was done outside the app is the other half of
 the boundary: the alternative is a screen that knows nothing about the chasing
 that actually gets invoices paid.
+
+### D148: New invite becomes Draft invite, and the invite is a link
+
+The Calendar prototype draws a New invite dialog. Its own footnote says writes
+go through the Google Calendar API, and its primary button says Send invite.
+Neither is available. The token holds `calendar.readonly` and `gmail.readonly`,
+and D70 is the reason it always will: a scope never granted cannot be used by a
+later bug, which is a stronger guarantee than any amount of careful code.
+
+So the button keeps its job and loses its verb. Draft invite opens Google's own
+event form with the title, day, start, duration, guests, location and
+description already filled in, and the person presses Save there. The same
+boundary as the Gmail compose link, built the same way, in
+`src/lib/calendar-draft.ts` beside `src/lib/gmail-compose.ts`.
+
+Three controls the prototype draws are absent rather than present and inert:
+reminder, repeat and the Add Google Meet toggle. Google's event form takes none
+of them through a URL. A reminder field the reader fills and Google ignores is
+worse than no field, D27, so the dialog says in one line where those three are
+set instead.
+
+The URL is built in the browser, never on the server, for the reason
+gmail-compose gives: a meeting title and a guest list travelling through a
+request could land in a log, and D89 says calendar and mail content is counted,
+not recorded.
+
+### D149: Follow and Leave change what this app shows, never Google's list
+
+The prototype's Follow and Leave subscribe and unsubscribe a calendar, which
+writes to the user's CalendarList. Same problem as D148 and the same shape of
+answer: the buttons keep their names, and what they change is a table in this
+app.
+
+`followed_calendars`, migration 0026, per connection. Per connection is not
+incidental. A followed address is somebody one account works with, and a single
+global list would put a client's contacts in front of another client's screen,
+which is D110 in a new table. The guarantee test asserts it in both directions:
+a follow made on one account is invisible to the other, and unfollowing another
+account's row is refused rather than quietly doing nothing, D108.
+
+What following buys is a free and busy read against that address. Google
+answers with busy blocks and nothing else, and only when the person has shared
+their free and busy. No event title, no guest list, no location can arrive
+through that path even if a later change asks for one.
+
+### D150: RSVP is dropped rather than faked
+
+The prototype's event detail offers Yes, Maybe and No. Accepting an invitation
+is a write to somebody else's event, and it has no honest local translation:
+recording "Paul said yes" in this app while Google still shows him as not
+responded is worse than not asking, because the organiser is looking at Google.
+
+Nothing replaces it. The event detail still shows the response Google reports,
+because that is a read. A button that looks like an RSVP and is not is the exact
+failure D27 names, and the right number of those on this screen is zero.
+
+Join meeting stays. It is an outbound link to Meet, which is a link like any
+other.
+
+### D151: Find a time reads free and busy live, and says who it could not read
+
+The slot matcher could have run over the cached `calendar_events` table, which
+would need no network and no token. It does not, because the point of asking is
+the people this app does not sync: a followed colleague whose events it has
+never read and never will. Their busy blocks come from Google's freeBusy
+endpoint, which `calendar.readonly` permits and which is a read despite being a
+POST: the body is the question.
+
+Two properties matter more than the feature does.
+
+Every address that could not be read is named in the answer and on the screen.
+Google returns the same empty busy list for "this person is free" and for "you
+may not look", and collapsing those draws somebody who has shared nothing as
+wide open all week. That is a confident wrong answer, and a meeting gets booked
+on top of it.
+
+The arithmetic is a pure function, `src/lib/free-slots.ts`, tested without a
+network. Four real bugs were caught there before the feature was wired to
+anything: a zero-length gap invented between two back-to-back meetings, a slot
+offered that ended after the working day, a half hour ending exactly at the
+close wrongly refused, and a 23:30 start that passed the end-of-day check
+because its end wrapped to midnight and read as "0 minutes past". Every one of
+those looks like a working feature on screen.
+
+Working hours are applied on the clock the reader is on, passed in from the
+browser, because the page has a firm-time toggle and nine to five has to mean
+nine to five wherever the page currently is.
