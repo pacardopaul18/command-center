@@ -216,6 +216,10 @@ w("-- aborting on the first collision. sops and sop_versions are not cleared:")
 w("-- a trigger makes versions immutable by design, D33, so they are rewritten.")
 for table in [
     "meeting_action_proposals",
+    # The ledger goes first: transactions reference categories, and both carry
+    # the v- prefix, so neither is reached by any other DELETE in this list.
+    "ledger_transactions",
+    "ledger_categories",
     "action_items",
     "time_entries",
     "invoices",
@@ -535,7 +539,7 @@ for i in range(1, N_INVOICES + 1):
         f"V-{2000 + i}", day(issue), day(due), amount, paid, status,
         ts(issue), ts(issue + 1),
     ))
-    inv_plan.append((f"v-in-{i}", issue, due, amount, paid, status))
+    inv_plan.append((f"v-in-{i}", f"v-cl-{ci}", issue, due, amount, paid, status))
 batched_insert("invoices", ["id","client_id","billing_period_id","invoice_number","issue_date",
                             "due_date","amount_cents","amount_paid_cents","status",
                             "created_at","updated_at"], invoices)
@@ -556,6 +560,10 @@ batched_insert("invoices", ["id","client_id","billing_period_id","invoice_number
 # an oversight.
 detail = random.Random(20260901)
 
+# Every payment, as the ledger line the app would have written when it was
+# recorded. Filled in by the loop below and emitted after the invoices exist.
+posted_payments = []
+
 # One rate, one hundred dollars, so a line's quantity times its rate lands on an
 # exact number of cents and the line items sum to the invoice total that was
 # already generated above. A seed that produced a breakdown disagreeing with the
@@ -573,7 +581,7 @@ WORK = [
 
 line_items, payments, events, invoice_detail_updates = [], [], [], []
 
-for (inv_id, issue, due, amount, paid, status) in inv_plan:
+for (inv_id, client, issue, due, amount, paid, status) in inv_plan:
     category, subs, service = detail.choice(WORK)
     subcategory = detail.choice(subs)
 
@@ -624,6 +632,10 @@ for (inv_id, issue, due, amount, paid, status) in inv_plan:
         payments.append((f"{inv_id}-pay-{n}", inv_id, when, part, method, None, None,
                          ts(issue + 2), ts(issue + 2)))
         bump("counts", "invoice_payments")
+        # The ledger line this payment posts, recorded here rather than
+        # regenerated later, so the books and the invoices carry the same date
+        # and the same figure by construction rather than by coincidence.
+        posted_payments.append((f"{inv_id}-pay-{n}", inv_id, client, when, part, method))
         bump("totals", "payments_cents", part)
         events.append((f"{inv_id}-ev-p{n}", inv_id, when + "T17:00:00Z", "payment",
                        f"Payment recorded, {method.lower()}.", when + "T17:00:00Z"))
@@ -650,6 +662,135 @@ batched_insert("invoice_payments", ["id","invoice_id","paid_on","amount_cents","
                                     "reference","notes","created_at","updated_at"], payments)
 batched_insert("invoice_events", ["id","invoice_id","occurred_at","kind","detail",
                                   "created_at"], events)
+
+# --- the ledger -------------------------------------------------------------
+#
+# Every payment above, posted as the income line the app writes when a payment
+# is recorded, plus a stream of costs a firm this size actually has. Without it
+# the Ledger screen shows one row and neither the month view nor the by-category
+# panel can be judged against anything.
+#
+# The income half is not invented. It is the same payment id, the same client,
+# the same date and the same figure, under the same category the posting route
+# uses, with provenance 'invoice' and source_payment_id set. That means the
+# books and the invoices agree by construction, and the guard that checks they
+# do is testing the app rather than testing two independently generated lists
+# that happen to match.
+#
+# The cost half is invented, in its own random stream, so adding it leaves every
+# value above byte identical.
+books = random.Random(20260903)
+
+LEDGER_CATEGORIES = [
+    # (id, name, kind, parent)
+    ("v-lc-sub", "Subcontractors", "expense", None),
+    ("v-lc-travel", "Travel and meals", "expense", None),
+    ("v-lc-software", "Software subscriptions", "overhead", None),
+    ("v-lc-bank", "Banking and fees", "overhead", None),
+    ("v-lc-office", "Office and equipment", "overhead", None),
+    ("v-lc-prof", "Professional services", "overhead", None),
+]
+
+# Created a year back, so a category is never newer than the lines filed under
+# it. Both timestamps are written explicitly: the columns are NOT NULL with no
+# default, and relying on a default that is not there fails the load rather than
+# quietly writing a null.
+CATEGORY_CREATED = ts(-400)
+
+ledger_categories = []
+for cid, name, kind, parent in LEDGER_CATEGORIES:
+    ledger_categories.append((cid, name, kind, parent, None, CATEGORY_CREATED, CATEGORY_CREATED))
+    bump("counts", "ledger_categories")
+
+batched_insert("ledger_categories",
+               ["id","name","kind","parent_id","archived_at","created_at","updated_at"],
+               ledger_categories)
+
+# What each cost category looks like: how often it turns up in a month, and the
+# range a single line falls in, in whole dollars.
+COST_SHAPE = [
+    ("v-lc-sub",      (0, 2),  (60000, 400000),
+     ["Research assistant", "Contract designer", "Editing support"]),
+    ("v-lc-travel",   (0, 3),  (4000, 90000),
+     ["Site visit, rail and hotel", "Client lunch", "Conference travel"]),
+    ("v-lc-software", (2, 5),  (900, 24000),
+     ["Notion, annual seat", "Cloudflare and hosting", "Figma seat", "Adobe seat"]),
+    ("v-lc-bank",     (1, 3),  (400, 4500),
+     ["Incoming wire fee", "Card processing", "FX spread"]),
+    ("v-lc-office",   (0, 2),  (3000, 120000),
+     ["Desk chair", "Monitor", "Stationery and print"]),
+    ("v-lc-prof",     (0, 1),  (25000, 180000),
+     ["Accountant, quarterly", "Legal review", "Insurance"]),
+]
+
+ledger_txns = []
+n_txn = 0
+
+# Income, from the payments that were actually recorded.
+for pay_id, inv_id, client, when, part, method in posted_payments:
+    n_txn += 1
+    ledger_txns.append((
+        f"v-lt-{n_txn}",
+        "ledger-cat-client-payments",
+        client,
+        None,
+        when,
+        part,
+        "USD",
+        "invoice",
+        inv_id,
+        pay_id,
+        f"Payment received, {method.lower()}.",
+        when + "T17:00:00Z",
+        when + "T17:00:00Z",
+    ))
+    bump("counts", "ledger_transactions")
+    bump("totals", "ledger_income_cents", part)
+
+# Costs, month by month across the same window the rest of the fixture covers.
+for months_back in range(0, 13):
+    # The first of the month, `months_back` months before this one.
+    anchor_year = TODAY_MT.year
+    anchor_month = TODAY_MT.month - months_back
+    while anchor_month <= 0:
+        anchor_month += 12
+        anchor_year -= 1
+    days_in_month = (date(anchor_year + (1 if anchor_month == 12 else 0),
+                          1 if anchor_month == 12 else anchor_month + 1, 1)
+                     - date(anchor_year, anchor_month, 1)).days
+
+    for cat_id, (lo_n, hi_n), (lo_amt, hi_amt), notes in COST_SHAPE:
+        for _ in range(books.randint(lo_n, hi_n)):
+            day_of_month = books.randint(1, days_in_month)
+            when = date(anchor_year, anchor_month, day_of_month)
+            # Never in the future: a cost dated next week is not a cost.
+            if when > TODAY_MT:
+                continue
+            n_txn += 1
+            amount = books.randrange(lo_amt, hi_amt, 100)
+            ledger_txns.append((
+                f"v-lt-{n_txn}",
+                cat_id,
+                None,
+                None,
+                when.isoformat(),
+                amount,
+                "USD",
+                "manual",
+                None,
+                None,
+                books.choice(notes),
+                when.isoformat() + "T17:00:00Z",
+                when.isoformat() + "T17:00:00Z",
+            ))
+            bump("counts", "ledger_transactions")
+            bump("totals", "ledger_cost_cents", amount)
+
+batched_insert("ledger_transactions",
+               ["id","category_id","client_id","project_id","txn_date","amount_cents",
+                "currency","provenance","source_invoice_id","source_payment_id","notes",
+                "created_at","updated_at"],
+               ledger_txns)
 
 # --- SOPs and versions ------------------------------------------------------
 # sops.current_version_id references sop_versions, and sop_versions.sop_id

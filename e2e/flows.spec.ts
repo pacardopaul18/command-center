@@ -15,12 +15,12 @@ const expected = JSON.parse(readFileSync('seed/expected.json', 'utf8'));
 /**
  * Removes a row the suite created directly from the local database.
  *
- * Used only where the API has no delete, which is the case for a ledger
- * transaction on purpose: money that has been recorded is not something the app
- * offers to erase, and adding a route so a test could tidy up would be building
- * a capability for the test's benefit. So the test reaches past the API for its
- * own cleanup, the way the layer 2 fixtures do, and the product keeps the
- * shape it should have.
+ * The last resort, for tables the API has no delete for. It used to be how the
+ * ledger probe was cleaned up, on the reasoning that recorded money is not
+ * something the app offers to erase. The ledger redesign overturned that: a
+ * ledger nobody can correct is a ledger people stop entering things into, so
+ * DELETE exists now and refuses only the lines this app posted for itself,
+ * D156. That test uses the route.
  */
 function deleteRow(table: string, id: string) {
 	const dir = '.wrangler/state/v3/d1/miniflare-D1DatabaseObject';
@@ -317,7 +317,10 @@ test.describe('quick add', () => {
 		expect(made.amount_cents).toBe(1234);
 
 		// Nothing this suite creates may outlive it, or layer 1 fails next run.
-		deleteRow('ledger_transactions', made.id);
+		// Through the route, which exists now and is the same path a person uses.
+		const removed = await request.delete(`/api/ledger/transactions/${made.id}`);
+		expect(removed.ok(), 'the probe line could not be removed').toBe(true);
+
 		const after = await (await request.get('/api/ledger/transactions')).json();
 		expect(
 			after.transactions.some((t: { id: string }) => t.id === made.id),

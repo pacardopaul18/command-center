@@ -101,9 +101,25 @@ describe('layer 1: the loaded data came from the current seed', () => {
 });
 
 describe('layer 1: row counts match what was generated', () => {
+	/**
+	 * Counted by the v- prefix, which is what the generator writes and what its
+	 * DELETEs remove.
+	 *
+	 * Counting whole tables asked a different question and got a different
+	 * answer the moment a table was shared: the dev seed writes one ledger line,
+	 * and the ledger fixture was reported one row over on a load that had gone
+	 * perfectly. The property that matters is that every row this fixture claims
+	 * to have written is there.
+	 *
+	 * That rows without the prefix must not exist is a separate assertion, made
+	 * below, and keeping the two apart means a leak reads as a leak rather than
+	 * as a miscount.
+	 */
 	for (const [table, n] of Object.entries(expected.counts)) {
-		it(`${table} has ${n} rows`, () => {
-			const { c } = one<{ c: number }>(`SELECT COUNT(*) AS c FROM "${table}"`);
+		it(`${table} has ${n} seeded rows`, () => {
+			const { c } = one<{ c: number }>(
+				`SELECT COUNT(*) AS c FROM "${table}" WHERE id LIKE 'v-%'`
+			);
 			expect(Number(c)).toBe(n);
 		});
 	}
@@ -277,6 +293,9 @@ describe('layer 1: referential integrity', () => {
 	});
 
 	it('every seeded row carries the v- prefix, so it is removable', () => {
+		// Not ledger_transactions: the dev seed writes one line there that this
+		// fixture does not own and must not claim. The ledger's own guard is the
+		// count above, which asks only about rows carrying the prefix.
 		for (const table of ['clients', 'projects', 'meetings', 'action_items', 'invoices']) {
 			const { c } = one<{ c: number }>(
 				`SELECT COUNT(*) AS c FROM "${table}" WHERE id NOT LIKE 'v-%'`

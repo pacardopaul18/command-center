@@ -33,16 +33,30 @@ const db = openDb();
 
 const problems = [];
 
-/** Row counts, which catch a load that aborted part way through. */
+/**
+ * Row counts, which catch a load that aborted part way through.
+ *
+ * Counted by the v- prefix rather than as whole tables. Every row this fixture
+ * writes carries it, and every DELETE at the top of the generated SQL removes
+ * by it, so "how many of my rows are here" is the question the loader can
+ * actually answer. Counting whole tables asked a different question and got a
+ * different answer the moment a table was shared with another fixture: the dev
+ * seed writes one ledger line, and the ledger stream was reported one row over
+ * on a load that had gone perfectly.
+ *
+ * Rows without the prefix are somebody else's problem and layer 1's job: it
+ * asserts separately that no unprefixed row exists in the tables the suite
+ * counts on.
+ */
 for (const [table, want] of Object.entries(expected.counts ?? {})) {
 	let got = -1;
 	try {
-		got = db.prepare(`SELECT COUNT(*) AS n FROM "${table}"`).get().n;
+		got = db.prepare(`SELECT COUNT(*) AS n FROM "${table}" WHERE id LIKE 'v-%'`).get().n;
 	} catch {
 		problems.push(`${table}: table missing`);
 		continue;
 	}
-	if (got !== want) problems.push(`${table}: ${got} rows, expected ${want}`);
+	if (got !== want) problems.push(`${table}: ${got} seeded rows, expected ${want}`);
 }
 
 /**
