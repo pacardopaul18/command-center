@@ -20,6 +20,41 @@ export function formatDay(date: string): string {
 }
 
 /**
+ * The same date without its weekday, for columns where the weekday is noise.
+ *
+ * A dated table row is read against the rows above and below it, not against
+ * the week, and "Sat, Aug 29" in a column of forty invoices costs four
+ * characters a row to say something nobody is asking. Same UTC formatting as
+ * formatDay, for the same reason: a bare date must not shift a day.
+ */
+const shortDayFormatter = new Intl.DateTimeFormat('en-US', {
+	timeZone: 'UTC',
+	month: 'short',
+	day: 'numeric'
+});
+
+export function formatDayShort(date: string): string {
+	return shortDayFormatter.format(new Date(`${date}T00:00:00Z`));
+}
+
+/**
+ * A date with its year, for anything that reaches back past this one.
+ *
+ * "Client since Aug 25" is only useful if the reader already knows which year,
+ * and the whole point of that line is that they do not.
+ */
+const yearDayFormatter = new Intl.DateTimeFormat('en-US', {
+	timeZone: 'UTC',
+	year: 'numeric',
+	month: 'short',
+	day: 'numeric'
+});
+
+export function formatDayYear(date: string): string {
+	return yearDayFormatter.format(new Date(`${date}T00:00:00Z`));
+}
+
+/**
  * A stored UTC timestamp shown in Mountain Time.
  *
  * Deliberately different from `formatDay`. A deadline is a bare date with no

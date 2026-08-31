@@ -2,6 +2,7 @@ import { digestDueAt, runDigest } from './digest';
 import type { DigestEnv } from './digest';
 import { backupDueAt, runBackup } from './backup';
 import { runMailMaintenance } from './mail-jobs';
+import { raiseRecurringDrafts } from './recurring';
 import type { MailEnv } from './mail-jobs';
 
 /**
@@ -87,6 +88,38 @@ export async function handleScheduled(
 		// competing for the invocation's budget.
 		await mailWork();
 		return;
+	}
+
+	/**
+	 * Recurring invoice drafts, raised before the morning digest is built.
+	 *
+	 * Ordering is the point. A draft raised after the digest was assembled would
+	 * not appear in it until tomorrow, so the one email that says what needs
+	 * attention today would be missing a document created ninety seconds
+	 * earlier.
+	 *
+	 * Morning only, and never on the evening firing: a draft that appeared at
+	 * 17:00 would sit unread overnight with its issue date already spent.
+	 *
+	 * It never throws into the digest. A failed raise is logged and the digest
+	 * goes out regardless, because a missing draft is a nuisance and a missing
+	 * digest is the failure this whole schedule exists to prevent.
+	 */
+	if (kind === 'morning') {
+		try {
+			const result = await raiseRecurringDrafts(env.DB);
+			console.log(
+				`cron ${event.cron}: recurring raised ${result.raised.length}` +
+					(result.raised.length > 0
+						? ` (${result.raised.map((r) => `${r.invoice_number} ${r.client_name}`).join(', ')})`
+						: '') +
+					(result.skipped.length > 0
+						? `, skipped ${result.skipped.length} with nothing to copy: ${result.skipped.join(', ')}`
+						: '')
+			);
+		} catch (err) {
+			console.error(`cron ${event.cron}: recurring raise threw`, String(err));
+		}
 	}
 
 	console.log(`cron ${event.cron} at ${now.toISOString()}: ${kind} digest due, sending`);

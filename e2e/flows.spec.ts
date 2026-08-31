@@ -27,6 +27,11 @@ async function ready(page: import('@playwright/test').Page) {
 	await page.waitForLoadState('networkidle');
 }
 
+/** "$1,234.56" as a number, for totals read back out of the DOM. */
+function money(text: string): number {
+	return Number(text.replace(/[^0-9.-]/g, ''));
+}
+
 /** The capture form, told apart from the quick add dialog by its submit button. */
 function captureForm(page: import('@playwright/test').Page) {
 	return page.locator('form').filter({ has: page.getByRole('button', { name: 'Add item' }) });
@@ -318,11 +323,19 @@ test.describe('pagination', () => {
 		await expect(page.getByRole('button', { name: 'Next' })).toBeDisabled();
 	});
 
-	test('invoices paginate too', async ({ page }) => {
-		await page.goto('/invoices?page_size=10');
-		await expect(page.getByRole('navigation', { name: 'Pagination' })).toContainText(
-			'of 900 invoices'
-		);
+	/**
+	 * Invoicing does not paginate any more, and that is the assertion.
+	 *
+	 * The screen is one client at a time, so the list it renders is that
+	 * client's fifteen or so documents rather than nine hundred. What has to
+	 * hold instead is that every client is reachable from the rail: a client
+	 * missing from it is a client whose money is invisible.
+	 */
+	test('invoicing lists every client in the rail rather than paginating', async ({ page }) => {
+		await page.goto('/invoices');
+		await ready(page);
+		await expect(page.locator('.rail-row')).toHaveCount(60);
+		await expect(page.getByRole('navigation', { name: 'Pagination' })).toHaveCount(0);
 	});
 });
 
@@ -335,41 +348,78 @@ test.describe('the nav says where you are', () => {
 	});
 });
 
-test.describe('billing periods open to their time', () => {
-	test('expanding a period lists its entries and collapsing hides them', async ({ page }) => {
-		await page.goto('/invoices?page_size=10');
+test.describe('invoicing, one client at a time', () => {
+	test('the rail balance and the client stat are the same number', async ({ page }) => {
+		await page.goto('/invoices');
 		await ready(page);
 
-		const toggle = page.getByRole('button', { name: /^Show \d+ entr/ }).first();
-		await expect(toggle).toBeVisible();
-		await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+		const row = page.locator('.rail-row.current');
+		const railBalance = (await row.locator('.rail-balance').innerText()).trim();
+		const stat = page
+			.locator('.stat')
+			.filter({ hasText: 'Open balance' })
+			.locator('.stat-amount');
+		await expect(stat).toHaveText(railBalance);
+	});
 
+	test('a document opens to its line items, its totals and its trail', async ({ page }) => {
+		await page.goto('/invoices');
+		await ready(page);
+
+		const first = page.locator('button.row-open').first();
+		await expect(first).toHaveAttribute('aria-expanded', 'false');
+		await first.click();
+		await expect(first).toHaveAttribute('aria-expanded', 'true');
+
+		const detail = page.locator('tr.expanded');
+		await expect(detail).toHaveCount(1);
+		await expect(detail.locator('.items li').first()).toBeVisible();
+		await expect(detail.locator('.trail li').first()).toBeVisible();
+
+		// The lines are the total, not a second opinion about it.
+		const lines = await detail.locator('.items li .i-amount').allInnerTexts();
+		const sum = lines.reduce((total, text) => total + money(text), 0);
+		const stated = money(await detail.locator('.summary dd').first().innerText());
+		expect(sum).toBeCloseTo(stated, 2);
+	});
+
+	test('a filter chip narrows the table to its own pile', async ({ page }) => {
+		await page.goto('/invoices');
+		await ready(page);
+
+		const all = await page.locator('.documents-table tbody tr').count();
+		await page.getByRole('button', { name: /^Paid/ }).click();
+		const paidRows = page.locator('.documents-table tbody tr');
+		await expect(paidRows.first()).toBeVisible();
+		expect(await paidRows.count()).toBeLessThan(all);
+		for (const chip of await paidRows.locator('.chip').allInnerTexts()) {
+			expect(chip.trim().toLowerCase()).toBe('paid');
+		}
+	});
+
+	test('the hours behind the invoices are still one click away', async ({ page }) => {
+		await page.goto('/invoices');
+		await ready(page);
+		await page.getByRole('link', { name: 'Time and periods' }).click();
+		await page.waitForURL(/tab=time/);
+
+		const toggle = page.getByRole('button', { name: /^Show \d+ entr/ }).first();
+		await expect(toggle).toHaveAttribute('aria-expanded', 'false');
 		await toggle.click();
 
-		// The button relabels itself, so the original locator now resolves to a
-		// different period's toggle. Assert on the opened control instead.
 		const opened = page.getByRole('button', { name: 'Hide time' });
 		await expect(opened).toHaveAttribute('aria-expanded', 'true');
 		await expect(page.locator('.entries tbody tr').first()).toBeVisible();
 
+		// The entries shown add up to the hours the period claims.
+		const panel = page.locator('.entries').first();
+		const hours = await panel.locator('tbody tr td:nth-child(4)').allInnerTexts();
+		const sum = hours.reduce((total, h) => total + Number(h), 0);
+		const meta = await page.locator('li.period').filter({ has: panel }).first().innerText();
+		expect(sum).toBeCloseTo(Number(meta.match(/([0-9.]+) total h/)?.[1]), 1);
+
 		await opened.click();
 		await expect(page.locator('.entries')).toHaveCount(0);
-	});
-
-	test('the entries shown add up to the hours the period claims', async ({ page }) => {
-		await page.goto('/invoices?page_size=10');
-		await ready(page);
-		const toggle = page.getByRole('button', { name: /^Show \d+ entr/ }).first();
-		await toggle.click();
-
-		const panel = page.locator('.entries').first();
-		await expect(panel.locator('tbody tr').first()).toBeVisible();
-		const hours = await panel.locator('tbody tr td:nth-child(4)').allInnerTexts();
-		const sum = hours.reduce((s, h) => s + Number(h), 0);
-
-		const meta = await page.locator('li').filter({ has: panel }).first().innerText();
-		const claimed = Number(meta.match(/([0-9.]+) total h/)?.[1]);
-		expect(sum).toBeCloseTo(claimed, 1);
 	});
 });
 

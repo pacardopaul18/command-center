@@ -1,0 +1,6 @@
+# Design reference bundles are exported artifacts, committed so the drawing the
+# code was built from can be opened again later. They must round trip byte for
+# byte, so git is told not to touch their line endings: a file normalised on
+# commit and rewritten on checkout is no longer the file Paul exported, and the
+# hash that proves it is the same file stops matching.
+docs/design/**/*.html -text

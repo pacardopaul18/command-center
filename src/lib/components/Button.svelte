@@ -10,6 +10,14 @@
 		variant?: 'primary' | 'secondary' | 'ghost' | 'danger';
 		size?: 'sm' | 'md';
 		href?: string;
+		/**
+		 * Anchor attributes, allowed only because `href` already makes this an
+		 * anchor. A printable sheet opens in its own tab, and a tab opened with
+		 * target carries `rel="noopener"` with it rather than trusting the
+		 * default, so the two are typed together.
+		 */
+		target?: string;
+		rel?: string;
 		children: Snippet;
 	};
 

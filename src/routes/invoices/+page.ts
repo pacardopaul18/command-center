@@ -1,34 +1,67 @@
 import type { PageLoad } from './$types';
-import type { AgingBucket, BillingPeriod, Client, Invoice, Paging } from '$lib/types';
+import type {
+	BillingPeriod,
+	Client,
+	ClientMoney,
+	Invoice,
+	InvoicingHeadline
+} from '$lib/types';
 
+/**
+ * Invoicing loads in two steps: everybody, then one client.
+ *
+ * The screen is client first, so the rail and the four headline figures come
+ * from one query over every invoice, and the documents come from the client the
+ * URL names. The selected client lives in the URL rather than in component
+ * state so a client's invoicing is linkable, the back button works, and a
+ * reload lands where the reader was. Same reasoning as the report windows and
+ * the pager.
+ */
 export const load: PageLoad = async ({ fetch, url }) => {
-	const query = new URLSearchParams();
-	for (const key of ['page', 'page_size']) {
-		const v = url.searchParams.get(key);
-		if (v) query.set(key, v);
-	}
-
-	const [invRes, clientsRes] = await Promise.all([
-		fetch(`/api/invoicing?${query}`),
-		fetch('/api/clients')
-	]);
-
-	if (!invRes.ok) {
-		const body = (await invRes.json().catch(() => ({}))) as { error?: string };
+	const overviewRes = await fetch('/api/invoicing/overview');
+	if (!overviewRes.ok) {
+		const body = (await overviewRes.json().catch(() => ({}))) as { error?: string };
 		throw new Error(body.error ?? 'Could not load invoicing.');
 	}
 
-	const data = (await invRes.json()) as {
+	const overview = (await overviewRes.json()) as {
 		today: string;
-		periods: BillingPeriod[];
-		invoices: Invoice[];
-		bands: { aging_bucket: AgingBucket; invoice_count: number; outstanding_cents: number }[];
-		paging: Paging;
+		headline: InvoicingHeadline;
+		clients: ClientMoney[];
+		year_start: string;
 	};
 
-	const clients = clientsRes.ok
-		? ((await clientsRes.json()) as { clients: Client[] }).clients
-		: [];
+	const requested = url.searchParams.get('client');
+	// A client id in the URL that no longer exists falls back to the first row
+	// rather than showing an empty screen with no way out of it.
+	const known = overview.clients.some((c) => c.id === requested);
+	const selectedId = known ? requested : (overview.clients[0]?.id ?? null);
 
-	return { ...data, clients };
+	let detail: {
+		client: Client;
+		money: {
+			open_cents: number;
+			overdue_cents: number;
+			invoice_count: number;
+			collected_year_cents: number;
+			collected_year_count: number;
+			avg_days_to_pay: number | null;
+		};
+		invoices: Invoice[];
+		periods: BillingPeriod[];
+	} | null = null;
+
+	if (selectedId) {
+		const res = await fetch(`/api/invoicing/clients/${selectedId}`);
+		if (res.ok) detail = await res.json();
+	}
+
+	return {
+		today: overview.today,
+		headline: overview.headline,
+		clients: overview.clients,
+		selectedId,
+		detail,
+		tab: url.searchParams.get('tab') ?? 'overview'
+	};
 };

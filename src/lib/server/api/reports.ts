@@ -42,6 +42,10 @@ const OUTSTANDING = `
   FROM invoices i
   JOIN clients cl ON cl.id = i.client_id
   WHERE i.amount_paid_cents < i.amount_cents
+    -- An estimate is not owed, a credit note is owed the other way, and a
+    -- voided invoice counts toward nothing. Migration 0024, and the same
+    -- filter the invoicing screen uses.
+    AND i.kind = 'invoice' AND i.voided_at IS NULL
 `;
 
 /**
@@ -80,7 +84,9 @@ async function billingReport(db: D1Database, day: string, from: string, to: stri
 		db
 			.prepare(
 				`SELECT COALESCE(SUM(amount_cents), 0) AS billed_cents, COUNT(*) AS invoice_count
-         FROM invoices WHERE issue_date >= ?1 AND issue_date <= ?2`
+         FROM invoices i
+         WHERE i.issue_date >= ?1 AND i.issue_date <= ?2
+           AND i.kind = 'invoice' AND i.voided_at IS NULL`
 			)
 			.bind(from, to)
 			.first<{ billed_cents: number; invoice_count: number }>()

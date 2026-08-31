@@ -247,6 +247,106 @@ export interface TimeEntry {
 	project_name?: string | null;
 }
 
+/**
+ * What kind of document a row in `invoices` is. Migration 0024.
+ *
+ * Only an invoice is a receivable. An estimate has not been agreed and a credit
+ * note is money owed back, so both are excluded from every balance, band and
+ * total. The set lives here because the column carries no CHECK: SQLite cannot
+ * add one without rebuilding a table three triggers depend on, so this constant
+ * and the API validation that reads it are the constraint.
+ */
+export const INVOICE_KINDS = ['invoice', 'estimate', 'credit'] as const;
+export type InvoiceKind = (typeof INVOICE_KINDS)[number];
+
+export const INVOICE_KIND_LABELS: Record<InvoiceKind, string> = {
+	invoice: 'Invoice',
+	estimate: 'Estimate',
+	credit: 'Credit note'
+};
+
+/** Number prefixes, so the document says what it is before anyone reads it. */
+export const INVOICE_KIND_PREFIX: Record<InvoiceKind, string> = {
+	invoice: 'INV',
+	estimate: 'EST',
+	credit: 'CN'
+};
+
+export const DISCOUNT_KINDS = ['percent', 'amount'] as const;
+export type DiscountKind = (typeof DISCOUNT_KINDS)[number];
+
+/**
+ * The line item catalogue offered in the invoice form.
+ *
+ * Strings, not a table. A products entity is a second thing to maintain, and
+ * this is one person's list of eight services; the field accepts anything typed
+ * into it, so the list is a shortcut rather than a constraint.
+ */
+export const SERVICE_CATALOGUE = [
+	'Consulting hours',
+	'Operations retainer',
+	'Advisory session',
+	'Workshop',
+	'Drafting',
+	'Review',
+	'Expense passthrough',
+	'Discount'
+] as const;
+
+export const BILLING_SCHEDULES = ['Monthly', 'Fortnightly', 'Weekly', 'Quarterly', 'Ad hoc'] as const;
+export const PAYMENT_TERMS = ['Due on receipt', 'Net 7', 'Net 15', 'Net 30', 'Net 45'] as const;
+export const REMINDER_CADENCES = [
+	'3 days before due',
+	'On the due date',
+	'7 days after due',
+	'Every 7 days until paid'
+] as const;
+
+/** Days each payment term adds to the issue date. Used to propose a due date. */
+export const TERM_DAYS: Record<string, number> = {
+	'Due on receipt': 0,
+	'Net 7': 7,
+	'Net 15': 15,
+	'Net 30': 30,
+	'Net 45': 45
+};
+
+export interface InvoiceLineItem {
+	id: string;
+	invoice_id: string;
+	position: number;
+	service: string;
+	description: string | null;
+	quantity: number;
+	unit_rate_cents: number;
+	/** quantity * unit_rate_cents, rounded once at write. Migration 0024. */
+	amount_cents: number;
+	created_at: string;
+	updated_at: string;
+}
+
+export const INVOICE_EVENT_KINDS = [
+	'created',
+	'edited',
+	'issued',
+	'reminded',
+	'payment',
+	'voided',
+	'converted',
+	'duplicated',
+	'note'
+] as const;
+export type InvoiceEventKind = (typeof INVOICE_EVENT_KINDS)[number];
+
+export interface InvoiceEvent {
+	id: string;
+	invoice_id: string;
+	occurred_at: string;
+	kind: InvoiceEventKind;
+	detail: string;
+	created_at: string;
+}
+
 export interface Invoice {
 	id: string;
 	client_id: string;
@@ -265,6 +365,71 @@ export interface Invoice {
 	days_overdue?: number;
 	aging_bucket?: AgingBucket | null;
 	is_overdue?: number;
+	// Added in migration 0024. Null or zero on every invoice raised before the
+	// document had parts, which is all 900 of the seeded ones.
+	kind?: InvoiceKind;
+	category?: string | null;
+	subcategory?: string | null;
+	message?: string | null;
+	discount_kind?: DiscountKind | null;
+	discount_value?: number;
+	discount_cents?: number;
+	tax_percent?: number;
+	tax_cents?: number;
+	subtotal_cents?: number | null;
+	voided_at?: string | null;
+	recurring_frequency?: string | null;
+	source_invoice_id?: string | null;
+	// Joined on read by the client endpoint, never stored on the row.
+	items?: InvoiceLineItem[];
+	events?: InvoiceEvent[];
+	/**
+	 * Hours and rate for an invoice that predates line items, taken from the
+	 * billing period it was raised from. Derived, and labelled as such on
+	 * screen: it is the same number the period already claimed, not a
+	 * breakdown invented for the row.
+	 */
+	period_hours?: number | null;
+	period_note?: string | null;
+}
+
+/**
+ * What a set of line items comes to, with discount and tax applied.
+ *
+ * One implementation, imported by both the API that writes the invoice and the
+ * form that previews it. Two implementations of the same arithmetic is how a
+ * form shows one total and the database stores another.
+ *
+ * Order matters and is fixed: subtotal, then discount off the subtotal, then
+ * tax on what is left. Rounding happens once per line and once per total.
+ */
+export function invoiceTotals(
+	lines: { quantity: number; unit_rate_cents: number }[],
+	discountKind: DiscountKind | null,
+	discountValue: number,
+	taxPercent: number
+): { line_cents: number[]; subtotal_cents: number; discount_cents: number; tax_cents: number; total_cents: number } {
+	const lineCents = lines.map((l) => Math.round(l.quantity * l.unit_rate_cents));
+	const subtotal = lineCents.reduce((sum, c) => sum + c, 0);
+
+	let discount = 0;
+	if (discountKind === 'percent') discount = Math.round((subtotal * discountValue) / 100);
+	else if (discountKind === 'amount') discount = Math.round(discountValue);
+	// A discount never takes an invoice below zero, and never below what has
+	// already been paid: that second guard lives in the API, which knows the
+	// payments. Here it is only the floor at zero.
+	discount = Math.max(0, Math.min(discount, subtotal));
+
+	const taxable = subtotal - discount;
+	const tax = Math.round((taxable * taxPercent) / 100);
+
+	return {
+		line_cents: lineCents,
+		subtotal_cents: subtotal,
+		discount_cents: discount,
+		tax_cents: tax,
+		total_cents: taxable + tax
+	};
 }
 
 /** Cents to a plain money string. No currency symbol is assumed. */
@@ -274,6 +439,21 @@ export function formatMoney(cents: number): string {
 	const whole = Math.floor(abs / 100).toLocaleString('en-US');
 	const part = String(abs % 100).padStart(2, '0');
 	return `${sign}${whole}.${part}`;
+}
+
+/**
+ * The same figure with a dollar sign in front of it.
+ *
+ * Invoices are billed in USD and nothing in the schema says so, because there
+ * is no currency column: the ledger posting in migration 0020 hardcodes USD and
+ * records that it does. The invoicing screen states the currency once in its
+ * subline and marks every amount, which is the readable version of the same
+ * fact. formatMoney stays symbol free for the screens that carry the unit in a
+ * column header.
+ */
+export function formatUsd(cents: number): string {
+	const sign = cents < 0 ? '-' : '';
+	return `${sign}$${formatMoney(Math.abs(cents))}`;
 }
 
 /** Accepts "1234.56" or "1,234.56" and returns exact cents. */
@@ -300,6 +480,56 @@ export interface Client {
 	created_at: string;
 	updated_at: string;
 	project_count?: number;
+	// The billing profile, added in migration 0024. Contact name, email and
+	// phone are not here: they live in `contacts`, one row per person, and the
+	// invoicing endpoints join the primary one rather than copying it.
+	billing_address?: string | null;
+	billing_schedule?: string | null;
+	auto_recurring?: number;
+	auto_frequency?: string | null;
+	auto_next_date?: string | null;
+	digest_reminders?: number;
+	reminder_cadence?: string | null;
+	billing_cc?: string | null;
+	// Joined from `contacts` by the invoicing endpoints.
+	contact_id?: string | null;
+	contact_name?: string | null;
+	contact_email?: string | null;
+	contact_phone?: string | null;
+}
+
+/**
+ * One client's money, as the invoicing rail shows it.
+ *
+ * Every figure counts documents of kind 'invoice' that are not voided. An
+ * estimate is not owed and a credit note is owed the other way, so counting
+ * either here would overstate what the firm is due.
+ */
+export interface ClientMoney {
+	id: string;
+	name: string;
+	status: ClientStatus;
+	open_cents: number;
+	overdue_cents: number;
+	paid_cents: number;
+	invoice_count: number;
+	overdue_count: number;
+	/** Mean days from issue to full payment, over paid invoices. Null with none. */
+	avg_days_to_pay: number | null;
+	last_activity: string | null;
+}
+
+/** The four figures across the top of the invoicing screen. */
+export interface InvoicingHeadline {
+	invoiced_cents: number;
+	invoice_count: number;
+	collectable_cents: number;
+	open_count: number;
+	overdue_cents: number;
+	overdue_count: number;
+	collected_month_cents: number;
+	collected_month_count: number;
+	month_label: string;
 }
 
 // --- Meetings ---

@@ -1,0 +1,722 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="../support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/tokens/fonts.css">
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/tokens/colors.css">
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/tokens/typography.css">
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/tokens/spacing.css">
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/tokens/effects.css">
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/tokens/base.css">
+  <link rel="stylesheet" href="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/styles.css">
+  <script src="_ds/command-center-design-system-a34f56e4-5b59-42a6-ab50-aad2ecac9c82/_ds_bundle.js"></script>
+  <style>
+    body{margin:0;background:var(--surface-page);}
+    a{color:var(--text-link);} a:hover{color:var(--navy);}
+  </style>
+</helmet>
+<div style="display:flex;min-height:100vh;font-family:var(--font-sans);color:var(--text-body)">
+  <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Sidebar" items="{{ navItems }}" active-id="invoicing" on-quick-add="{{ noop }}" hint-size="224px,100%" style="height:100vh;position:sticky;top:0"></x-import>
+  <main style="flex:1;height:100vh;overflow-y:auto;box-sizing:border-box">
+  <div style="padding:32px 48px 64px;box-sizing:border-box">
+
+    <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px">
+      <div>
+        <h1 style="font-size:var(--text-2xl);font-weight:700;margin:0 0 6px">Invoicing</h1>
+        <div style="font-size:var(--text-sm);color:var(--text-secondary)">Hours in, invoices out, and what is still owed. All amounts in USD.</div>
+      </div>
+      <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="primary" on-click="{{ newClient }}" hint-size="auto,38px">New client</x-import>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:20px">
+      <sc-for list="{{ aging }}" as="ag" hint-placeholder-count="4">
+        <div style="padding:14px 18px;background:var(--surface-card);border:1px solid var(--border-thin);border-left:3px solid {{ ag.accent }};border-radius:var(--radius-md);box-shadow:var(--shadow-card)">
+          <div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary)">{{ ag.label }}</div>
+          <div style="font-family:var(--font-mono);font-size:var(--text-xl);margin:6px 0 4px">{{ ag.amount }}</div>
+          <div style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary)">{{ ag.count }}</div>
+        </div>
+      </sc-for>
+    </div>
+
+    <div style="display:flex;gap:24px;align-items:flex-start;margin-top:24px">
+
+      <div style="width:300px;flex-shrink:0;background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-lg);box-shadow:var(--shadow-card);overflow:hidden">
+        <div style="padding:12px;border-bottom:1px solid var(--border-thin)">
+          <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Input" placeholder="Search clients" value="{{ search }}" sc-camel-on-change="{{ setSearch }}" hint-size="100%,36px"></x-import>
+        </div>
+        <sc-for list="{{ clientRows }}" as="c" hint-placeholder-count="6">
+          <div sc-camel-on-click="{{ c.pick }}" style="padding:12px 16px;border-bottom:1px solid var(--border-thin);border-left:3px solid {{ c.edge }};cursor:pointer;background:{{ c.bg }};transition:background-color var(--transition-fast)" style-hover="background:var(--surface-hover)">
+            <div style="display:flex;align-items:center;gap:8px">
+              <span style="flex:1;font-weight:600;font-size:var(--text-base);color:var(--text-link)">{{ c.name }}</span>
+              <span style="background:{{ c.chipBg }};color:{{ c.chipFg }};font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;padding:2px 8px;border-radius:var(--radius-pill);white-space:nowrap">{{ c.chip }}</span>
+            </div>
+            <div style="display:flex;align-items:baseline;gap:8px;margin-top:4px">
+              <span style="font-family:var(--font-mono);font-size:var(--text-sm)">{{ c.balance }}</span>
+              <span style="font-size:var(--text-xs);color:var(--text-secondary)">open</span>
+              <span style="flex:1"></span>
+              <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary)">{{ c.invCount }} inv</span>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+
+      <div style="flex:1;min-width:760px">
+
+      <sc-if value="{{ isNewClient }}" hint-placeholder-val="{{ false }}">
+        <div style="padding:24px;background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-lg);box-shadow:var(--shadow-card)">
+          <h2 style="font-size:var(--text-lg);font-weight:700;margin:0 0 4px">New client</h2>
+          <div style="font-size:var(--text-sm);color:var(--text-secondary);margin-bottom:20px">A client account holds contact details, billing defaults and every invoice. Nothing is billed until you raise an invoice.</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px 24px">
+            <sc-for list="{{ newFields }}" as="f" hint-placeholder-count="6">
+              <div>
+                <div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">{{ f.label }}</div>
+                <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Input" value="{{ f.value }}" sc-camel-on-change="{{ f.set }}" placeholder="{{ f.ph }}" hint-size="100%,38px"></x-import>
+              </div>
+            </sc-for>
+            <div>
+              <div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Payment terms</div>
+              <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Select" options="{{ termsOpts }}" value="{{ newTerms }}" sc-camel-on-change="{{ setNewTerms }}" hint-size="100%,38px"></x-import>
+            </div>
+            <div>
+              <div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Billing schedule</div>
+              <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Select" options="{{ scheduleOpts }}" value="{{ newSchedule }}" sc-camel-on-change="{{ setNewSchedule }}" hint-size="100%,38px"></x-import>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;margin-top:20px">
+            <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="primary" on-click="{{ createClient }}" hint-size="auto,38px">Create client</x-import>
+            <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="ghost" on-click="{{ cancelNew }}" hint-size="auto,38px">Cancel</x-import>
+            <span style="font-size:var(--text-sm);color:var(--text-secondary)">{{ newHint }}</span>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ isDashboard }}" hint-placeholder-val="{{ true }}">
+        <div style="padding:24px;background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-lg);box-shadow:var(--shadow-card)">
+          <div style="display:flex;align-items:center;gap:12px">
+            <h2 style="font-size:var(--text-xl);font-weight:700;margin:0">{{ sel.name }}</h2>
+            <span style="background:{{ sel.chipBg }};color:{{ sel.chipFg }};font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;padding:3px 10px;border-radius:var(--radius-pill)">{{ sel.chip }}</span>
+            <span style="flex:1"></span>
+            <sc-if value="{{ notEditing }}" hint-placeholder-val="{{ true }}">
+              <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="secondary" size="sm" on-click="{{ startEdit }}" hint-size="auto,32px">Edit details</x-import>
+              <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="ghost" size="sm" on-click="{{ toggleArchive }}" hint-size="auto,32px">{{ archiveLabel }}</x-import>
+            </sc-if>
+            <sc-if value="{{ editing }}" hint-placeholder-val="{{ false }}">
+              <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="primary" size="sm" on-click="{{ saveEdit }}" hint-size="auto,32px">Save</x-import>
+              <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="ghost" size="sm" on-click="{{ cancelEdit }}" hint-size="auto,32px">Cancel</x-import>
+            </sc-if>
+          </div>
+          <div style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary);margin-top:4px">Client since {{ sel.since }} · {{ sel.schedule }}</div>
+
+          <sc-if value="{{ notEditing }}" hint-placeholder-val="{{ true }}">
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px 24px;margin-top:20px;padding-top:16px;border-top:1px solid var(--border-thin)">
+              <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:3px">Contact</div><div style="font-size:var(--text-base)">{{ sel.contact }}</div></div>
+              <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:3px">Email</div><div style="font-family:var(--font-mono);font-size:var(--text-sm)">{{ sel.email }}</div></div>
+              <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:3px">Phone</div><div style="font-family:var(--font-mono);font-size:var(--text-sm)">{{ sel.phone }}</div></div>
+              <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:3px">Billing address</div><div style="font-size:var(--text-base)">{{ sel.address }}</div></div>
+              <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:3px">Payment terms</div><div style="font-size:var(--text-base)">{{ sel.terms }}</div></div>
+              <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:3px">Hourly rate</div><div style="font-family:var(--font-mono);font-size:var(--text-sm)">{{ sel.rateFmt }}</div></div>
+            </div>
+          </sc-if>
+          <sc-if value="{{ editing }}" hint-placeholder-val="{{ false }}">
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px 24px;margin-top:20px;padding-top:16px;border-top:1px solid var(--border-thin)">
+              <sc-for list="{{ editFields }}" as="f" hint-placeholder-count="6">
+                <div>
+                  <div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">{{ f.label }}</div>
+                  <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Input" value="{{ f.value }}" sc-camel-on-change="{{ f.set }}" hint-size="100%,38px"></x-import>
+                </div>
+              </sc-for>
+              <div>
+                <div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Payment terms</div>
+                <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Select" options="{{ termsOpts }}" value="{{ draftTerms }}" sc-camel-on-change="{{ setDraftTerms }}" hint-size="100%,38px"></x-import>
+              </div>
+            </div>
+          </sc-if>
+
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:20px">
+            <div style="padding:12px 16px;background:var(--surface-callout);border:1px solid var(--border-thin);border-radius:var(--radius-md)"><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary)">Open balance</div><div style="font-family:var(--font-mono);font-size:var(--text-lg);margin-top:4px">{{ sel.open }}</div></div>
+            <div style="padding:12px 16px;background:var(--surface-callout);border:1px solid var(--border-thin);border-radius:var(--radius-md)"><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary)">Overdue</div><div style="font-family:var(--font-mono);font-size:var(--text-lg);margin-top:4px;color:{{ sel.overdueColor }}">{{ sel.overdue }}</div></div>
+            <div style="padding:12px 16px;background:var(--surface-callout);border:1px solid var(--border-thin);border-radius:var(--radius-md)"><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary)">Collected this year</div><div style="font-family:var(--font-mono);font-size:var(--text-lg);margin-top:4px;color:var(--text-positive)">{{ sel.collected }}</div></div>
+            <div style="padding:12px 16px;background:var(--surface-callout);border:1px solid var(--border-thin);border-radius:var(--radius-md)"><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary)">Avg days to pay</div><div style="font-family:var(--font-mono);font-size:var(--text-lg);margin-top:4px">{{ sel.avgPay }}</div></div>
+          </div>
+          <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border-thin)">
+            <div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Notes</div>
+            <textarea value="{{ notes }}" sc-camel-on-change="{{ setNotes }}" placeholder="Anything worth remembering about billing this client. Saved as you type." style="width:100%;box-sizing:border-box;min-height:52px;padding:10px 12px;font-family:var(--font-sans);font-size:var(--text-sm);line-height:1.5;color:var(--ink);background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-sm);resize:vertical"></textarea>
+          </div>
+        </div>
+
+        <sc-if value="{{ isArchived }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;align-items:center;gap:12px;margin-top:16px;padding:12px 16px;background:var(--surface-callout);border:1px solid var(--border-thin);border-radius:var(--radius-md)">
+            <span style="flex:1;font-size:var(--text-sm)">This client is archived. Everything stays readable, but nothing new can be raised until it is reactivated.</span>
+            <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="secondary" size="sm" on-click="{{ toggleArchive }}" hint-size="auto,30px">Reactivate</x-import>
+          </div>
+        </sc-if>
+
+        <div style="display:inline-flex;gap:4px;margin-top:16px;padding:4px;background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-md);box-shadow:var(--shadow-card)">
+          <sc-for list="{{ tabs }}" as="tb" hint-placeholder-count="2">
+            <button sc-camel-on-click="{{ tb.pick }}" style="padding:7px 14px;border:none;border-radius:var(--radius-sm);cursor:pointer;font-family:var(--font-sans);font-size:var(--text-base);font-weight:500;white-space:nowrap;background:{{ tb.bg }};color:{{ tb.fg }};transition:background-color var(--transition-fast)" style-hover="background:{{ tb.hoverBg }}">{{ tb.label }}</button>
+          </sc-for>
+        </div>
+
+        <sc-if value="{{ tabAuto }}" hint-placeholder-val="{{ false }}">
+        <div style="margin-top:12px;padding:24px;background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-lg);box-shadow:var(--shadow-card)">
+          <h2 style="font-size:var(--text-lg);font-weight:700;margin:0 0 4px">Automation and notifications</h2>
+          <div style="font-size:var(--text-sm);color:var(--text-secondary);margin-bottom:8px">Per client. Nothing sends without the toggles below.</div>
+          <div style="display:flex;align-items:center;gap:16px;padding:14px 0;border-top:1px solid var(--border-thin)">
+            <div style="flex:1"><div style="font-size:var(--text-base);font-weight:500">Recurring invoice</div><div style="font-size:var(--text-sm);color:var(--text-secondary);margin-top:2px">Raises a draft from tracked hours on the schedule. You still review and send it.</div></div>
+            <div style="width:150px"><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Select" options="{{ freqOpts }}" value="{{ autoFreq }}" sc-camel-on-change="{{ setAutoFreq }}" hint-size="150px,38px"></x-import></div>
+            <button sc-camel-on-click="{{ recToggle.toggle }}" title="Toggle" style="width:38px;height:22px;flex-shrink:0;border-radius:var(--radius-pill);border:none;cursor:pointer;background:{{ recToggle.bg }};position:relative;transition:background-color var(--transition-base)"><span style="position:absolute;top:3px;left:{{ recToggle.knob }}px;width:16px;height:16px;border-radius:50%;background:#FFFFFF;box-shadow:0 1px 2px rgba(0,0,0,.2);transition:left var(--transition-base)"></span></button>
+          </div>
+          <div style="display:flex;align-items:center;gap:16px;padding:14px 0;border-top:1px solid var(--border-thin)">
+            <div style="flex:1"><div style="font-size:var(--text-base);font-weight:500">Email reminders</div><div style="font-size:var(--text-sm);color:var(--text-secondary);margin-top:2px">Plain reminder to the billing contact, logged in the invoice trail.</div></div>
+            <div style="width:190px"><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Select" options="{{ cadenceOpts }}" value="{{ autoCadence }}" sc-camel-on-change="{{ setAutoCadence }}" hint-size="190px,38px"></x-import></div>
+            <button sc-camel-on-click="{{ remToggle.toggle }}" title="Toggle" style="width:38px;height:22px;flex-shrink:0;border-radius:var(--radius-pill);border:none;cursor:pointer;background:{{ remToggle.bg }};position:relative;transition:background-color var(--transition-base)"><span style="position:absolute;top:3px;left:{{ remToggle.knob }}px;width:16px;height:16px;border-radius:50%;background:#FFFFFF;box-shadow:0 1px 2px rgba(0,0,0,.2);transition:left var(--transition-base)"></span></button>
+          </div>
+          <div style="display:flex;align-items:center;gap:16px;padding:14px 0;border-top:1px solid var(--border-thin)">
+            <div style="flex:1"><div style="font-size:var(--text-base);font-weight:500">Copy me on every send</div><div style="font-size:var(--text-sm);color:var(--text-secondary);margin-top:2px">A copy of each invoice email lands in your own inbox.</div></div>
+            <button sc-camel-on-click="{{ copyToggle.toggle }}" title="Toggle" style="width:38px;height:22px;flex-shrink:0;border-radius:var(--radius-pill);border:none;cursor:pointer;background:{{ copyToggle.bg }};position:relative;transition:background-color var(--transition-base)"><span style="position:absolute;top:3px;left:{{ copyToggle.knob }}px;width:16px;height:16px;border-radius:50%;background:#FFFFFF;box-shadow:0 1px 2px rgba(0,0,0,.2);transition:left var(--transition-base)"></span></button>
+          </div>
+          <div style="display:flex;align-items:center;gap:16px;padding:14px 0 0;border-top:1px solid var(--border-thin)">
+            <div style="flex:1"><div style="font-size:var(--text-base);font-weight:500">CC on reminders</div><div style="font-size:var(--text-sm);color:var(--text-secondary);margin-top:2px">Extra addresses, comma separated.</div></div>
+            <div style="width:280px"><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Input" value="{{ autoCc }}" sc-camel-on-change="{{ setAutoCc }}" placeholder="ap@client.com" mono="{{ true }}" hint-size="280px,38px"></x-import></div>
+          </div>
+        </div>
+        </sc-if>
+
+        <sc-if value="{{ tabOverview }}" hint-placeholder-val="{{ true }}">
+        <div style="margin-top:12px;background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-lg);box-shadow:var(--shadow-card);overflow:hidden">
+          <div style="display:flex;align-items:center;gap:10px;padding:16px 20px">
+            <h2 style="font-size:var(--text-lg);font-weight:700;margin:0">Invoices</h2>
+            <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary)">{{ sel.invCount }} total</span>
+            <span style="flex:1"></span>
+            <sc-if value="{{ canAdd }}" hint-placeholder-val="{{ true }}">
+              <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="primary" size="sm" on-click="{{ openInvoiceForm }}" hint-size="auto,32px">New invoice</x-import>
+              <div style="position:relative">
+                <button sc-camel-on-click="{{ toggleAddMenu }}" style="display:inline-flex;align-items:center;gap:6px;padding:6px 12px;background:var(--surface-card);border:1px solid var(--border-strong);border-radius:var(--radius-sm);cursor:pointer;font-family:var(--font-sans);font-size:var(--text-sm);font-weight:500;color:var(--ink);transition:background-color var(--transition-fast)" style-hover="background:var(--surface-hover)">More<svg width="13" height="13" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"></path></svg></button>
+                <sc-if value="{{ addMenuOpen }}" hint-placeholder-val="{{ false }}">
+                  <div style="position:absolute;right:0;top:38px;z-index:20;width:220px;background:var(--surface-card);border:1px solid var(--border-thin);border-radius:var(--radius-md);box-shadow:var(--shadow-pop);padding:6px;display:flex;flex-direction:column">
+                    <sc-for list="{{ addMenuItems }}" as="mi" hint-placeholder-count="4">
+                      <button sc-camel-on-click="{{ mi.pick }}" style="display:block;width:100%;text-align:left;padding:8px 10px;background:transparent;border:none;border-radius:var(--radius-sm);cursor:pointer;font-family:var(--font-sans);font-size:var(--text-sm);color:var(--ink);transition:background-color var(--transition-fast)" style-hover="background:var(--surface-hover)">{{ mi.label }}</button>
+                    </sc-for>
+                  </div>
+                </sc-if>
+              </div>
+            </sc-if>
+          </div>
+
+          <div style="padding:0 20px">
+            <div style="display:flex;height:10px;border-radius:var(--radius-pill);overflow:hidden;background:var(--surface-row-alt)">
+              <sc-for list="{{ moneySegs }}" as="seg" hint-placeholder-count="3">
+                <div sc-camel-on-click="{{ seg.pick }}" title="{{ seg.title }}" style="width:{{ seg.w }};background:{{ seg.bg }};cursor:pointer"></div>
+              </sc-for>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;padding:10px 20px 14px;flex-wrap:wrap">
+            <sc-for list="{{ invFilters }}" as="fl" hint-placeholder-count="4">
+              <button sc-camel-on-click="{{ fl.pick }}" style="display:inline-flex;align-items:center;gap:6px;padding:4px 12px;background:{{ fl.bg }};border:1px solid {{ fl.border }};border-radius:var(--radius-pill);cursor:pointer;font-family:var(--font-sans);font-size:var(--text-sm);font-weight:500;color:var(--navy-700);transition:background-color var(--transition-fast)" style-hover="background:var(--navy-50)">
+                <span style="width:8px;height:8px;border-radius:50%;background:{{ fl.dot }};flex-shrink:0"></span>{{ fl.label }}
+                <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary)">{{ fl.amount }}</span>
+              </button>
+            </sc-for>
+            <span style="flex:1"></span>
+            <div style="width:220px"><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Input" value="{{ invSearch }}" sc-camel-on-change="{{ setInvSearch }}" placeholder="Search invoices" hint-size="220px,34px"></x-import></div>
+          </div>
+
+          <sc-if value="{{ stmtOpen }}" hint-placeholder-val="{{ false }}">
+            <div style="padding:16px 20px 20px;background:var(--surface-row-alt);border-top:1px solid var(--border-thin)">
+              <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+                <span style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary)">Statement of account, Aug 31, 2026</span>
+                <span style="flex:1"></span>
+                <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="secondary" size="sm" on-click="{{ noop }}" hint-size="auto,30px">Download PDF</x-import>
+                <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="ghost" size="sm" on-click="{{ closeStmt }}" hint-size="auto,30px">Close</x-import>
+              </div>
+              <sc-for list="{{ stmtRows }}" as="sr" hint-placeholder-count="3">
+                <div style="display:flex;gap:16px;padding:6px 0;border-bottom:1px solid var(--border-thin);font-size:var(--text-sm);align-items:baseline">
+                  <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-link);width:80px">{{ sr.n }}</span>
+                  <span style="font-family:var(--font-mono);font-size:var(--text-xs);width:70px">{{ sr.date }}</span>
+                  <span style="flex:1;color:var(--text-secondary)">{{ sr.desc }}</span>
+                  <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary);width:110px">due {{ sr.due }}</span>
+                  <span style="font-family:var(--font-mono);width:110px;text-align:right">{{ sr.balance }}</span>
+                </div>
+              </sc-for>
+              <div style="display:flex;justify-content:flex-end;gap:24px;padding-top:8px;font-size:var(--text-sm)">
+                <span style="font-weight:700">Balance due</span>
+                <span style="font-family:var(--font-mono);font-weight:700">{{ stmtTotal }}</span>
+              </div>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ formOpen }}" hint-placeholder-val="{{ false }}">
+            <div style="padding:16px 20px 20px;background:var(--surface-row-alt);border-top:1px solid var(--border-thin)">
+              <div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:12px">{{ formTitle }}</div>
+              <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px 20px">
+                <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Number</div><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Input" value="{{ formNumber }}" sc-camel-on-change="{{ setFormNumber }}" mono="{{ true }}" hint-size="100%,38px"></x-import></div>
+                <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Date</div><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Input" value="{{ formDate }}" sc-camel-on-change="{{ setFormDate }}" mono="{{ true }}" hint-size="100%,38px"></x-import></div>
+                <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Due date</div><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Input" value="{{ formDue }}" sc-camel-on-change="{{ setFormDue }}" mono="{{ true }}" hint-size="100%,38px"></x-import></div>
+                <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Status</div><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Select" options="{{ statusOpts }}" value="{{ formStatus }}" sc-camel-on-change="{{ setFormStatus }}" hint-size="100%,38px"></x-import></div>
+                <sc-if value="{{ formIsRecurring }}" hint-placeholder-val="{{ false }}">
+                  <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Repeats</div><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Select" options="{{ freqOpts }}" value="{{ formFreq }}" sc-camel-on-change="{{ setFormFreq }}" hint-size="100%,38px"></x-import></div>
+                  <div style="grid-column:span 2;align-self:end;font-size:var(--text-sm);color:var(--text-secondary);padding-bottom:9px">Raised automatically on this schedule as a draft you review before sending.</div>
+                </sc-if>
+              </div>
+
+              <div style="display:grid;grid-template-columns:190px 1fr 70px 100px 110px 32px;gap:8px;margin-top:18px;padding:0 0 6px;font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary)">
+                <span>Product / service</span><span>Description</span><span style="text-align:right">Qty</span><span style="text-align:right">Rate</span><span style="text-align:right">Amount</span><span></span>
+              </div>
+              <sc-for list="{{ formItems }}" as="li" hint-placeholder-count="2">
+                <div style="display:grid;grid-template-columns:190px 1fr 70px 100px 110px 32px;gap:8px;align-items:center;padding:4px 0">
+                  <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Select" options="{{ catalog }}" value="{{ li.svc }}" sc-camel-on-change="{{ li.setSvc }}" hint-size="100%,38px"></x-import>
+                  <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Input" value="{{ li.desc }}" sc-camel-on-change="{{ li.setDesc }}" placeholder="What this line covers" hint-size="100%,38px"></x-import>
+                  <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Input" value="{{ li.qty }}" sc-camel-on-change="{{ li.setQty }}" mono="{{ true }}" hint-size="100%,38px"></x-import>
+                  <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Input" value="{{ li.rate }}" sc-camel-on-change="{{ li.setRate }}" mono="{{ true }}" hint-size="100%,38px"></x-import>
+                  <span style="font-family:var(--font-mono);font-size:var(--text-sm);text-align:right">{{ li.amount }}</span>
+                  <button sc-camel-on-click="{{ li.remove }}" title="Remove line" style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;background:transparent;border:none;border-radius:var(--radius-sm);cursor:pointer;color:var(--muted);transition:background-color var(--transition-fast)" style-hover="background:var(--surface-hover)"><svg width="14" height="14" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"></path></svg></button>
+                </div>
+              </sc-for>
+              <button sc-camel-on-click="{{ addLine }}" style="display:inline-flex;align-items:center;gap:6px;margin-top:8px;padding:6px 10px;background:transparent;border:1px dashed var(--border-strong);border-radius:var(--radius-sm);cursor:pointer;font-family:var(--font-sans);font-size:var(--text-sm);font-weight:500;color:var(--navy-700);transition:background-color var(--transition-fast)" style-hover="background:var(--navy-50)"><svg width="13" height="13" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>Add line</button>
+
+              <div style="display:flex;gap:32px;margin-top:16px;align-items:flex-start">
+                <div style="flex:1">
+                  <div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Message on invoice</div>
+                  <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Input" value="{{ formNote }}" sc-camel-on-change="{{ setFormNote }}" placeholder="Thank you. Payment details are below." hint-size="100%,38px"></x-import>
+                </div>
+                <div style="width:300px;display:flex;flex-direction:column;gap:6px">
+                  <div style="display:flex;justify-content:space-between;font-size:var(--text-sm)"><span style="color:var(--text-secondary)">Subtotal</span><span style="font-family:var(--font-mono)">{{ formSubtotal }}</span></div>
+                  <div style="display:flex;align-items:center;gap:6px;justify-content:space-between">
+                    <div style="width:90px"><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Select" options="{{ discTypes }}" value="{{ formDiscType }}" sc-camel-on-change="{{ setFormDiscType }}" hint-size="90px,34px"></x-import></div>
+                    <div style="width:80px"><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Input" value="{{ formDiscVal }}" sc-camel-on-change="{{ setFormDiscVal }}" mono="{{ true }}" hint-size="80px,34px"></x-import></div>
+                    <span style="flex:1;text-align:right;font-family:var(--font-mono);font-size:var(--text-sm)">{{ formDiscount }}</span>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:6px;justify-content:space-between">
+                    <span style="font-size:var(--text-sm);color:var(--text-secondary)">Tax %</span>
+                    <div style="width:80px"><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Input" value="{{ formTaxPct }}" sc-camel-on-change="{{ setFormTaxPct }}" mono="{{ true }}" hint-size="80px,34px"></x-import></div>
+                    <span style="flex:1;text-align:right;font-family:var(--font-mono);font-size:var(--text-sm)">{{ formTax }}</span>
+                  </div>
+                  <div style="display:flex;justify-content:space-between;padding-top:6px;border-top:1px solid var(--border-strong);font-weight:700"><span>Total</span><span style="font-family:var(--font-mono)">{{ formTotal }}</span></div>
+                </div>
+              </div>
+              <div style="display:flex;gap:8px;margin-top:16px">
+                <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="primary" size="sm" on-click="{{ saveForm }}" hint-size="auto,30px">{{ formSaveLabel }}</x-import>
+                <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="ghost" size="sm" on-click="{{ cancelForm }}" hint-size="auto,30px">Cancel</x-import>
+                <span style="align-self:center;font-size:var(--text-sm);color:var(--text-secondary)">Every save lands in the invoice trail.</span>
+              </div>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ payFormOpen }}" hint-placeholder-val="{{ false }}">
+            <div style="padding:16px 20px 20px;background:var(--surface-row-alt);border-top:1px solid var(--border-thin)">
+              <div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:12px">Record payment</div>
+              <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px 20px">
+                <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Invoice</div><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Select" options="{{ payInvOpts }}" value="{{ payInv }}" sc-camel-on-change="{{ setPayInv }}" hint-size="100%,38px"></x-import></div>
+                <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Amount (USD)</div><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Input" value="{{ payAmount }}" sc-camel-on-change="{{ setPayAmount }}" mono="{{ true }}" hint-size="100%,38px"></x-import></div>
+                <div><div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Method</div><x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Select" options="{{ payMethods }}" value="{{ payMethod }}" sc-camel-on-change="{{ setPayMethod }}" hint-size="100%,38px"></x-import></div>
+              </div>
+              <div style="display:flex;gap:8px;margin-top:14px">
+                <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="primary" size="sm" on-click="{{ savePay }}" hint-size="auto,30px">Save payment</x-import>
+                <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="ghost" size="sm" on-click="{{ cancelPay }}" hint-size="auto,30px">Cancel</x-import>
+              </div>
+            </div>
+          </sc-if>
+
+          <div style="overflow-x:auto">
+          <div style="min-width:820px">
+          <div style="display:grid;grid-template-columns:88px 84px 1fr 1fr 88px 56px 90px 110px 92px;gap:8px;padding:8px 20px;background:var(--surface-row-alt);border-top:1px solid var(--border-thin);font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary)">
+            <span>Date</span><span>Number</span><span>Category</span><span>Subcategory</span><span>Due</span><span style="text-align:right">Qty</span><span style="text-align:right">Rate</span><span style="text-align:right">Total</span><span>Status</span>
+          </div>
+          <sc-for list="{{ invoices }}" as="inv" hint-placeholder-count="5">
+            <div style="border-top:1px solid var(--border-thin)">
+              <div sc-camel-on-click="{{ inv.toggle }}" style="display:grid;grid-template-columns:88px 84px 1fr 1fr 88px 56px 90px 110px 92px;gap:8px;align-items:center;padding:10px 20px;cursor:pointer;background:{{ inv.bg }};transition:background-color var(--transition-fast)" style-hover="background:var(--surface-hover)">
+                <span style="font-family:var(--font-mono);font-size:var(--text-xs)">{{ inv.date }}</span>
+                <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-link)">{{ inv.number }}</span>
+                <span style="font-size:var(--text-sm)">{{ inv.category }}</span>
+                <span style="font-size:var(--text-sm);color:var(--text-secondary)">{{ inv.subcategory }}</span>
+                <span style="font-family:var(--font-mono);font-size:var(--text-xs)">{{ inv.due }}</span>
+                <span style="font-family:var(--font-mono);font-size:var(--text-xs);text-align:right">{{ inv.qty }}</span>
+                <span style="font-family:var(--font-mono);font-size:var(--text-xs);text-align:right">{{ inv.rate }}</span>
+                <span style="font-family:var(--font-mono);font-size:var(--text-sm);text-align:right">{{ inv.total }}</span>
+                <span><span style="background:{{ inv.chipBg }};color:{{ inv.chipFg }};font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;padding:2px 8px;border-radius:var(--radius-pill)">{{ inv.status }}</span></span>
+              </div>
+              <sc-if value="{{ inv.expanded }}" hint-placeholder-val="{{ false }}">
+                <div style="padding:16px 20px 20px;background:var(--surface-row-alt);border-top:1px solid var(--border-thin)">
+                  <div style="display:flex;align-items:center;gap:6px;margin-bottom:12px;flex-wrap:wrap">
+                    <sc-for list="{{ inv.rowActions }}" as="ra" hint-placeholder-count="5">
+                      <button sc-camel-on-click="{{ ra.pick }}" style="padding:4px 12px;background:var(--surface-card);border:1px solid var(--border-strong);border-radius:var(--radius-pill);cursor:pointer;font-family:var(--font-sans);font-size:var(--text-sm);font-weight:500;color:var(--navy-700);transition:background-color var(--transition-fast),border-color var(--transition-fast)" style-hover="background:var(--navy-50);border-color:var(--navy-500)">{{ ra.label }}</button>
+                    </sc-for>
+                    <span style="flex:1"></span>
+                    <x-import component-from-global-scope="CommandCenterDesignSystem_a34f56.Button" variant="secondary" size="sm" on-click="{{ inv.startEdit }}" hint-size="auto,30px">Edit invoice</x-import>
+                  </div>
+                  <div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px">Line items</div>
+                  <sc-for list="{{ inv.lines }}" as="ln" hint-placeholder-count="2">
+                    <div style="display:flex;gap:12px;padding:4px 0;font-size:var(--text-sm);align-items:baseline">
+                      <span style="width:170px;flex-shrink:0;font-weight:500">{{ ln.svc }}</span>
+                      <span style="flex:1;color:var(--text-secondary)">{{ ln.desc }}</span>
+                      <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary)">{{ ln.calc }}</span>
+                      <span style="font-family:var(--font-mono);width:100px;text-align:right">{{ ln.amt }}</span>
+                    </div>
+                  </sc-for>
+                  <div style="display:flex;justify-content:flex-end;gap:24px;padding:6px 0;border-top:1px solid var(--border-thin);font-size:var(--text-sm)">
+                    <span style="color:var(--text-secondary)">{{ inv.footerNote }}</span>
+                    <span style="font-family:var(--font-mono);font-weight:700">{{ inv.total }}</span>
+                  </div>
+                  <div style="font-family:var(--font-mono);font-size:var(--text-xs);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);margin:12px 0 6px">Trail</div>
+                  <sc-for list="{{ inv.trail }}" as="ev" hint-placeholder-count="3">
+                    <div style="display:flex;gap:12px;padding:5px 0;font-size:var(--text-sm)">
+                      <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary);width:120px;flex-shrink:0">{{ ev.when }}</span>
+                      <span>{{ ev.what }}</span>
+                    </div>
+                  </sc-for>
+                </div>
+              </sc-if>
+            </div>
+          </sc-for>
+          </div>
+          </div>
+        </div>
+        </sc-if>
+      </sc-if>
+
+      </div>
+    </div>
+  </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script="" data-props="{}">
+class Component extends DCLogic {
+  fmt(n) { return (n < 0 ? '-$' : '$') + Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+
+  INIT = [
+    { id: 1, name: 'Marlowe & Finch', contact: 'Dana Marlowe', email: 'accounts@marlowefinch.com', phone: '+1 (415) 555-0182', address: '661 Harrison St, San Francisco, CA 94107', terms: 'Net 15', rate: 95, schedule: 'Monthly retainer', since: 'Aug 29, 2026', avgPay: 11,
+      invoices: [
+        { n: 'INV-2041', date: 'Aug 29', due: 'Sep 13', cat: 'Consulting', sub: 'Contract renewal', status: 'Sent', taxPct: 0, discType: '% off', discVal: 0,
+          items: [{ svc: 'Consulting hours', desc: 'Contract renewal drafting', qty: 6.5, rate: 95 }],
+          trail: [['Aug 29, 4:12 PM', 'Created from billing period V-2340, 6.5 billable hours.'], ['Aug 29, 4:30 PM', 'Sent to accounts@marlowefinch.com.'], ['Aug 30, 9:02 AM', 'Viewed by recipient.']] },
+        { n: 'INV-2033', date: 'Aug 13', due: 'Aug 28', cat: 'Consulting', sub: 'Drafting', status: 'Overdue', taxPct: 0, discType: '% off', discVal: 0,
+          items: [{ svc: 'Consulting hours', desc: 'Policy drafting', qty: 9, rate: 95 }, { svc: 'Review', desc: 'Legal pass on drafts', qty: 3, rate: 95 }],
+          trail: [['Aug 13, 2:00 PM', 'Created, 12 billable hours.'], ['Aug 13, 2:05 PM', 'Sent to accounts@marlowefinch.com.'], ['Aug 29, 8:00 AM', 'Passed due date, marked overdue.']] },
+        { n: 'INV-2019', date: 'Jul 30', due: 'Aug 14', cat: 'Advisory', sub: 'Quarterly review', status: 'Paid', taxPct: 0, discType: '% off', discVal: 0,
+          items: [{ svc: 'Advisory session', desc: 'Q3 review and planning', qty: 8, rate: 95 }],
+          trail: [['Jul 30, 1:11 PM', 'Created.'], ['Jul 30, 1:20 PM', 'Sent.'], ['Aug 9, 10:44 AM', 'Payment recorded, $760.00, wire transfer.']] }
+      ] },
+    { id: 2, name: 'Uppingham Systems', contact: 'Rhea Uppingham', email: 'billing@uppingham.io', phone: '+1 (212) 555-0147', address: '148 Lafayette St, New York, NY 10013', terms: 'Net 15', rate: 110, schedule: 'Monthly', since: 'Feb 3, 2026', avgPay: 9,
+      invoices: [
+        { n: 'INV-2127', date: 'Aug 30', due: 'Sep 14', cat: 'Operations', sub: 'Retainer, Aug 24 to Aug 30', status: 'Open', taxPct: 0, discType: '% off', discVal: 0,
+          items: [{ svc: 'Operations retainer', desc: 'Weekly ops cover', qty: 25.14, rate: 110 }],
+          trail: [['Aug 30, 5:00 PM', 'Created from billing period V-2127, 25.14 billable hours.']] },
+        { n: 'INV-2098', date: 'Aug 2', due: 'Aug 17', cat: 'Operations', sub: 'Retainer, July', status: 'Paid', taxPct: 0, discType: '% off', discVal: 0,
+          items: [{ svc: 'Operations retainer', desc: 'July retainer', qty: 88, rate: 110 }, { svc: 'Workshop', desc: 'Vendor onboarding workshop', qty: 8.2, rate: 110 }],
+          trail: [['Aug 2, 9:00 AM', 'Created.'], ['Aug 2, 9:10 AM', 'Sent to billing@uppingham.io.'], ['Aug 12, 3:38 PM', 'Payment recorded, $10,582.00, ACH.']] }
+      ] },
+    { id: 3, name: 'Yealmpton Studio', contact: 'Marco Yealm', email: 'pay@yealmpton.studio', phone: '+44 20 7946 0958', address: '31 Great Sutton St, London EC1V 0NB', terms: 'Net 30', rate: 85, schedule: 'Fortnightly', since: 'Mar 18, 2026', avgPay: 24,
+      invoices: [
+        { n: 'INV-2316', date: 'Aug 28', due: 'Sep 27', cat: 'Consulting', sub: 'Vendor consolidation', status: 'Open', taxPct: 0, discType: '% off', discVal: 0,
+          items: [{ svc: 'Consulting hours', desc: 'Vendor consolidation', qty: 10.06, rate: 85 }],
+          trail: [['Aug 28, 6:30 PM', 'Created from billing period V-2316, 10.06 billable hours.']] },
+        { n: 'INV-2311', date: 'Aug 25', due: 'Sep 24', cat: 'Consulting', sub: 'Drafting', status: 'Sent', taxPct: 0, discType: '% off', discVal: 0,
+          items: [{ svc: 'Drafting', desc: 'SOP drafting sprint', qty: 30.58, rate: 85 }],
+          trail: [['Aug 25, 4:00 PM', 'Created from billing period V-2311.'], ['Aug 25, 4:12 PM', 'Sent to pay@yealmpton.studio.']] },
+        { n: 'INV-2255', date: 'Jul 28', due: 'Aug 27', cat: 'Operations', sub: 'Internal admin', status: 'Overdue', taxPct: 0, discType: '% off', discVal: 0,
+          items: [{ svc: 'Operations retainer', desc: 'Admin support', qty: 4.27, rate: 85 }],
+          trail: [['Jul 28, 10:00 AM', 'Created.'], ['Jul 28, 10:02 AM', 'Sent.'], ['Aug 28, 8:00 AM', 'Passed due date, marked overdue.'], ['Aug 29, 9:15 AM', 'Reminder line added.']] }
+      ] },
+    { id: 4, name: 'Quenington Capital', contact: 'Ivy Quenington', email: 'ap@quenington.com', phone: '+1 (312) 555-0129', address: '215 W Ohio St, Chicago, IL 60654', terms: 'Net 7', rate: 140, schedule: 'Fortnightly', since: 'Jan 12, 2026', avgPay: 6,
+      invoices: [
+        { n: 'INV-2325', date: 'Aug 25', due: 'Sep 1', cat: 'Advisory', sub: 'Quarterly review', status: 'Sent', taxPct: 0, discType: '% off', discVal: 0,
+          items: [{ svc: 'Advisory session', desc: 'Quarterly portfolio review', qty: 48, rate: 140 }, { svc: 'Workshop', desc: 'Partner workshop', qty: 15.79, rate: 140 }],
+          trail: [['Aug 25, 5:45 PM', 'Created from billing period V-2325, 63.79 billable hours.'], ['Aug 25, 5:50 PM', 'Sent to ap@quenington.com.'], ['Aug 26, 8:12 AM', 'Viewed by recipient.']] },
+        { n: 'INV-2290', date: 'Aug 11', due: 'Aug 18', cat: 'Advisory', sub: 'Board pack', status: 'Paid', taxPct: 0, discType: '% off', discVal: 0,
+          items: [{ svc: 'Advisory session', desc: 'Board pack preparation', qty: 18.5, rate: 140 }],
+          trail: [['Aug 11, 3:00 PM', 'Created.'], ['Aug 11, 3:03 PM', 'Sent.'], ['Aug 16, 1:22 PM', 'Payment recorded, $2,590.00, wire transfer.']] }
+      ] },
+    { id: 5, name: 'Quarrymill Health', contact: 'Sam Quarry', email: 'finance@quarrymill.health', phone: '+1 (617) 555-0173', address: '50 Milk St, Boston, MA 02109', terms: 'Net 30', rate: 100, schedule: 'Ad hoc', since: 'May 5, 2026', avgPay: 31,
+      invoices: [
+        { n: 'INV-2301', date: 'Aug 20', due: 'Sep 19', cat: 'Operations', sub: 'Onboarding programme', status: 'Open', taxPct: 0, discType: '% off', discVal: 0,
+          items: [{ svc: 'Operations retainer', desc: 'Onboarding programme', qty: 2.19, rate: 100 }],
+          trail: [['Aug 20, 2:00 PM', 'Created, 2.19 billable hours.']] },
+        { n: 'INV-2214', date: 'Jun 20', due: 'Jul 20', cat: 'Consulting', sub: 'Diligence support', status: 'Overdue', taxPct: 0, discType: '% off', discVal: 0,
+          items: [{ svc: 'Consulting hours', desc: 'Diligence support', qty: 6.43, rate: 100 }],
+          trail: [['Jun 20, 9:30 AM', 'Created.'], ['Jun 20, 9:35 AM', 'Sent.'], ['Jul 21, 8:00 AM', 'Passed due date, marked overdue.'], ['Aug 4, 10:00 AM', 'Reminder sent by you from Gmail, noted here.']] }
+      ] }
+  ];
+
+  state = { clients: this.INIT, selId: 1, view: 'dashboard', tab: 'overview', search: '',
+    editing: false, draft: {}, expandedInv: null,
+    newDraft: { name: '', contact: '', email: '', phone: '', address: '', rate: '' }, newTerms: 'Net 15', newSchedule: 'Monthly', newHint: '',
+    addMenu: false, form: null, payForm: false, payDraft: {}, nextNo: 2350,
+    invFilter: 'all', invSearch: '', stmtOpen: false };
+
+  STATUS = { Open: ['var(--chip-open-bg)', 'var(--chip-open-fg)'], Sent: ['var(--chip-waiting-bg)', 'var(--chip-waiting-fg)'], Paid: ['var(--chip-done-bg)', 'var(--chip-done-fg)'], Overdue: ['var(--chip-overdue-bg)', 'var(--chip-overdue-fg)'], Estimate: ['var(--navy-100)', 'var(--navy)'], Credit: ['var(--chip-waiting-bg)', 'var(--chip-waiting-fg)'], Void: ['var(--chip-waiting-bg)', 'var(--chip-waiting-fg)'], Partial: ['var(--gold-100)', 'var(--gold-600)'] };
+  CATALOG = ['Consulting hours', 'Operations retainer', 'Advisory session', 'Workshop', 'Drafting', 'Review', 'Expense passthrough', 'Discount'];
+  AUTO_DEFAULT = { recurring: false, freq: 'Monthly', remind: true, cadence: '3 days before due', copy: true, cc: '' };
+
+  now() { return 'Aug 31, ' + new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }); }
+  subOf(inv) { return inv.items.reduce((a, i) => a + (parseFloat(i.qty) || 0) * (parseFloat(i.rate) || 0), 0); }
+  discOf(inv, sub) { const v = parseFloat(inv.discVal) || 0; return inv.discType === '$ off' ? v : sub * v / 100; }
+  totalOf(inv) { const sub = this.subOf(inv); const d = this.discOf(inv, sub); return (sub - d) * (1 + (parseFloat(inv.taxPct) || 0) / 100); }
+  balanceOf(inv) { return this.totalOf(inv) - (inv.paid || 0); }
+  totals(c) {
+    let open = 0, over = 0, paid = 0;
+    c.invoices.forEach(i => { const t = this.totalOf(i); if (i.status === 'Paid') paid += t; else if (i.status !== 'Void' && i.status !== 'Estimate') { paid += i.paid || 0; const b = this.balanceOf(i); open += b; if (i.status === 'Overdue') over += b; } });
+    return { open, over, paid };
+  }
+  patchClient(id, patch) { this.setState(s => ({ clients: s.clients.map(c => c.id === id ? { ...c, ...patch } : c) })); }
+  patchInv(c, idx, upd) { this.patchClient(c.id, { invoices: c.invoices.map((x, j) => j === idx ? upd : x) }); }
+  patchForm(patch) { this.setState(s => ({ form: { ...s.form, ...patch } })); }
+  blankLine(rate) { return { svc: 'Consulting hours', desc: '', qty: '1', rate: String(rate) }; }
+
+  renderVals() {
+    const s = this.state;
+    const navItems = ['Dashboard', 'Action items', 'Projects', 'Meetings', 'SOPs', 'Templates', 'Clients', 'Mail', 'Invoicing', 'Reports', 'Settings']
+      .map(l => ({ id: l.toLowerCase().replace(' ', '-'), label: l }));
+    let gInv = 0, gColl = 0, gOvd = 0, gPaid = 0, nInv = 0, nOpen = 0, nOvd = 0, nPaid = 0;
+    s.clients.forEach(cl => cl.invoices.forEach(i => {
+      if (['Void', 'Estimate', 'Credit'].includes(i.status)) return;
+      const tt = this.totalOf(i); nInv++; gInv += tt;
+      if (i.status === 'Paid') { gPaid += tt; nPaid++; }
+      else { gPaid += i.paid || 0; const b = this.balanceOf(i); gColl += b; nOpen++; if (i.status === 'Overdue') { gOvd += b; nOvd++; } }
+    }));
+    const aging = [
+      { label: 'Total invoice amount', amount: this.fmt(gInv), count: nInv + ' invoices', accent: 'var(--border-strong)' },
+      { label: 'Total available to collect', amount: this.fmt(gColl), count: nOpen + ' open invoices', accent: 'var(--navy-500)' },
+      { label: 'Total overdue invoice amount', amount: this.fmt(gOvd), count: nOvd + ' overdue', accent: 'var(--gold-600)' },
+      { label: "This month's collection", amount: this.fmt(gPaid), count: nPaid + ' paid in Aug', accent: '#2E7D5B' }
+    ];
+    const sorted = s.clients.slice().sort((a, b) => (a.archived ? 1 : 0) - (b.archived ? 1 : 0));
+    const clientRows = sorted.filter(c => c.name.toLowerCase().includes(s.search.toLowerCase())).map(c => {
+      const t = this.totals(c);
+      const active = c.id === s.selId && s.view === 'dashboard';
+      const overdue = t.over > 0;
+      const chip = c.archived ? ['archived', 'var(--navy-100)', 'var(--navy)'] : overdue ? ['overdue', 'var(--chip-overdue-bg)', 'var(--chip-overdue-fg)'] : ['current', 'var(--chip-ontrack-bg)', 'var(--chip-ontrack-fg)'];
+      return { name: c.name, balance: this.fmt(t.open), invCount: c.invoices.length,
+        chip: chip[0], chipBg: chip[1], chipFg: chip[2],
+        bg: active ? 'var(--navy-50)' : 'transparent', edge: active ? 'var(--navy)' : 'transparent',
+        pick: () => this.setState({ selId: c.id, view: 'dashboard', tab: 'overview', editing: false, expandedInv: null, form: null, payForm: false, invFilter: 'all', invSearch: '', stmtOpen: false }) };
+    });
+    const vals = { navItems, aging, clientRows, noop: () => {},
+      search: s.search, setSearch: (e) => this.setState({ search: e.target.value }),
+      isDashboard: s.view === 'dashboard', isNewClient: s.view === 'new',
+      newClient: () => this.setState({ view: 'new', newHint: '' }),
+      cancelNew: () => this.setState({ view: 'dashboard' }),
+      termsOpts: ['Net 15', 'Net 7', 'Net 30', 'Due on receipt'],
+      scheduleOpts: ['Monthly', 'Fortnightly', 'Ad hoc', 'Monthly retainer'],
+      statusOpts: ['Open', 'Sent', 'Paid', 'Overdue', 'Estimate', 'Credit', 'Void'],
+      catalog: this.CATALOG, discTypes: ['% off', '$ off'],
+      newTerms: s.newTerms, setNewTerms: (e) => this.setState({ newTerms: e.target.value }),
+      newSchedule: s.newSchedule, setNewSchedule: (e) => this.setState({ newSchedule: e.target.value }),
+      newHint: s.newHint,
+      newFields: [
+        ['Client name', 'name', 'Acme Consulting'], ['Contact person', 'contact', 'Jane Smith'],
+        ['Email', 'email', 'billing@acme.com'], ['Phone', 'phone', '+1 (555) 000-0000'],
+        ['Billing address', 'address', 'Street, city, state'], ['Hourly rate (USD)', 'rate', '100']
+      ].map(([label, key, ph]) => ({ label, ph, value: s.newDraft[key],
+        set: (e) => this.setState(x => ({ newDraft: { ...x.newDraft, [key]: e.target.value } })) })),
+      createClient: () => {
+        const d = s.newDraft;
+        if (!d.name) { this.setState({ newHint: 'A client name is required.' }); return; }
+        const id = Math.max(...s.clients.map(c => c.id)) + 1;
+        const c = { id, name: d.name, contact: d.contact || 'Not set', email: d.email || 'Not set', phone: d.phone || 'Not set',
+          address: d.address || 'Not set', terms: s.newTerms, rate: parseFloat(d.rate) || 100, schedule: s.newSchedule,
+          since: 'Aug 31, 2026', avgPay: 0, invoices: [] };
+        this.setState(x => ({ clients: [c].concat(x.clients), selId: id, view: 'dashboard', tab: 'overview',
+          newDraft: { name: '', contact: '', email: '', phone: '', address: '', rate: '' } }));
+      }
+    };
+    const c = s.clients.find(x => x.id === s.selId) || s.clients[0];
+    if (!c) return vals;
+    const t = this.totals(c);
+    const overdue = t.over > 0;
+    const auto = c.auto || this.AUTO_DEFAULT;
+    const setAuto = (key) => (val) => this.patchClient(c.id, { auto: { ...auto, [key]: val } });
+    const autoTgl = (key) => ({ bg: auto[key] ? 'var(--navy)' : 'var(--border-strong)', knob: auto[key] ? 19 : 3, toggle: () => setAuto(key)(!auto[key]) });
+    const openForm = (kind, idx) => {
+      const base = idx != null ? c.invoices[idx] : null;
+      this.setState({ addMenu: false, payForm: false, tab: 'overview', form: {
+        kind, idx: idx != null ? idx : null,
+        number: base ? base.n : (kind === 'estimate' ? 'EST-' : kind === 'credit' ? 'CN-' : 'INV-') + s.nextNo,
+        date: base ? base.date : 'Aug 31', due: base ? base.due : 'Sep 15',
+        freq: base && base.freq ? base.freq : 'Monthly',
+        status: base ? base.status : (kind === 'estimate' ? 'Estimate' : kind === 'credit' ? 'Credit' : 'Open'),
+        note: base ? (base.note || '') : '', discType: base ? base.discType : '% off', discVal: base ? String(base.discVal) : '0', taxPct: base ? String(base.taxPct) : '0',
+        items: base ? base.items.map(i => ({ svc: i.svc, desc: i.desc, qty: String(i.qty), rate: String(i.rate) })) : [this.blankLine(c.rate)]
+      } });
+    };
+    Object.assign(vals, {
+      isArchived: !!c.archived, canAdd: !c.archived,
+      archiveLabel: c.archived ? 'Reactivate' : 'Archive client',
+      toggleArchive: () => this.patchClient(c.id, { archived: !c.archived }),
+      tabs: [['overview', 'Overview'], ['auto', 'Automation and notifications']].map(([id, label]) => {
+        const active = s.tab === id;
+        return { label, bg: active ? 'var(--navy)' : 'transparent', fg: active ? '#FFFFFF' : 'var(--ink)',
+          hoverBg: active ? 'var(--navy)' : 'var(--navy-50)', pick: () => this.setState({ tab: id }) };
+      }),
+      tabOverview: s.tab === 'overview', tabAuto: s.tab === 'auto',
+      recToggle: autoTgl('recurring'), remToggle: autoTgl('remind'), copyToggle: autoTgl('copy'),
+      freqOpts: ['Monthly', 'Fortnightly', 'Weekly', 'Quarterly'], autoFreq: auto.freq, setAutoFreq: (e) => setAuto('freq')(e.target.value),
+      cadenceOpts: ['3 days before due', 'On the due date', '7 days after due', 'Every 7 days until paid'], autoCadence: auto.cadence, setAutoCadence: (e) => setAuto('cadence')(e.target.value),
+      autoCc: auto.cc, setAutoCc: (e) => setAuto('cc')(e.target.value),
+      addMenuOpen: s.addMenu, toggleAddMenu: () => this.setState(x => ({ addMenu: !x.addMenu })),
+      addMenuItems: [
+        { label: 'Record payment', pick: () => this.setState({ addMenu: false, form: null, payForm: true, payDraft: { inv: '', amount: '', method: 'Wire transfer' } }) },
+        { label: 'New estimate', pick: () => openForm('estimate', null) },
+        { label: 'New credit note', pick: () => openForm('credit', null) },
+        { label: 'New recurring invoice', pick: () => openForm('recurring', null) },
+        { label: 'Create statement', pick: () => this.setState({ addMenu: false, form: null, payForm: false, stmtOpen: true }) }
+      ],
+      openInvoiceForm: () => openForm('invoice', null),
+      sel: { ...c, rateFmt: this.fmt(c.rate) + ' / h', open: this.fmt(t.open), overdue: this.fmt(t.over),
+        overdueColor: overdue ? 'var(--text-warn)' : 'var(--text-body)', collected: this.fmt(t.paid),
+        avgPay: c.avgPay ? c.avgPay + ' d' : 'No data', invCount: c.invoices.length,
+        chip: c.archived ? 'archived' : overdue ? 'overdue' : 'current',
+        chipBg: c.archived ? 'var(--navy-100)' : overdue ? 'var(--chip-overdue-bg)' : 'var(--chip-ontrack-bg)',
+        chipFg: c.archived ? 'var(--navy)' : overdue ? 'var(--chip-overdue-fg)' : 'var(--chip-ontrack-fg)' },
+      editing: s.editing, notEditing: !s.editing,
+      startEdit: () => this.setState({ editing: true, draft: { name: c.name, contact: c.contact, email: c.email, phone: c.phone, address: c.address, rate: String(c.rate), terms: c.terms } }),
+      cancelEdit: () => this.setState({ editing: false }),
+      saveEdit: () => { const d = this.state.draft; this.patchClient(c.id, { name: d.name, contact: d.contact, email: d.email, phone: d.phone, address: d.address, rate: parseFloat(d.rate) || c.rate, terms: d.terms }); this.setState({ editing: false }); },
+      editFields: [['Client name', 'name'], ['Contact person', 'contact'], ['Email', 'email'], ['Phone', 'phone'], ['Billing address', 'address'], ['Hourly rate (USD)', 'rate']]
+        .map(([label, key]) => ({ label, value: s.draft[key], set: (e) => this.setState(x => ({ draft: { ...x.draft, [key]: e.target.value } })) })),
+      draftTerms: s.draft.terms, setDraftTerms: (e) => this.setState(x => ({ draft: { ...x.draft, terms: e.target.value } })),
+      payFormOpen: s.payForm,
+      payInvOpts: [''].concat(c.invoices.filter(i => ['Open', 'Sent', 'Overdue', 'Partial'].includes(i.status)).map(i => i.n)),
+      payInv: s.payDraft.inv,
+      setPayInv: (e) => { const n = e.target.value; const i = c.invoices.find(x => x.n === n); this.setState(x => ({ payDraft: { ...x.payDraft, inv: n, amount: i ? this.balanceOf(i).toFixed(2) : '' } })); },
+      payAmount: s.payDraft.amount, setPayAmount: (e) => this.setState(x => ({ payDraft: { ...x.payDraft, amount: e.target.value } })),
+      payMethods: ['Wire transfer', 'ACH', 'Check', 'Card'], payMethod: s.payDraft.method, setPayMethod: (e) => this.setState(x => ({ payDraft: { ...x.payDraft, method: e.target.value } })),
+      cancelPay: () => this.setState({ payForm: false }),
+      savePay: () => {
+        const d = this.state.payDraft; const idx = c.invoices.findIndex(x => x.n === d.inv);
+        if (idx < 0) { this.setState({ payForm: false }); return; }
+        const inv = c.invoices[idx];
+        const amt = parseFloat(d.amount) || 0;
+        const bal = this.balanceOf(inv);
+        const full = amt >= bal - 0.005;
+        this.patchInv(c, idx, { ...inv,
+          status: full ? 'Paid' : 'Partial',
+          paid: full ? undefined : (inv.paid || 0) + amt,
+          trail: inv.trail.concat([[this.now(), full
+            ? 'Payment recorded, $' + d.amount + ', ' + d.method.toLowerCase() + '. Paid in full.'
+            : 'Partial payment recorded, $' + d.amount + ', ' + d.method.toLowerCase() + '. Balance ' + this.fmt(bal - amt) + '.']]) });
+        this.setState({ payForm: false, expandedInv: d.inv });
+      },
+      notes: c.notes || '', setNotes: (e) => this.patchClient(c.id, { notes: e.target.value }),
+      stmtOpen: s.stmtOpen, closeStmt: () => this.setState({ stmtOpen: false }),
+      stmtRows: c.invoices.filter(i => !['Paid', 'Void', 'Estimate', 'Credit'].includes(i.status)).map(i => ({ n: i.n, date: i.date, due: i.due, desc: i.sub, balance: this.fmt(this.balanceOf(i)) })),
+      stmtTotal: this.fmt(t.open)
+    });
+    {
+      let ovd = 0, opn = 0;
+      c.invoices.forEach(i => { if (i.status === 'Overdue') ovd += this.balanceOf(i); else if (['Open', 'Sent', 'Partial'].includes(i.status)) opn += this.balanceOf(i); });
+      const pd = t.paid, sum = ovd + opn + pd;
+      const COLORS = { overdue: 'var(--gold-600)', open: 'var(--navy-500)', paid: '#2E7D5B' };
+      const defs = [['overdue', 'Overdue', ovd], ['open', 'Open, not due', opn], ['paid', 'Paid', pd]];
+      vals.moneySegs = sum > 0 ? defs.filter(([, , v]) => v > 0).map(([id, label, v]) => ({
+        w: (v / sum * 100).toFixed(1) + '%', bg: COLORS[id], title: label + ', ' + this.fmt(v),
+        pick: () => this.setState(x => ({ invFilter: x.invFilter === id ? 'all' : id })) })) : [];
+      vals.invFilters = [['all', 'All', ovd + opn + pd, 'var(--muted)']].concat(defs.map(d => [d[0], d[1], d[2], COLORS[d[0]]])).map(([id, label, v, dot]) => {
+        const active = s.invFilter === id;
+        return { label, dot, amount: this.fmt(v),
+          bg: active ? 'var(--navy-50)' : 'var(--surface-card)', border: active ? 'var(--navy-500)' : 'var(--border-strong)',
+          pick: () => this.setState({ invFilter: id }) };
+      });
+      vals.invSearch = s.invSearch;
+      vals.setInvSearch = (e) => this.setState({ invSearch: e.target.value });
+    }
+    const f = s.form;
+    if (f) {
+      const sub = f.items.reduce((a, i) => a + (parseFloat(i.qty) || 0) * (parseFloat(i.rate) || 0), 0);
+      const disc = f.discType === '$ off' ? (parseFloat(f.discVal) || 0) : sub * (parseFloat(f.discVal) || 0) / 100;
+      const tax = (sub - disc) * (parseFloat(f.taxPct) || 0) / 100;
+      const setItem = (i, key) => (e) => this.setState(x => ({ form: { ...x.form, items: x.form.items.map((it, j) => j === i ? { ...it, [key]: e.target.value } : it) } }));
+      Object.assign(vals, {
+        formOpen: true,
+        formTitle: f.idx != null ? 'Edit ' + f.number : f.kind === 'estimate' ? 'New estimate' : f.kind === 'credit' ? 'New credit note' : f.kind === 'recurring' ? 'New recurring invoice' : 'New invoice',
+        formSaveLabel: f.idx != null ? 'Save changes' : 'Save ' + (f.kind === 'estimate' ? 'estimate' : f.kind === 'credit' ? 'credit note' : f.kind === 'recurring' ? 'recurring invoice' : 'invoice'),
+        formIsRecurring: f.kind === 'recurring',
+        formFreq: f.freq, setFormFreq: (e) => this.patchForm({ freq: e.target.value }),
+        formNumber: f.number, setFormNumber: (e) => this.patchForm({ number: e.target.value }),
+        formDate: f.date, setFormDate: (e) => this.patchForm({ date: e.target.value }),
+        formDue: f.due, setFormDue: (e) => this.patchForm({ due: e.target.value }),
+        formStatus: f.status, setFormStatus: (e) => this.patchForm({ status: e.target.value }),
+        formNote: f.note, setFormNote: (e) => this.patchForm({ note: e.target.value }),
+        formDiscType: f.discType, setFormDiscType: (e) => this.patchForm({ discType: e.target.value }),
+        formDiscVal: f.discVal, setFormDiscVal: (e) => this.patchForm({ discVal: e.target.value }),
+        formTaxPct: f.taxPct, setFormTaxPct: (e) => this.patchForm({ taxPct: e.target.value }),
+        formSubtotal: this.fmt(sub), formDiscount: '-' + this.fmt(disc), formTax: this.fmt(tax), formTotal: this.fmt(sub - disc + tax),
+        formItems: f.items.map((it, i) => ({ svc: it.svc, desc: it.desc, qty: it.qty, rate: it.rate,
+          amount: this.fmt((parseFloat(it.qty) || 0) * (parseFloat(it.rate) || 0)),
+          setSvc: setItem(i, 'svc'), setDesc: setItem(i, 'desc'), setQty: setItem(i, 'qty'), setRate: setItem(i, 'rate'),
+          remove: () => this.setState(x => ({ form: { ...x.form, items: x.form.items.length > 1 ? x.form.items.filter((_, j) => j !== i) : x.form.items } })) })),
+        addLine: () => this.setState(x => ({ form: { ...x.form, items: x.form.items.concat([this.blankLine(c.rate)]) } })),
+        cancelForm: () => this.setState({ form: null }),
+        saveForm: () => {
+          const g = this.state.form;
+          const items = g.items.map(i => ({ svc: i.svc, desc: i.desc || 'General', qty: parseFloat(i.qty) || 0, rate: parseFloat(i.rate) || 0 }));
+          const built = { n: g.number, date: g.date, due: g.due, status: g.status, note: g.note,
+            discType: g.discType, discVal: parseFloat(g.discVal) || 0, taxPct: parseFloat(g.taxPct) || 0, items,
+            cat: items[0].svc.replace(' hours', '').replace(' retainer', '').replace(' session', ''),
+            sub: items.length > 1 ? items.length + ' line items' : items[0].desc };
+          if (g.kind === 'recurring') built.freq = g.freq;
+          if (g.idx != null) {
+            const old = c.invoices[g.idx];
+            this.patchInv(c, g.idx, { ...old, ...built, trail: old.trail.concat([[this.now(), 'Edited by you: ' + items.length + ' line item' + (items.length > 1 ? 's' : '') + ', total ' + this.fmt(this.totalOf(built)) + '.']]) });
+          } else {
+            built.trail = [[this.now(), (g.kind === 'recurring'
+              ? 'Created as a recurring invoice, repeats ' + g.freq.toLowerCase() + '. The next one is raised automatically as a draft: '
+              : 'Created by you: ') + items.length + ' line item' + (items.length > 1 ? 's' : '') + ', total ' + this.fmt(this.totalOf(built)) + '.']];
+            this.patchClient(c.id, { invoices: [built].concat(c.invoices) });
+            if (g.kind === 'recurring') this.patchClient(c.id, { auto: { ...auto, recurring: true, freq: g.freq }, invoices: [built].concat(c.invoices) });
+            this.setState(x => ({ nextNo: x.nextNo + 1 }));
+          }
+          this.setState({ form: null, expandedInv: built.n });
+        }
+      });
+    } else vals.formOpen = false;
+    const grpOf = (inv) => inv.status === 'Overdue' ? 'overdue' : inv.status === 'Paid' ? 'paid' : ['Open', 'Sent', 'Partial'].includes(inv.status) ? 'open' : 'other';
+    const q = s.invSearch.toLowerCase();
+    vals.invoices = c.invoices.map((inv, idx) => ({ inv, idx }))
+      .filter(({ inv }) => (s.invFilter === 'all' || grpOf(inv) === s.invFilter) &&
+        (!q || (inv.n + ' ' + inv.cat + ' ' + inv.sub).toLowerCase().includes(q)))
+      .map(({ inv, idx }) => {
+      const [cb, cf] = this.STATUS[inv.status] || this.STATUS.Open;
+      const expanded = s.expandedInv === inv.n;
+      const hours = inv.items.reduce((a, i) => a + (parseFloat(i.qty) || 0), 0);
+      const rates = [...new Set(inv.items.map(i => i.rate))];
+      const extras = [];
+      if (inv.discVal) extras.push('discount ' + inv.discVal + (inv.discType === '$ off' ? ' USD' : '%'));
+      if (inv.taxPct) extras.push('tax ' + inv.taxPct + '%');
+      if (inv.paid) extras.push(this.fmt(inv.paid) + ' paid, balance ' + this.fmt(this.balanceOf(inv)));
+      return { number: inv.n, date: inv.date, due: inv.due, category: inv.cat, subcategory: inv.sub,
+        qty: hours.toFixed(2), rate: rates.length > 1 ? 'mixed' : this.fmt(rates[0]), total: this.fmt(this.totalOf(inv)),
+        status: inv.status, chipBg: cb, chipFg: cf, expanded,
+        bg: expanded ? 'var(--surface-row-alt)' : 'transparent',
+        footerNote: extras.length ? 'After ' + extras.join(' and ') : 'Total',
+        lines: inv.items.map(i => ({ svc: i.svc, desc: i.desc, calc: i.qty + ' x ' + this.fmt(i.rate), amt: this.fmt((parseFloat(i.qty) || 0) * (parseFloat(i.rate) || 0)) })),
+        trail: inv.trail.map(([when, what]) => ({ when, what })),
+        toggle: () => this.setState(x => ({ expandedInv: x.expandedInv === inv.n ? null : inv.n })),
+        startEdit: () => openForm(inv.n.split('-')[0] === 'EST' ? 'estimate' : inv.n.split('-')[0] === 'CN' ? 'credit' : 'invoice', idx),
+        rowActions: (() => {
+          const acts = [];
+          const payable = ['Open', 'Sent', 'Overdue', 'Partial'].includes(inv.status);
+          if (payable) acts.push({ label: 'Record payment', pick: (e) => { e.stopPropagation(); this.patchInv(c, idx, { ...inv, status: 'Paid', paid: undefined, trail: inv.trail.concat([[this.now(), 'Payment recorded, ' + this.fmt(this.balanceOf(inv)) + ', manual entry. Paid in full.']]) }); } });
+          if (inv.status === 'Open') acts.push({ label: 'Send', pick: (e) => { e.stopPropagation(); this.patchInv(c, idx, { ...inv, status: 'Sent', trail: inv.trail.concat([[this.now(), 'Sent to ' + c.email + '.']]) }); } });
+          if (['Sent', 'Overdue'].includes(inv.status)) acts.push({ label: 'Send reminder', pick: (e) => { e.stopPropagation(); this.patchInv(c, idx, { ...inv, trail: inv.trail.concat([[this.now(), 'Reminder sent to ' + c.email + '.']]) }); } });
+          if (inv.status === 'Estimate') acts.push({ label: 'Convert to invoice', pick: (e) => { e.stopPropagation(); this.patchInv(c, idx, { ...inv, n: 'INV-' + this.state.nextNo, status: 'Open', trail: inv.trail.concat([[this.now(), 'Converted from estimate ' + inv.n + '.']]) }); this.setState(x => ({ nextNo: x.nextNo + 1 })); } });
+          acts.push({ label: 'Duplicate', pick: (e) => { e.stopPropagation(); const copy = { ...inv, n: 'INV-' + this.state.nextNo, date: 'Aug 31', status: 'Open', trail: [[this.now(), 'Created as a copy of ' + inv.n + '.']] }; this.patchClient(c.id, { invoices: [copy].concat(c.invoices) }); this.setState(x => ({ nextNo: x.nextNo + 1, expandedInv: copy.n })); } });
+          acts.push({ label: 'Download PDF', pick: (e) => { e.stopPropagation(); } });
+          acts.push({ label: 'Print', pick: (e) => { e.stopPropagation(); } });
+          if (!['Paid', 'Void'].includes(inv.status)) acts.push({ label: 'Void', pick: (e) => { e.stopPropagation(); this.patchInv(c, idx, { ...inv, status: 'Void', trail: inv.trail.concat([[this.now(), 'Voided by you. It no longer counts toward the balance.']]) }); } });
+          return acts;
+        })() };
+      });
+    return vals;
+  }
+}
+</script>
+
+
+</body></html>

@@ -164,14 +164,29 @@ export async function buildDigest(
 		.bind(stale)
 		.all();
 
+	/**
+	 * Invoices past due.
+	 *
+	 * Two things changed with migration 0024. Estimates and credit notes now
+	 * exist and are not receivables, and a voided invoice counts toward nothing,
+	 * so both are filtered out here rather than being chased in an email.
+	 *
+	 * And clients can be flagged for chasing on the invoicing screen. That flag
+	 * is what it says it is: it sorts those clients to the top of this list and
+	 * marks them, because a prompt to Paul is the only kind of reminder this app
+	 * can send. It cannot mail the client, asserted in
+	 * tests/layer2-no-send-surface.test.ts.
+	 */
 	const aging = await db
 		.prepare(
 			`SELECT i.invoice_number, cl.name AS client_name,
               (i.amount_cents - i.amount_paid_cents) AS outstanding_cents,
-              CAST(julianday(?1) - julianday(i.due_date) AS INTEGER) AS days_overdue
+              CAST(julianday(?1) - julianday(i.due_date) AS INTEGER) AS days_overdue,
+              cl.digest_reminders AS flagged
        FROM invoices i JOIN clients cl ON cl.id = i.client_id
        WHERE i.amount_paid_cents < i.amount_cents AND julianday(?1) > julianday(i.due_date)
-       ORDER BY days_overdue DESC`
+         AND i.kind = 'invoice' AND i.voided_at IS NULL
+       ORDER BY cl.digest_reminders DESC, days_overdue DESC`
 		)
 		.bind(day)
 		.all();
@@ -224,8 +239,12 @@ export async function buildDigest(
 		...line('Stalled follow-ups, no movement in 5 days', stalledRows, (r) => String(r.title))
 	);
 	parts.push(
-		...line('Invoices past due', agingRows, (r) =>
-			`${r.invoice_number}, ${r.client_name}, ${money(Number(r.outstanding_cents))} outstanding, ${r.days_overdue} days past`
+		...line(
+			'Invoices past due',
+			agingRows,
+			(r) =>
+				`${r.invoice_number}, ${r.client_name}, ${money(Number(r.outstanding_cents))} outstanding, ` +
+				`${r.days_overdue} days past${Number(r.flagged) === 1 ? ', flagged for chasing' : ''}`
 		)
 	);
 
