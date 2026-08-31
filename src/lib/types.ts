@@ -382,7 +382,15 @@ export interface Template {
  * needs the TimeSavedLog and SlipsCaught tables and a baseline time audit that
  * has not been run. It is v2 work. See D52.
  */
-export const REPORT_TYPES = ['slipping', 'billing', 'projects', 'actions'] as const;
+export const REPORT_TYPES = [
+	'slipping',
+	'billing',
+	'projects',
+	'actions',
+	'pnl',
+	'expenses',
+	'profitability'
+] as const;
 export type ReportType = (typeof REPORT_TYPES)[number];
 
 export interface ReportMeta {
@@ -417,6 +425,29 @@ export const REPORTS: ReportMeta[] = [
 		type: 'actions',
 		title: 'Action item completion',
 		summary: 'Completed against open, on-time rate, and average resolution time.',
+		windowed: true
+	},
+	/**
+	 * The three from the ledger. AR aging is deliberately absent: "Billing and
+	 * aging" above already answers it, and a second report on the same figures
+	 * would be a second place for them to disagree.
+	 */
+	{
+		type: 'pnl',
+		title: 'Profit and loss',
+		summary: 'What came in against what went out, by currency, over a period.',
+		windowed: true
+	},
+	{
+		type: 'expenses',
+		title: 'Expenses by category',
+		summary: 'Where the money went, grouped by category and by parent.',
+		windowed: true
+	},
+	{
+		type: 'profitability',
+		title: 'Client profitability',
+		summary: 'Revenue against costs booked to each client, and what is not yet knowable.',
 		windowed: true
 	}
 ];

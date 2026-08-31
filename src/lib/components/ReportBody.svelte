@@ -387,7 +387,7 @@
 			<p class="empty">No projects yet.</p>
 		{/if}
 
-	{:else}
+	{:else if type === 'actions'}
 		{@const t = totals}
 		<div class="tiles">
 			<div class="tile"><span class="tile-value">{t.completed_count}</span><span class="tile-label">Completed in window</span></div>
@@ -455,6 +455,134 @@
 		{:else}
 			<p class="empty">Nothing was completed in this window.</p>
 		{/if}
+
+	{:else if type === 'pnl'}
+		{#if data.currencies?.length}
+			<!--
+				One block per currency, and no total across them. Adding dollars to
+				pesos gives a number that looks finished and means nothing. D124.
+			-->
+			{#each data.currencies as c (c.currency)}
+				<h2>{c.currency}</h2>
+				<div class="scroll">
+					<table>
+						<tbody>
+							<tr><th scope="row">Money in</th><td class="num mono">{formatMoney(c.income_cents)}</td></tr>
+							<tr><th scope="row">Costs</th><td class="num mono">{formatMoney(c.expense_cents)}</td></tr>
+							<tr><th scope="row">Overhead</th><td class="num mono">{formatMoney(c.overhead_cents)}</td></tr>
+							<tr class="total">
+								<th scope="row">Net</th>
+								<td class="num mono" class:alarm={c.net_cents < 0}>{formatMoney(c.net_cents)}</td>
+							</tr>
+						</tbody>
+					</table>
+				</div>
+				<p class="note">{c.entries} entries. Counted when money moved, not when invoiced.</p>
+			{/each}
+			{#if data.currencies.length > 1}
+				<p class="note">
+					Two currencies, so there is no single net. Each stands alone until this app
+					knows a conversion rate, which it does not.
+				</p>
+			{/if}
+		{:else}
+			<p class="empty">
+				{#if data.ledger_rows_total > 0}
+					Nothing was recorded in this window. The ledger has {data.ledger_rows_total} entries
+					outside it.
+				{:else}
+					The ledger has no entries yet. Add one from the Ledger page.
+				{/if}
+			</p>
+		{/if}
+
+	{:else if type === 'expenses'}
+		{#if data.lines?.length}
+			{#each data.totals as t (t.currency)}
+				<h2>{t.currency} &middot; {formatMoney(t.amount_cents)}</h2>
+				<div class="scroll">
+					<table>
+						<thead>
+							<tr><th>Group</th><th>Category</th><th>Kind</th><th class="num">Amount</th><th class="num">Entries</th></tr>
+						</thead>
+						<tbody>
+							{#each data.lines.filter((l: { currency: string }) => l.currency === t.currency) as line, i (line.group_name + line.category_name + i)}
+								<tr>
+									<td>{line.group_name}</td>
+									<td>{line.category_name === line.group_name ? '' : line.category_name}</td>
+									<td>{line.kind}</td>
+									<td class="num mono">{formatMoney(line.amount_cents)}</td>
+									<td class="num mono">{line.entries}</td>
+								</tr>
+							{/each}
+						</tbody>
+					</table>
+				</div>
+			{/each}
+		{:else}
+			<p class="empty">
+				{#if data.ledger_rows_total > 0}
+					No expenses in this window. The ledger has {data.ledger_rows_total} entries outside it.
+				{:else}
+					The ledger has no entries yet.
+				{/if}
+			</p>
+		{/if}
+
+	{:else if type === 'profitability'}
+		<!--
+			The gap is stated before the figures, not after. Labour is the largest
+			cost in a services firm and it is not in these numbers, so a margin
+			read without that caveat is read wrong.
+		-->
+		{#if data.labour?.no_rates_set}
+			<p class="warn" role="status">
+				Labour is not costed. No rate is set on any time entry or client, so the hours
+				worked cannot be priced and are missing from every margin below. That is unknown,
+				not zero. Set a default rate on a client to change it.
+				{#if data.labour.uncosted_hours > 0}
+					{data.labour.uncosted_hours} billable hours in this window are affected, across
+					{data.labour.clients_affected} clients.
+				{/if}
+			</p>
+		{:else if data.labour?.uncosted_entries > 0}
+			<p class="warn" role="status">
+				{data.labour.uncosted_hours} billable hours in this window have no rate, so they are
+				missing from the margins below.
+			</p>
+		{/if}
+
+		{#if data.lines?.length}
+			<div class="scroll">
+				<table>
+					<thead>
+						<tr>
+							<th>Client</th><th>Currency</th>
+							<th class="num">Received</th><th class="num">Costs booked</th><th class="num">Margin</th>
+						</tr>
+					</thead>
+					<tbody>
+						{#each data.lines as line, i (line.client_id + line.currency + i)}
+							<tr>
+								<td>{line.client_name}</td>
+								<td class="mono">{line.currency}</td>
+								<td class="num mono">{formatMoney(line.revenue_cents)}</td>
+								<td class="num mono">{formatMoney(line.cost_cents)}</td>
+								<td class="num mono" class:alarm={line.margin_cents < 0}>
+									{formatMoney(line.margin_cents)}
+								</td>
+							</tr>
+						{/each}
+					</tbody>
+				</table>
+			</div>
+			<p class="note">
+				Revenue is money received, not invoiced. Overhead is excluded: it belongs to the
+				firm rather than to any one client.
+			</p>
+		{:else}
+			<p class="empty">No client had ledger activity in this window.</p>
+		{/if}
 	{/if}
 </div>
 
@@ -465,6 +593,26 @@
 	 * at volume nothing groups and the page reads as one undifferentiated
 	 * column. The gap is tight, and headings carry the separation instead.
 	 */
+	.warn {
+		margin: 0;
+		padding: var(--space-3);
+		border: 1px solid var(--gold);
+		border-radius: var(--radius-md);
+		font-size: var(--text-sm);
+	}
+
+	.note {
+		margin: 0;
+		font-size: var(--text-sm);
+		color: var(--text-secondary);
+	}
+
+	tr.total th,
+	tr.total td {
+		font-weight: 700;
+		border-top: 2px solid var(--border-strong);
+	}
+
 	.report {
 		display: flex;
 		flex-direction: column;

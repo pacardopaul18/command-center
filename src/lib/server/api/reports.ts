@@ -392,6 +392,199 @@ function addDays(day: string, n: number): string {
 	return new Date(Date.parse(`${day}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
 }
 
+
+/**
+ * Profit and loss, per currency and never across them.
+ *
+ * Cash basis by ruling, which the ledger already enforces: income appears here
+ * when a payment posted, not when an invoice was issued. So this answers "what
+ * moved" rather than "what was promised", and the two differ by exactly the
+ * receivables, which the billing report covers.
+ *
+ * No combined figure anywhere, the same guarantee the ledger API holds. A total
+ * across currencies looks finished and means nothing. D124.
+ */
+async function pnlReport(db: D1Database, day: string, from: string, to: string) {
+	const { results } = await db
+		.prepare(
+			`SELECT t.currency, cat.kind,
+              SUM(t.amount_cents) AS amount_cents,
+              COUNT(*) AS entries
+       FROM ledger_transactions t
+       JOIN ledger_categories cat ON cat.id = t.category_id
+       WHERE t.txn_date >= ?1 AND t.txn_date <= ?2
+       GROUP BY t.currency, cat.kind
+       ORDER BY t.currency, cat.kind`
+		)
+		.bind(from, to)
+		.all<{ currency: string; kind: string; amount_cents: number; entries: number }>();
+
+	const byCurrency = new Map<
+		string,
+		{
+			currency: string;
+			income_cents: number;
+			expense_cents: number;
+			overhead_cents: number;
+			net_cents: number;
+			entries: number;
+		}
+	>();
+
+	for (const row of results ?? []) {
+		const e = byCurrency.get(row.currency) ?? {
+			currency: row.currency,
+			income_cents: 0,
+			expense_cents: 0,
+			overhead_cents: 0,
+			net_cents: 0,
+			entries: 0
+		};
+		if (row.kind === 'income') e.income_cents += row.amount_cents;
+		if (row.kind === 'expense') e.expense_cents += row.amount_cents;
+		if (row.kind === 'overhead') e.overhead_cents += row.amount_cents;
+		e.net_cents = e.income_cents - e.expense_cents - e.overhead_cents;
+		e.entries += row.entries;
+		byCurrency.set(row.currency, e);
+	}
+
+	// Whether the books are empty or only the window is. Without this an empty
+	// report cannot say which, and those are different answers. D138.
+	const ledgerRows = await db
+		.prepare('SELECT COUNT(*) AS n FROM ledger_transactions')
+		.first<{ n: number }>();
+
+	return {
+		currencies: [...byCurrency.values()],
+		ledger_rows_total: Number(ledgerRows?.n ?? 0)
+	};
+}
+
+/**
+ * Where the money went.
+ *
+ * Rolled to the parent where there is one, because the chart nests one level
+ * and "Software" is the answer wanted before "Software / Figma". Both are
+ * returned and the screen leads with the parent.
+ */
+async function expensesReport(db: D1Database, day: string, from: string, to: string) {
+	const { results } = await db
+		.prepare(
+			`SELECT t.currency,
+              cat.kind,
+              COALESCE(parent.name, cat.name) AS group_name,
+              cat.name AS category_name,
+              SUM(t.amount_cents) AS amount_cents,
+              COUNT(*) AS entries
+       FROM ledger_transactions t
+       JOIN ledger_categories cat ON cat.id = t.category_id
+       LEFT JOIN ledger_categories parent ON parent.id = cat.parent_id
+       WHERE t.txn_date >= ?1 AND t.txn_date <= ?2
+         AND cat.kind IN ('expense', 'overhead')
+       GROUP BY t.currency, cat.kind, group_name, cat.name
+       ORDER BY t.currency, amount_cents DESC`
+		)
+		.bind(from, to)
+		.all<{
+			currency: string;
+			kind: string;
+			group_name: string;
+			category_name: string;
+			amount_cents: number;
+			entries: number;
+		}>();
+
+	const rows = results ?? [];
+	const totals = new Map<string, number>();
+	for (const r of rows) totals.set(r.currency, (totals.get(r.currency) ?? 0) + r.amount_cents);
+
+	const ledgerRows = await db
+		.prepare('SELECT COUNT(*) AS n FROM ledger_transactions')
+		.first<{ n: number }>();
+
+	return {
+		lines: rows,
+		totals: [...totals.entries()].map(([currency, amount_cents]) => ({ currency, amount_cents })),
+		ledger_rows_total: Number(ledgerRows?.n ?? 0)
+	};
+}
+
+/**
+ * What each client paid and what each client cost.
+ *
+ * Revenue is ledger income booked to the client, which under cash basis is
+ * money that arrived. Costs are ledger expenses booked to the client. Overhead
+ * is excluded on purpose: it belongs to the firm, and spreading it across
+ * clients needs an allocation rule nobody has chosen.
+ *
+ * TIME IS NOT COSTED, AND THIS SAYS SO RATHER THAN SHOWING ZERO. Every time
+ * entry has a NULL rate and every client a NULL default rate, so the labour cost
+ * of an engagement is not zero, it is unknown. A margin computed without it
+ * flatters, and a zero in that column would read as a fact. The uncosted hours
+ * are returned so the screen can name exactly what is missing.
+ */
+async function profitabilityReport(db: D1Database, day: string, from: string, to: string) {
+	const { results } = await db
+		.prepare(
+			`SELECT c.id AS client_id, c.name AS client_name, t.currency,
+              SUM(CASE WHEN cat.kind = 'income' THEN t.amount_cents ELSE 0 END) AS revenue_cents,
+              SUM(CASE WHEN cat.kind = 'expense' THEN t.amount_cents ELSE 0 END) AS cost_cents,
+              COUNT(*) AS entries
+       FROM ledger_transactions t
+       JOIN ledger_categories cat ON cat.id = t.category_id
+       JOIN clients c ON c.id = t.client_id
+       WHERE t.txn_date >= ?1 AND t.txn_date <= ?2
+         AND cat.kind IN ('income', 'expense')
+       GROUP BY c.id, c.name, t.currency
+       ORDER BY revenue_cents DESC`
+		)
+		.bind(from, to)
+		.all<{
+			client_id: string;
+			client_name: string;
+			currency: string;
+			revenue_cents: number;
+			cost_cents: number;
+			entries: number;
+		}>();
+
+	const lines = (results ?? []).map((r) => ({
+		...r,
+		margin_cents: r.revenue_cents - r.cost_cents
+	}));
+
+	const uncosted = await db
+		.prepare(
+			`SELECT COUNT(*) AS entries,
+              COALESCE(SUM(hours), 0) AS hours,
+              COUNT(DISTINCT client_id) AS clients
+       FROM time_entries
+       WHERE entry_date >= ?1 AND entry_date <= ?2
+         AND billable = 1 AND rate_cents IS NULL`
+		)
+		.bind(from, to)
+		.first<{ entries: number; hours: number; clients: number }>();
+
+	const anyRate = await db
+		.prepare(
+			`SELECT
+         (SELECT COUNT(*) FROM time_entries WHERE rate_cents IS NOT NULL) AS entry_rates,
+         (SELECT COUNT(*) FROM clients WHERE default_rate_cents IS NOT NULL) AS client_rates`
+		)
+		.first<{ entry_rates: number; client_rates: number }>();
+
+	return {
+		lines,
+		labour: {
+			no_rates_set:
+				Number(anyRate?.entry_rates ?? 0) === 0 && Number(anyRate?.client_rates ?? 0) === 0,
+			uncosted_entries: Number(uncosted?.entries ?? 0),
+			uncosted_hours: Number(uncosted?.hours ?? 0),
+			clients_affected: Number(uncosted?.clients ?? 0)
+		}
+	};
+}
+
 reports.get('/:type', async (c) => {
 	const type = c.req.param('type') as ReportType;
 	if (!REPORT_TYPES.includes(type)) {
@@ -411,7 +604,13 @@ reports.get('/:type', async (c) => {
 				? await projectsReport(db, day)
 				: type === 'actions'
 					? await actionsReport(db, day, from, to)
-					: await slippingReport(db, day);
+					: type === 'pnl'
+						? await pnlReport(db, day, from, to)
+						: type === 'expenses'
+							? await expensesReport(db, day, from, to)
+							: type === 'profitability'
+								? await profitabilityReport(db, day, from, to)
+								: await slippingReport(db, day);
 
 	// generated_at stamps the printed page. A PDF with no as-of date is a PDF
 	// somebody misreads three weeks later.
