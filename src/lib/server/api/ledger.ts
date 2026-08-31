@@ -290,3 +290,137 @@ ledger.post('/transactions', async (c) => {
 
 	return c.json({ transaction: created }, 201);
 });
+
+/**
+ * Receipts. P3-E3.
+ *
+ * Metadata in D1, bytes in R2, the split the rest of the app already uses. A
+ * receipt exists only against a transaction, so every route here reaches it
+ * through its transaction rather than by id alone: a receipt id that could be
+ * fetched on its own would be a way to read a file without the row that
+ * explains what it is.
+ */
+
+/** Twelve megabytes. A photographed receipt is well under; a scan can approach it. */
+const MAX_RECEIPT_BYTES = 12 * 1024 * 1024;
+
+const ALLOWED_RECEIPT_TYPES = [
+	'application/pdf',
+	'image/jpeg',
+	'image/png',
+	'image/heic',
+	'image/webp'
+];
+
+ledger.get('/transactions/:id/receipts', async (c) => {
+	const { results } = await c.env.DB.prepare(
+		`SELECT id, transaction_id, filename, mime_type, size_bytes, uploaded_at
+     FROM expense_receipts WHERE transaction_id = ? ORDER BY uploaded_at DESC`
+	)
+		.bind(c.req.param('id'))
+		.all();
+	return c.json({ receipts: results ?? [] });
+});
+
+ledger.post('/transactions/:id/receipts', async (c) => {
+	const transactionId = c.req.param('id');
+	const transaction = await c.env.DB.prepare('SELECT id FROM ledger_transactions WHERE id = ?')
+		.bind(transactionId)
+		.first();
+	if (!transaction) throw new ApiError(404, 'No transaction with that id.');
+
+	const form = await c.req.formData().catch(() => null);
+	const file = form?.get('file');
+	if (!(file instanceof File)) throw new ApiError(400, 'Attach a file as the "file" field.');
+
+	if (file.size === 0) throw new ApiError(400, 'That file is empty.');
+	if (file.size > MAX_RECEIPT_BYTES) {
+		throw new ApiError(413, 'That file is larger than 12 MB.');
+	}
+	const mime = file.type || 'application/octet-stream';
+	if (!ALLOWED_RECEIPT_TYPES.includes(mime)) {
+		throw new ApiError(415, `A receipt must be a PDF or an image. That one is ${mime}.`);
+	}
+
+	const id = crypto.randomUUID();
+	const key = `receipts/${transactionId}/${id}`;
+	const now = nowUtc();
+
+	await c.env.FILES.put(key, await file.arrayBuffer(), {
+		httpMetadata: { contentType: mime }
+	});
+
+	try {
+		await c.env.DB.prepare(
+			`INSERT INTO expense_receipts
+       (id, transaction_id, filename, mime_type, size_bytes, r2_key, uploaded_at, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+		)
+			.bind(id, transactionId, file.name || 'receipt', mime, file.size, key, now, now)
+			.run();
+	} catch (err) {
+		// The row is the record. If it did not land, the object is unreachable
+		// and is removed rather than left as a file nothing points at.
+		await c.env.FILES.delete(key).catch(() => {});
+		throw err;
+	}
+
+	const created = await c.env.DB.prepare(
+		'SELECT id, transaction_id, filename, mime_type, size_bytes, uploaded_at FROM expense_receipts WHERE id = ?'
+	)
+		.bind(id)
+		.first();
+	return c.json({ receipt: created }, 201);
+});
+
+/**
+ * The bytes, reached through the transaction that owns them.
+ *
+ * The row is checked before R2 is touched, so a guessed key cannot serve a
+ * file: the object is only ever named by a row the caller has already been
+ * shown to be entitled to reach.
+ */
+ledger.get('/transactions/:id/receipts/:receiptId', async (c) => {
+	const row = await c.env.DB.prepare(
+		`SELECT r2_key, filename, mime_type FROM expense_receipts
+     WHERE id = ? AND transaction_id = ?`
+	)
+		.bind(c.req.param('receiptId'), c.req.param('id'))
+		.first<{ r2_key: string; filename: string; mime_type: string | null }>();
+	if (!row) throw new ApiError(404, 'No receipt with that id on that transaction.');
+
+	const object = await c.env.FILES.get(row.r2_key);
+	if (!object) {
+		throw new ApiError(404, 'The record is here but the file is missing from storage.');
+	}
+
+	// Buffered rather than piped, matching the attachment route: the Workers R2
+	// stream and the platform Response type disagree, and a receipt is small.
+	const bytes = new Uint8Array(await object.arrayBuffer());
+	const safe = row.filename.replace(new RegExp('["' + String.fromCharCode(13, 10) + ']', 'g'), '');
+
+	return new Response(bytes.buffer as ArrayBuffer, {
+		headers: {
+			'content-type': row.mime_type ?? 'application/octet-stream',
+			'content-disposition': `attachment; filename="${safe}"`,
+			// Never cached by a shared cache: this is somebody's private file.
+			'cache-control': 'private, no-store'
+		}
+	});
+});
+
+ledger.delete('/transactions/:id/receipts/:receiptId', async (c) => {
+	const row = await c.env.DB.prepare(
+		'SELECT r2_key FROM expense_receipts WHERE id = ? AND transaction_id = ?'
+	)
+		.bind(c.req.param('receiptId'), c.req.param('id'))
+		.first<{ r2_key: string }>();
+	if (!row) throw new ApiError(404, 'No receipt with that id on that transaction.');
+
+	await c.env.DB.prepare('DELETE FROM expense_receipts WHERE id = ?')
+		.bind(c.req.param('receiptId'))
+		.run();
+	await c.env.FILES.delete(row.r2_key).catch(() => {});
+
+	return c.json({ ok: true });
+});

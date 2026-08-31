@@ -9,7 +9,7 @@ import {
 	readJsonObject,
 	requiredText
 } from './validate';
-import { INVOICE_STATUSES, PERIOD_STATUSES } from '$lib/types';
+import { INVOICE_STATUSES, PERIOD_STATUSES, formatMoney, parseMoneyToCents } from '$lib/types';
 import { PAGE_SIZES, readPaging } from './action-items';
 import type { InvoiceStatus, PeriodStatus } from '$lib/types';
 
@@ -373,6 +373,138 @@ invoicing.post('/invoices', async (c) => {
  * caller to keep the two in step. Paid, part paid and sent are all derivable
  * from amount_paid_cents against amount_cents.
  */
+/**
+ * Records a payment, and posts it to the ledger.
+ *
+ * One row per payment received, which is the record that did not exist: the
+ * invoice carried a cumulative figure with no history, so there was no date
+ * money arrived and nothing a ledger entry could be keyed to.
+ *
+ * The posting is the amount received, never the running total. Posting the
+ * total on every payment would book 500, then 1200, then 2000 for an invoice
+ * that received 500, 700 and 800, and every one of those is a real figure off a
+ * real invoice, which is what makes it hard to see.
+ *
+ * Cash basis, per ruling: this is the moment revenue exists. The invoice being
+ * issued created a receivable and nothing else.
+ */
+invoicing.post('/invoices/:id/payments', async (c) => {
+	const id = c.req.param('id');
+	const body = await readJsonObject(c.req.raw);
+
+	const invoice = await c.env.DB.prepare(
+		'SELECT id, client_id, amount_cents, amount_paid_cents FROM invoices WHERE id = ?'
+	)
+		.bind(id)
+		.first<{ id: string; client_id: string; amount_cents: number; amount_paid_cents: number }>();
+	if (!invoice) throw new ApiError(404, 'Invoice not found.');
+
+	const paidOn = optionalDate(body.paid_on, 'Payment date');
+	if (!paidOn) throw new ApiError(400, 'A payment needs the date the money arrived.');
+
+	const rawAmount = typeof body.amount === 'string' ? body.amount : String(body.amount ?? '');
+	const amountCents = parseMoneyToCents(rawAmount);
+	if (amountCents === null || amountCents <= 0) {
+		throw new ApiError(400, 'The payment amount must be a positive figure, like 500 or 500.00.');
+	}
+
+	const outstanding = invoice.amount_cents - invoice.amount_paid_cents;
+	if (amountCents > outstanding) {
+		throw new ApiError(
+			400,
+			`That is more than the ${formatMoney(outstanding)} still outstanding on this invoice.`
+		);
+	}
+
+	const method = optionalText(body.method, 'method', 40);
+	const reference = optionalText(body.reference, 'reference', 120);
+	const notes = optionalText(body.notes, 'notes', 500);
+	const now = nowUtc();
+	const paymentId = crypto.randomUUID();
+
+	// The invoice's paid figure and status follow from this insert, recomputed
+	// by trigger rather than set here, so the two cannot drift apart.
+	try {
+		await c.env.DB.prepare(
+			`INSERT INTO invoice_payments
+       (id, invoice_id, paid_on, amount_cents, method, reference, notes, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+		)
+			.bind(paymentId, id, paidOn, amountCents, method, reference, notes, now, now)
+			.run();
+	} catch (err) {
+		const message = err instanceof Error ? err.message : '';
+		if (message.includes('exceed the invoice amount')) {
+			throw new ApiError(400, 'That payment would take the invoice past its total.');
+		}
+		throw asClientError(err);
+	}
+
+	/**
+	 * The ledger entry, keyed to the payment.
+	 *
+	 * A unique partial index on source_payment_id makes a retried post a
+	 * refusal rather than a second entry. It replaced an index keyed on the
+	 * invoice, which guarded the wrong thing: it made a retry safe in a world
+	 * where an invoice could only ever be paid once.
+	 *
+	 * Currency is USD, matching the invoice, which has no currency column of its
+	 * own. That is recorded rather than inferred: when invoices gain a currency
+	 * this line is where it is read from.
+	 */
+	let posted: Record<string, unknown> | null = null;
+	let postingError: string | null = null;
+	try {
+		const txnId = crypto.randomUUID();
+		await c.env.DB.prepare(
+			`INSERT INTO ledger_transactions
+       (id, category_id, client_id, project_id, txn_date, amount_cents, currency,
+        provenance, source_invoice_id, source_payment_id, notes, created_at, updated_at)
+       VALUES (?, 'ledger-cat-client-payments', ?, NULL, ?, ?, 'USD', 'invoice', ?, ?, ?, ?, ?)`
+		)
+			.bind(
+				txnId,
+				invoice.client_id,
+				paidOn,
+				amountCents,
+				id,
+				paymentId,
+				notes,
+				now,
+				now
+			)
+			.run();
+		posted = await c.env.DB.prepare('SELECT * FROM ledger_transactions WHERE id = ?')
+			.bind(txnId)
+			.first();
+	} catch (err) {
+		// The payment is recorded either way. A posting that failed is reported
+		// rather than swallowed, because an invoice that says paid with no
+		// revenue behind it is exactly the drift this epic exists to remove.
+		const message = err instanceof Error ? err.message : '';
+		postingError = message.includes('UNIQUE')
+			? 'This payment is already in the ledger.'
+			: 'The payment was recorded but did not reach the ledger.';
+	}
+
+	const updated = await c.env.DB.prepare(`${INVOICE_SELECT} WHERE i.id = ?2`)
+		.bind(todayInWorkingZone(), id)
+		.first();
+
+	return c.json({ payment_id: paymentId, invoice: updated, posted, posting_error: postingError }, 201);
+});
+
+/** Every payment against one invoice, newest first. */
+invoicing.get('/invoices/:id/payments', async (c) => {
+	const { results } = await c.env.DB.prepare(
+		`SELECT p.*, (SELECT t.id FROM ledger_transactions t WHERE t.source_payment_id = p.id) AS ledger_id
+     FROM invoice_payments p WHERE p.invoice_id = ? ORDER BY p.paid_on DESC, p.created_at DESC`
+	)
+		.bind(c.req.param('id'))
+		.all();
+	return c.json({ payments: results ?? [] });
+});
+
 invoicing.patch('/invoices/:id', async (c) => {
 	const id = c.req.param('id');
 	const body = await readJsonObject(c.req.raw);
@@ -388,17 +520,20 @@ invoicing.patch('/invoices/:id', async (c) => {
 	const binds: unknown[] = [];
 
 	if ('amount_paid_cents' in body) {
-		const paid = Number(body.amount_paid_cents);
-		if (!Number.isInteger(paid) || paid < 0) {
-			throw new ApiError(400, 'The paid amount must be a whole number of cents, zero or more.');
-		}
-		if (paid > existing.amount_cents) {
-			throw new ApiError(400, 'The paid amount cannot exceed the invoice amount.');
-		}
-		sets.push('amount_paid_cents = ?');
-		binds.push(paid);
-		sets.push('status = ?');
-		binds.push(paid >= existing.amount_cents ? 'paid' : paid > 0 ? 'partial' : 'sent');
+		/**
+		 * Retired. The paid figure is derived from the payments now.
+		 *
+		 * Setting it directly is how a paid total and the payments behind it
+		 * come to disagree with nothing reporting it, and under cash basis it
+		 * also destroys the only record of when money arrived. Refused with the
+		 * route that replaces it rather than ignored, so a caller still on the
+		 * old shape is told what to call instead.
+		 */
+		throw new ApiError(
+			400,
+			'The paid amount is worked out from the payments on the invoice. ' +
+				`Record one with POST /api/invoicing/invoices/${id}/payments instead.`
+		);
 	} else if ('status' in body) {
 		sets.push('status = ?');
 		binds.push(oneOf<InvoiceStatus>(body.status, INVOICE_STATUSES, 'status', 'sent'));
