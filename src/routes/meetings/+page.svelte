@@ -93,6 +93,9 @@
 {:else if data.calendar.events.length > 0 || data.calendar.last_read_at}
 	<div class="block">
 		<Card title="What is coming up" subtitle="The next two weeks, from the calendars you chose.">
+			{#if data.accountEmail}
+				<p class="scope mono">Showing {data.accountEmail}</p>
+			{/if}
 			<CalendarWeek events={data.calendar.events} lastReadAt={data.calendar.last_read_at} />
 		</Card>
 	</div>
@@ -222,6 +225,13 @@
 		font-size: var(--text-sm);
 		color: var(--green-700);
 	}
+	/* Which calendar these events come from. */
+	.scope {
+		margin: 0 0 var(--space-3);
+		font-size: var(--text-xs);
+		color: var(--text-secondary);
+	}
+
 	.error-banner {
 		margin-top: var(--space-2);
 		padding: var(--space-3);

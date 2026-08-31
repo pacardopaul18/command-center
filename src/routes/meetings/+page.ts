@@ -36,6 +36,12 @@ export const load: PageLoad = async ({ fetch, url }) => {
 		q,
 		account: scope.account,
 		calendarConnected: scope.connected,
+		accountEmail: scope.connected
+			? await fetch('/api/connections')
+					.then((r) => (r.ok ? (r.json() as Promise<{ accounts?: { id: string; account_email: string | null }[] }>) : null))
+					.then((j) => j?.accounts?.find((a) => a.id === scope.account)?.account_email ?? null)
+					.catch(() => null)
+			: null,
 		// The calendar is context: a failure reading it must not stop the
 		// meetings list rendering. It must still be said out loud. Returning an
 		// empty list for a failed read is how a broken calendar looks exactly

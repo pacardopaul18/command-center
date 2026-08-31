@@ -336,6 +336,65 @@ describe('layer 2: no route returns another account rows', () => {
 		}
 	});
 
+	/**
+	 * D108, asserted from the other direction.
+	 *
+	 * The first-use default added for the D113 fault lives in the active-account
+	 * preference, not in `resolveAccount`. If it ever migrates into the resolver
+	 * the whole F1 class stops being detectable: a caller that forgets to pass
+	 * scope gets a plausible answer about the first account and looks healthy.
+	 *
+	 * So the refusal is pinned. With two accounts connected, omitting scope is
+	 * an error, and the error names the accounts so the caller can fix it.
+	 */
+	it('a caller that omits scope with several accounts is refused, not defaulted', async () => {
+		for (const path of [
+			'/api/email/threads',
+			'/api/email/ingest',
+			'/api/connections/google/calendars'
+		]) {
+			const { res, text } = await api(path);
+			expect(res.status, `${path} answered an unscoped request`).toBe(400);
+			expect(text, `${path} did not say which accounts exist`).toContain(
+				'More than one account is connected'
+			);
+		}
+	});
+
+	/**
+	 * The preference, by contrast, is allowed to choose and must persist it.
+	 * A default that is recomputed per page is not a choice, it is a guess that
+	 * happens to be stable, and nothing in the switcher would show it.
+	 */
+	it('an unset preference resolves to an account and remembers it', async () => {
+		// Saved and put back. This is the one test here that writes shared state,
+		// and leaving it changed is how D77 and D119 both happened.
+		const before = (await api('/api/connections/active-account')).json.remembered as
+			| string
+			| null;
+
+		await api('/api/connections/active-account', {
+			method: 'PUT',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ account: null })
+		});
+
+		const first = await api('/api/connections/active-account');
+		const chosen = first.json.active as string | null;
+		expect(chosen, 'an unset preference resolved to nothing').toBeTruthy();
+		expect(first.json.defaulted, 'the page was not told the choice was made for it').toBe(true);
+
+		const again = await api('/api/connections/active-account');
+		expect(again.json.active, 'the default was not persisted').toBe(chosen);
+		expect(again.json.defaulted, 'a persisted choice still reported as defaulted').toBe(false);
+
+		await api('/api/connections/active-account', {
+			method: 'PUT',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ account: before })
+		});
+	});
+
 	it('an unknown account is refused rather than defaulted away', async () => {
 		// Falling back to "the" connection when the named one does not exist is
 		// how a scoping bug turns into a leak that looks like it works.

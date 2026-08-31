@@ -83,6 +83,12 @@ export const load: PageLoad = async ({ fetch, url }) => {
 		spend,
 		account: scope.account,
 		accountConnected: scope.connected,
+		// Which mailbox the mail, calendar and spend figures describe. Settings
+		// has no switcher, so without this the numbers are unattributed and a
+		// two-account reader cannot tell whose they are.
+		accountEmail:
+			(connections as { accounts?: { id: string; account_email: string | null }[] } | null)
+				?.accounts?.find((a) => a.id === scope.account)?.account_email ?? null,
 		mailError,
 		calendarError,
 		spendError
