@@ -3686,6 +3686,28 @@ practice. A scripted render with a synthetic fixture, at both widths, with a
 horizontal-overflow assertion and a page-error listener, is a few minutes and it
 caught a fault that would have shown wrong numbers on every archive view.
 
+### D129: full width is a route-level opt-in, never a change to the cap
+
+From CR1-F4, which Paul raised by looking at the screen at his own width.
+
+The app shell caps every page at 1200px and centres it. That is right for a
+single column of prose and tables, and wrong for Mail, which is a wide left
+column beside a fixed 380px rail: the cap pushed both into the middle and left
+the rail floating away from the edge it belongs against. The build was centred
+where the design is full width.
+
+The rule is about the fix, not the defect. Raising `--content-max` would have
+reflowed Dashboard, Projects, Invoicing and Reports to correct one screen, and
+every one of those would have needed re-checking. So a page opts out of the cap,
+the route decides rather than the page, and the change is proved by measuring
+both sides: Mail reaches the right edge, Action items is still exactly 1200.
+
+Worth naming why it survived the CR-1 fidelity pass. That pass rendered at
+1440px, where a 1200px cap leaves margins narrow enough to read as padding. The
+defect was only obvious at Paul's width. D128 says render and look; this adds
+that the width you look at is part of the test, and a cap is invisible at any
+width close to it.
+
 ### D130: the ledger books in USD, and says so per row
 
 The firm is US-based and books in USD. Paul works from the Philippines, which is
