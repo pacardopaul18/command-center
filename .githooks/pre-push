@@ -1,0 +1,29 @@
+#!/bin/sh
+#
+# The suite gates the push. I8.
+#
+# A commit was pushed on a red suite because the commands were chained with
+# semicolons rather than gated on the exit code. The red was unrelated and
+# nothing bad shipped, which was luck. A rule that depends on typing `&&`
+# correctly is a rule that gets broken again; this does not depend on typing.
+#
+# Wired by `npm run prepare`, which sets core.hooksPath to this directory, so a
+# fresh clone gets it from `npm install` without anyone remembering.
+#
+# To bypass, use git's own `--no-verify`. That is deliberate and visible, which
+# is the difference between an exception and an accident.
+
+echo "pre-push: running the suite before this leaves the machine"
+
+if ! npm test; then
+	echo ""
+	echo "PUSH REFUSED: the suite is not green."
+	echo ""
+	echo "If the failure is the volume seed expiring overnight, reload it:"
+	echo "  npm run seed:generate && npm run seed:load"
+	echo ""
+	echo "If you are certain and this is deliberate, push with --no-verify."
+	exit 1
+fi
+
+echo "pre-push: green, pushing"
