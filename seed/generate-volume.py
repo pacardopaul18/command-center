@@ -220,6 +220,10 @@ for table in [
     # the v- prefix, so neither is reached by any other DELETE in this list.
     "ledger_transactions",
     "ledger_categories",
+    # Tickets are ON DELETE RESTRICT from projects, so they have to go before
+    # the projects they hang off or the project DELETE is refused. Their events,
+    # links and time cascade from here and need no line of their own.
+    "tickets",
     "action_items",
     "time_entries",
     "invoices",
@@ -835,6 +839,140 @@ for sid, v in pointer_updates:
         f"WHERE id = {q(sid)} AND IFNULL(current_version_id, '') <> {q(v)};"
     )
 w()
+
+# --- tickets, and what happened on them -------------------------------------
+#
+# Its own random stream, so adding it leaves every value above byte identical.
+#
+# Tickets had no seeded rows at all, which made the Tickets column on the
+# projects table a column of zeroes and left the comment, link and time features
+# with nothing to show. The guard that assumed none exist is rewritten rather
+# than deleted: what mattered was never the zero, it was that no row exists the
+# fixture did not write, and that survives as a prefix check. D157 again.
+#
+# No DELETE line at the top of the file. ticket_events, ticket_links and
+# ticket_time are all ON DELETE CASCADE from tickets, and tickets are ON DELETE
+# RESTRICT from projects, which is why tickets ARE listed there: a project
+# cannot be cleared while a ticket points at it.
+work = random.Random(20260905)
+
+TICKET_TITLES = [
+    "Client portal login fails", "Evidence pack export drops a column",
+    "Vendor list needs a second review", "Timeline slipped after the data export",
+    "Reconcile the hours against the estimate", "Access request for the shared drive",
+    "Rework the summary tab", "Chase the signed change request",
+    "Migration dry run threw a warning", "Board pack numbers do not tie out",
+]
+
+TICKET_STATUSES_SEED = ["open", "open", "in_progress", "in_progress", "blocked",
+                        "in_review", "done", "done", "cancelled"]
+TICKET_PRIORITIES = ["low", "normal", "normal", "normal", "high", "urgent"]
+
+COMMENTS = [
+    "Waiting on the client to come back with the export.",
+    "Reproduced on my side. It is the summary tab only.",
+    "Pushed the due date, the sponsor is out this week.",
+    "Picked this up, should land tomorrow.",
+    "Closing this, the vendor confirmed in writing.",
+]
+
+tickets_rows = []
+ticket_events_rows = []
+ticket_links_rows = []
+ticket_time_rows = []
+n_ticket = 0
+n_tev = 0
+n_tlink = 0
+n_ttime = 0
+
+for (pid, client_id, pname, phase, status, owner, start, target, milestone, desc,
+     created, updated) in projects:
+    # Most projects carry a ticket or two, a few carry a handful, and plenty
+    # carry none. A flat two per project would make every row on the table look
+    # the same, which is the same as the column saying nothing.
+    for _ in range(work.choice([0, 0, 1, 1, 2, 2, 3, 5])):
+        n_ticket += 1
+        tid = f"v-tk-{n_ticket}"
+        st = work.choice(TICKET_STATUSES_SEED)
+        opened = work.randint(-90, -1)
+        due = opened + work.randint(3, 45)
+        finished = ts(min(0, opened + work.randint(1, 30))) if st in ("done", "cancelled") else None
+        assignee = f"{FIRST[work.randrange(len(FIRST))]} {LAST[work.randrange(len(LAST))]}"
+
+        tickets_rows.append((
+            tid, pid,
+            f"{TICKET_TITLES[work.randrange(len(TICKET_TITLES))]} for {pname.split()[0]}",
+            work.choice([None, "Reported on the call. Needs a look before the next review."]),
+            day(opened), day(due),
+            work.choice([None, 1.0, 2.0, 3.0, 5.0, 8.0]),
+            st,
+            TICKET_PRIORITIES[work.randrange(len(TICKET_PRIORITIES))],
+            assignee, None, "Paul", None,
+            finished, None,
+            ts(opened), ts(opened),
+        ))
+        bump("counts", "tickets")
+
+        n_tev += 1
+        ticket_events_rows.append((f"v-te-{n_tev}", tid, "created",
+                                   "Ticket opened.", None, ts(opened)))
+        bump("counts", "ticket_events")
+
+        for _ in range(work.randint(0, 3)):
+            n_tev += 1
+            when = work.randint(opened, 0)
+            ticket_events_rows.append((
+                f"v-te-{n_tev}", tid, "comment",
+                COMMENTS[work.randrange(len(COMMENTS))],
+                assignee, ts(when, hour=work.randint(9, 17)),
+            ))
+            bump("counts", "ticket_events")
+
+        # Time against the ticket, in minutes, which is what the table stores.
+        for _ in range(work.randint(0, 3)):
+            n_ttime += 1
+            ticket_time_rows.append((
+                f"v-tt-{n_ttime}", tid,
+                work.choice([15, 30, 45, 60, 90, 120, 180, 240]),
+                day(work.randint(opened, 0)), assignee,
+                work.choice([None, "Investigation", "Pairing session", "Write up"]),
+                ts(opened),
+            ))
+            bump("counts", "ticket_time")
+
+# A few links between tickets on the same project, stored once per pair.
+by_project = {}
+for row in tickets_rows:
+    by_project.setdefault(row[1], []).append(row[0])
+
+for pid, ids in by_project.items():
+    if len(ids) < 2:
+        continue
+    for _ in range(work.randint(0, 1)):
+        a, b = work.sample(ids, 2)
+        # One link per ordered pair, and the unique index covers only that, so a
+        # duplicate here would abort the load rather than being ignored.
+        if any(r[1] == a and r[2] == b for r in ticket_links_rows):
+            continue
+        n_tlink += 1
+        ticket_links_rows.append((
+            f"v-tl-{n_tlink}", a, b,
+            work.choice(["blocks", "relates", "duplicates"]),
+            ts(-work.randint(1, 60)),
+        ))
+        bump("counts", "ticket_links")
+
+batched_insert("tickets",
+               ["id","project_id","title","description","start_date","due_date",
+                "estimate_hours","status","priority","assignee","assignee_id",
+                "reporter","reporter_id","completed_at","converted_from_action_item_id",
+                "created_at","updated_at"], tickets_rows)
+batched_insert("ticket_events",
+               ["id","ticket_id","kind","detail","author","created_at"], ticket_events_rows)
+batched_insert("ticket_links",
+               ["id","from_ticket_id","to_ticket_id","kind","created_at"], ticket_links_rows)
+batched_insert("ticket_time",
+               ["id","ticket_id","minutes","logged_on","who","note","created_at"], ticket_time_rows)
 
 # --- templates --------------------------------------------------------------
 templates = []

@@ -103,6 +103,22 @@ export interface Project {
 	client_name?: string | null;
 	open_action_items?: number;
 	overdue_action_items?: number;
+	all_action_items?: number;
+	done_action_items?: number;
+	/**
+	 * Milestones, counted for progress. A percentage column would be a number
+	 * maintained by hand that drifts the first time somebody closes a milestone
+	 * without remembering to update it. Migration 0029.
+	 */
+	milestone_count?: number;
+	milestones_done?: number;
+	open_tickets?: number;
+	/**
+	 * The earliest undone milestone, falling back to the free-text
+	 * `next_milestone` column when a project has no milestone rows. Two places
+	 * hold this fact; the rows are the better one and win.
+	 */
+	next_milestone_shown?: string | null;
 }
 
 /** The next phase in the lifecycle, or null at Closing. */

@@ -8,8 +8,8 @@
 		PROJECT_STATUS_TONE,
 		PROJECT_STATUSES
 	} from '$lib/types';
-	import type { ProjectPhase } from '$lib/types';
-	import { formatDay } from '$lib/format';
+	import type { Project, ProjectPhase } from '$lib/types';
+	import { formatDay, formatDayShort } from '$lib/format';
 	import Button from '$lib/components/Button.svelte';
 	import Card from '$lib/components/Card.svelte';
 	import FormField from '$lib/components/FormField.svelte';
@@ -68,6 +68,42 @@
 		} finally {
 			busy = false;
 		}
+	}
+
+	/* ---------------------------------------------------------------------
+	 * Filtering the table
+	 * ------------------------------------------------------------------ */
+
+	let phaseFilter = $state<ProjectPhase | 'all'>('all');
+	let search = $state('');
+
+	const visible = $derived.by(() => {
+		const needle = search.trim().toLowerCase();
+		return data.projects.filter((project) => {
+			if (phaseFilter !== 'all' && project.phase !== phaseFilter) return false;
+			if (!needle) return true;
+			return [project.name, project.client_name, project.next_milestone_shown]
+				.filter(Boolean)
+				.some((text) => String(text).toLowerCase().includes(needle));
+		});
+	});
+
+	/**
+	 * How far along a project is, counted rather than stored.
+	 *
+	 * Milestones win when a project has them, because a plan somebody wrote is a
+	 * better measure of progress than a count of tasks. Items are the fallback.
+	 * A project with neither returns null rather than zero: nothing to count is
+	 * not the same as nothing done, and an empty bar says the second. D27.
+	 */
+	function progressOf(project: Project): number | null {
+		const milestones = project.milestone_count ?? 0;
+		if (milestones > 0) {
+			return Math.round(((project.milestones_done ?? 0) / milestones) * 100);
+		}
+		const items = project.all_action_items ?? 0;
+		if (items > 0) return Math.round(((project.done_action_items ?? 0) / items) * 100);
+		return null;
 	}
 </script>
 
@@ -138,59 +174,261 @@
 	</div>
 {/if}
 
-{#if data.projects.length === 0 && !showForm}
-	<p class="empty">No projects yet. Create the first one to link action items to it.</p>
-{:else}
-	{#each byPhase as group (group.phase)}
-		<section class="phase">
-			<h2 class="label-mono">{PHASE_LABELS[group.phase]} ({group.rows.length})</h2>
-			{#if group.rows.length === 0}
-				<p class="phase-empty">Nothing in this phase.</p>
-			{:else}
-				<ul class="rows">
-					{#each group.rows as project (project.id)}
-						<li>
-							<a class="row" href="/projects/{project.id}">
-								<span class="name">{project.name}</span>
-								<span class="client">
-									{#if project.client_name}
-										{project.client_name}
-									{:else}
-										<span class="unassigned">No client</span>
-									{/if}
-								</span>
-								<span class="milestone mono">
-									{#if project.next_milestone}
-										{project.next_milestone}
-									{:else}
-										No milestone set
-									{/if}
-									{#if project.target_close}
-										<span class="sep">·</span>{formatDay(project.target_close)}
-									{/if}
-								</span>
-								<span class="counts mono">
-									{#if (project.overdue_action_items ?? 0) > 0}
-										<span class="overdue">{project.overdue_action_items} overdue</span>
-									{:else}
-										{project.open_action_items ?? 0} open
-									{/if}
-								</span>
-								<StatusChip
-									tone={PROJECT_STATUS_TONE[project.status]}
-									label={PROJECT_STATUS_LABELS[project.status]}
-									size="sm"
-								/>
-							</a>
-						</li>
-					{/each}
-				</ul>
-			{/if}
-		</section>
+<!--
+	Phase tabs, and a table rather than five stacked lists.
+
+	The lists were correct and unusable at 192 projects: five headings, each
+	with dozens of rows, and no way to compare two projects in different phases.
+	The redesign turns it into one table with the phase as a filter, which is
+	what a person scanning for what needs attention actually does.
+-->
+<nav class="tabs" aria-label="Filter by phase">
+	<button type="button" class="tab" class:on={phaseFilter === 'all'} onclick={() => (phaseFilter = 'all')}>
+		All <span class="count mono">{data.projects.length}</span>
+	</button>
+	{#each PROJECT_PHASES as phase (phase)}
+		<button
+			type="button"
+			class="tab"
+			class:on={phaseFilter === phase}
+			onclick={() => (phaseFilter = phase)}
+		>
+			{PHASE_LABELS[phase]}
+			<span class="count mono">{data.projects.filter((p) => p.phase === phase).length}</span>
+		</button>
 	{/each}
+</nav>
+
+<div class="controls">
+	<input
+		class="search"
+		type="search"
+		bind:value={search}
+		placeholder="Search projects and clients"
+		aria-label="Search projects"
+	/>
+</div>
+
+{#if visible.length === 0}
+	<p class="empty">
+		{#if search}
+			No projects match that search.
+		{:else if data.projects.length === 0}
+			No projects yet. Create the first one to link action items to it.
+		{:else}
+			Nothing in this phase.
+		{/if}
+	</p>
+{:else}
+	<div class="table-wrap">
+		<table>
+			<thead>
+				<tr>
+					<th scope="col">Project</th>
+					<th scope="col">Client</th>
+					<th scope="col">Phase</th>
+					<th scope="col">Progress</th>
+					<th scope="col">Target</th>
+					<th scope="col" class="num">Open</th>
+					<th scope="col" class="num">Tickets</th>
+					<th scope="col">Status</th>
+				</tr>
+			</thead>
+			<tbody>
+				{#each visible as project (project.id)}
+					{@const done = progressOf(project)}
+					<tr>
+						<td>
+							<a class="name" href="/projects/{project.id}">{project.name}</a>
+							{#if project.next_milestone_shown}
+								<span class="milestone">Next: {project.next_milestone_shown}</span>
+							{/if}
+						</td>
+						<td>
+							{#if project.client_id}
+								<a href="/clients/{project.client_id}">{project.client_name}</a>
+							{:else}
+								<span class="dim">No client</span>
+							{/if}
+						</td>
+						<td class="mono">{PHASE_LABELS[project.phase]}</td>
+						<td>
+							{#if done === null}
+								<!--
+									D27: nothing to count is not zero per cent. A project with
+									no milestones and no items is untracked, and drawing an
+									empty bar would say the work has not started.
+								-->
+								<span class="dim mono">Not tracked</span>
+							{:else}
+								<span class="progress">
+									<span class="progress-bar" aria-hidden="true">
+										<span class="progress-fill" style="width: {done}%"></span>
+									</span>
+									<span class="progress-text mono">{done}%</span>
+								</span>
+							{/if}
+						</td>
+						<td class="mono nowrap">
+							{#if project.target_close}
+								{formatDayShort(project.target_close)}
+							{:else}
+								<span class="dim">None</span>
+							{/if}
+						</td>
+						<td class="num mono">
+							{#if (project.overdue_action_items ?? 0) > 0}
+								<span class="overdue">{project.open_action_items ?? 0}</span>
+							{:else}
+								{project.open_action_items ?? 0}
+							{/if}
+						</td>
+						<td class="num mono">{project.open_tickets ?? 0}</td>
+						<td>
+							<StatusChip
+								tone={PROJECT_STATUS_TONE[project.status]}
+								label={PROJECT_STATUS_LABELS[project.status]}
+								size="sm"
+							/>
+						</td>
+					</tr>
+				{/each}
+			</tbody>
+		</table>
+	</div>
 {/if}
 
 <style>
+
+	.tabs {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--space-2);
+		margin: var(--space-4) 0 var(--space-3);
+	}
+
+	.tab {
+		display: inline-flex;
+		align-items: center;
+		gap: var(--space-2);
+		min-height: 44px;
+		padding: 0 var(--space-3);
+		border: 1px solid var(--border-thin);
+		border-radius: 999px;
+		background: transparent;
+		color: var(--text-muted);
+		font: inherit;
+		font-size: var(--text-sm);
+		cursor: pointer;
+	}
+
+	.tab.on {
+		background: var(--navy-700);
+		border-color: var(--navy-700);
+		color: var(--surface-page);
+	}
+
+	.count {
+		font-size: var(--text-xs);
+		opacity: 0.75;
+	}
+
+	.controls {
+		margin-bottom: var(--space-3);
+	}
+
+	.search {
+		width: 100%;
+		min-height: 44px;
+		padding: 0 var(--space-3);
+		border: 1px solid var(--border-thin);
+		border-radius: var(--radius-sm);
+		font: inherit;
+		font-size: var(--text-sm);
+	}
+
+	.table-wrap {
+		overflow-x: auto;
+		border: 1px solid var(--border-thin);
+		border-radius: var(--radius-md);
+		background: var(--surface-card);
+	}
+
+	table {
+		width: 100%;
+		min-width: 900px;
+		border-collapse: collapse;
+	}
+
+	th,
+	td {
+		padding: var(--space-3);
+		text-align: left;
+		vertical-align: top;
+		border-bottom: 1px solid var(--border-hairline);
+	}
+
+	th {
+		font-family: var(--font-mono);
+		font-size: var(--text-xs);
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+		color: var(--text-muted);
+		font-weight: 400;
+		white-space: nowrap;
+	}
+
+	tbody tr:last-child td {
+		border-bottom: none;
+	}
+
+	.num {
+		text-align: right;
+	}
+
+	.nowrap {
+		white-space: nowrap;
+	}
+
+	.name {
+		display: block;
+		color: var(--text-heading);
+		font-size: var(--text-sm);
+	}
+
+	.milestone {
+		display: block;
+		margin-top: 2px;
+		font-size: var(--text-xs);
+		color: var(--text-muted);
+	}
+
+	.progress {
+		display: flex;
+		align-items: center;
+		gap: var(--space-2);
+	}
+
+	.progress-bar {
+		display: block;
+		width: 64px;
+		height: 4px;
+		border-radius: 2px;
+		background: var(--border-hairline);
+		overflow: hidden;
+		flex: none;
+	}
+
+	.progress-fill {
+		display: block;
+		height: 100%;
+		background: var(--green-700, #2e7d5b);
+	}
+
+	.progress-text {
+		font-size: var(--text-xs);
+		color: var(--text-muted);
+	}
 	.head {
 		display: flex;
 		flex-wrap: wrap;
@@ -244,55 +482,13 @@
 		border-radius: var(--radius-md);
 	}
 
-	.phase {
-		margin-top: var(--space-5);
-	}
 
-	.phase h2 {
-		font-size: var(--text-xs);
-		margin-bottom: var(--space-2);
-	}
 
-	.phase-empty {
-		padding-left: var(--space-3);
-		font-size: var(--text-sm);
-		color: var(--text-secondary);
-	}
 
-	.rows {
-		list-style: none;
-		margin: 0;
-		padding: 0;
-		display: flex;
-		flex-direction: column;
-		gap: var(--space-2);
-	}
 
 	/* Mobile first: the row stacks at 412px and becomes a grid at 720px. */
-	.row {
-		display: grid;
-		grid-template-columns: 1fr;
-		gap: var(--space-2);
-		align-items: start;
-		padding: var(--space-3) var(--space-4);
-		background: var(--surface-card);
-		border: 1px solid var(--border-thin);
-		border-radius: var(--radius-md);
-		box-shadow: var(--shadow-card);
-		color: inherit;
-		text-decoration: none;
-	}
 
-	.row:hover {
-		background: var(--surface-hover);
-		color: inherit;
-		text-decoration: none;
-	}
 
-	.row:hover .name {
-		text-decoration: underline;
-		text-underline-offset: 2px;
-	}
 
 	.name {
 		font-weight: var(--weight-medium);
@@ -309,26 +505,10 @@
 	 * D27 read the other way round: the column is honest now that the feature
 	 * behind it exists.
 	 */
-	.client {
-		font-size: var(--text-xs);
-		font-weight: var(--weight-regular);
-		color: var(--text-secondary);
-		overflow-wrap: anywhere;
-	}
 
-	.unassigned {
-		font-style: italic;
-	}
 
 	.milestone,
-	.counts {
-		font-size: var(--text-xs);
-		color: var(--text-secondary);
-	}
 
-	.sep {
-		margin: 0 var(--space-1);
-	}
 
 	.overdue {
 		color: var(--red);
@@ -344,10 +524,5 @@
 			grid-column: 1 / -1;
 		}
 
-		.row {
-			grid-template-columns: 2fr 1fr 1.6fr auto auto;
-			gap: var(--space-4);
-			align-items: center;
-		}
 	}
 </style>

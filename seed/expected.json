@@ -31,10 +31,14 @@
   "sops": 120,
   "template_uses": 1553,
   "templates": 90,
+  "ticket_events": 1013,
+  "ticket_links": 56,
+  "ticket_time": 571,
+  "tickets": 384,
   "time_entries": 3200,
   "users": 7
  },
- "fingerprint": "7ef6024069ebcba0",
+ "fingerprint": "d2d7f1907daad937",
  "invoice_bands": {
   "b0_30": 114,
   "b0_30_cents": 137129589,

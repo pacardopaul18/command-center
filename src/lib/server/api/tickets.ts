@@ -1,6 +1,7 @@
+import type { D1Database } from '@cloudflare/workers-types';
 import { Hono } from 'hono';
 import type { ApiEnv } from './env';
-import { nowUtc } from '../dates';
+import { nowUtc, todayInWorkingZone } from '../dates';
 import { ApiError, oneOf, optionalDate, optionalText, readJsonObject, requiredText } from './validate';
 import { TICKET_PRIORITIES, TICKET_STATUSES } from '$lib/types';
 import type { TicketPriority, TicketStatus } from '$lib/types';
@@ -277,6 +278,45 @@ tickets.patch('/:id', async (c) => {
 	}
 
 	const updated = await c.env.DB.prepare(`${SELECT} WHERE t.id = ?`).bind(id).first();
+
+	/**
+	 * The change is written to the ticket's history after the row is updated,
+	 * never before. A history line describing an update that then failed would
+	 * be a record of something that did not happen, which is worse than no
+	 * record at all.
+	 *
+	 * Only the fields somebody reading the ticket would want explained. A
+	 * description edit is not news; a status change, a reassignment or a moved
+	 * deadline is exactly what the question "why is this still open" is about.
+	 */
+	if ('status' in body && body.status !== existing.status) {
+		await logTicket(
+			c.env.DB,
+			id,
+			'status',
+			`Status changed from ${existing.status} to ${body.status}.`
+		);
+	}
+	if ('priority' in body) {
+		await logTicket(c.env.DB, id, 'priority', `Priority set to ${body.priority}.`);
+	}
+	if ('assignee' in body) {
+		await logTicket(
+			c.env.DB,
+			id,
+			'assignee',
+			body.assignee ? `Assigned to ${body.assignee}.` : 'Unassigned.'
+		);
+	}
+	if ('due_date' in body) {
+		await logTicket(
+			c.env.DB,
+			id,
+			'due',
+			body.due_date ? `Due date moved to ${body.due_date}.` : 'Due date cleared.'
+		);
+	}
+
 	return c.json({ ticket: updated });
 });
 
@@ -375,5 +415,275 @@ tickets.delete('/:id', async (c) => {
 		.bind(c.req.param('id'))
 		.run();
 	if (!result.meta.changes) throw new ApiError(404, 'Ticket not found.');
+	return c.json({ ok: true });
+});
+
+/* -------------------------------------------------------------------------
+ * What happened on a ticket: comments, links and time
+ * ---------------------------------------------------------------------- */
+
+/**
+ * Records a line on a ticket's history.
+ *
+ * One table for a person's comment and for the app's own note about a status
+ * change, because on screen they are one list read in one order. Two tables
+ * would mean merging by timestamp in the Worker to rebuild the thing the reader
+ * was always going to see.
+ */
+async function logTicket(
+	db: D1Database,
+	ticketId: string,
+	kind: string,
+	detail: string,
+	author: string | null = null
+) {
+	await db
+		.prepare(
+			`INSERT INTO ticket_events (id, ticket_id, kind, detail, author, created_at)
+       VALUES (?, ?, ?, ?, ?, ?)`
+		)
+		.bind(crypto.randomUUID(), ticketId, kind, detail, author, nowUtc())
+		.run();
+}
+
+tickets.get('/:id/events', async (c) => {
+	const { results } = await c.env.DB.prepare(
+		`SELECT id, kind, detail, author, created_at FROM ticket_events
+     WHERE ticket_id = ? ORDER BY created_at ASC, id ASC`
+	)
+		.bind(c.req.param('id'))
+		.all();
+	return c.json({ events: results ?? [] });
+});
+
+tickets.post('/:id/events', async (c) => {
+	const id = c.req.param('id');
+	const exists = await c.env.DB.prepare('SELECT id FROM tickets WHERE id = ?').bind(id).first();
+	if (!exists) throw new ApiError(404, 'Ticket not found.');
+
+	const body = await readJsonObject(c.req.raw);
+	// Only comments are accepted through the door. Every other kind is written
+	// by the code that made the change, and a route that let a caller post a
+	// 'status' line would let the history claim something that never happened.
+	await logTicket(
+		c.env.DB,
+		id,
+		'comment',
+		requiredText(body.detail, 'Comment', 4000),
+		optionalText(body.author, 'author', 120)
+	);
+	return c.json({ ok: true }, 201);
+});
+
+/**
+ * Links, read in both directions from rows stored in one.
+ *
+ * A row saying A blocks B is the same fact as B is blocked by A. Writing both
+ * would mean two rows that can be deleted separately and disagree, so the read
+ * looks the other way as well and inverts the kind. Arithmetic, not storage.
+ */
+const INVERSE: Record<string, string> = {
+	blocks: 'is blocked by',
+	relates: 'relates to',
+	duplicates: 'is duplicated by'
+};
+
+const FORWARD: Record<string, string> = {
+	blocks: 'blocks',
+	relates: 'relates to',
+	duplicates: 'duplicates'
+};
+
+tickets.get('/:id/links', async (c) => {
+	const id = c.req.param('id');
+
+	const { results } = await c.env.DB.prepare(
+		`SELECT l.id, l.kind, 'forward' AS direction, t.id AS other_id, t.title, t.status, t.priority
+     FROM ticket_links l JOIN tickets t ON t.id = l.to_ticket_id
+     WHERE l.from_ticket_id = ?1
+     UNION ALL
+     SELECT l.id, l.kind, 'reverse' AS direction, t.id AS other_id, t.title, t.status, t.priority
+     FROM ticket_links l JOIN tickets t ON t.id = l.from_ticket_id
+     WHERE l.to_ticket_id = ?1
+     ORDER BY title COLLATE NOCASE`
+	)
+		.bind(id)
+		.all<{ kind: string; direction: string }>();
+
+	const links = (results ?? []).map((row) => ({
+		...row,
+		relation: row.direction === 'forward' ? FORWARD[row.kind] : INVERSE[row.kind]
+	}));
+
+	return c.json({ links });
+});
+
+tickets.post('/:id/links', async (c) => {
+	const db = c.env.DB;
+	const from = c.req.param('id');
+	const body = await readJsonObject(c.req.raw);
+	const to = requiredText(body.to_ticket_id, 'to_ticket_id', 64);
+	const kind = oneOf<'blocks' | 'relates' | 'duplicates'>(
+		body.kind,
+		['blocks', 'relates', 'duplicates'],
+		'kind',
+		'relates'
+	);
+
+	if (from === to) throw new ApiError(400, 'A ticket cannot be linked to itself.');
+
+	for (const id of [from, to]) {
+		const exists = await db.prepare('SELECT id FROM tickets WHERE id = ?').bind(id).first();
+		if (!exists) throw new ApiError(404, 'One of those tickets does not exist.');
+	}
+
+	/**
+	 * A link in either direction already means these two are related, so a
+	 * second one is refused by name rather than by a constraint. The unique
+	 * index covers one ordered pair; this covers the other.
+	 */
+	const already = await db
+		.prepare(
+			`SELECT id FROM ticket_links
+       WHERE (from_ticket_id = ?1 AND to_ticket_id = ?2)
+          OR (from_ticket_id = ?2 AND to_ticket_id = ?1)`
+		)
+		.bind(from, to)
+		.first();
+	if (already) throw new ApiError(409, 'Those two tickets are already linked.');
+
+	await db
+		.prepare(
+			`INSERT INTO ticket_links (id, from_ticket_id, to_ticket_id, kind, created_at)
+       VALUES (?, ?, ?, ?, ?)`
+		)
+		.bind(crypto.randomUUID(), from, to, kind, nowUtc())
+		.run();
+
+	const other = await db
+		.prepare('SELECT title FROM tickets WHERE id = ?')
+		.bind(to)
+		.first<{ title: string }>();
+	await logTicket(db, from, 'linked', `Linked: ${FORWARD[kind]} "${other?.title ?? to}".`);
+
+	return c.json({ ok: true }, 201);
+});
+
+tickets.delete('/:id/links/:linkId', async (c) => {
+	// Removable from either end, because the link belongs to both tickets and a
+	// reader looking at the reverse view has no idea which row is the stored one.
+	const result = await c.env.DB.prepare(
+		`DELETE FROM ticket_links
+     WHERE id = ?1 AND (from_ticket_id = ?2 OR to_ticket_id = ?2)`
+	)
+		.bind(c.req.param('linkId'), c.req.param('id'))
+		.run();
+	if (!result.meta.changes) throw new ApiError(404, 'No link with that id on this ticket.');
+	return c.json({ ok: true });
+});
+
+/* -------------------------------------------------------------------------
+ * Time
+ * ---------------------------------------------------------------------- */
+
+/**
+ * Effort against a ticket, which is not billable time.
+ *
+ * `time_entries` is time against a client and a billing period and feeds an
+ * invoice. This answers a different question for a different reader: not "what
+ * do we bill" but "what did this actually take". Merging them would mean every
+ * logged hour needing a client and a rate before anyone could record that a bug
+ * took an afternoon.
+ *
+ * Stored in minutes. Hours as a float means 0.1 + 0.2 and a total ending in
+ * 0.30000000000000004, and rounding for display hides the drift rather than
+ * removing it. The same argument money makes for cents.
+ */
+tickets.get('/:id/time', async (c) => {
+	const db = c.env.DB;
+	const id = c.req.param('id');
+
+	const { results } = await db
+		.prepare(
+			`SELECT id, minutes, logged_on, who, note, created_at FROM ticket_time
+       WHERE ticket_id = ? ORDER BY logged_on DESC, created_at DESC`
+		)
+		.bind(id)
+		.all();
+
+	const total = await db
+		.prepare('SELECT COALESCE(SUM(minutes), 0) AS n FROM ticket_time WHERE ticket_id = ?')
+		.bind(id)
+		.first<{ n: number }>();
+
+	return c.json({ entries: results ?? [], total_minutes: Number(total?.n ?? 0) });
+});
+
+tickets.post('/:id/time', async (c) => {
+	const db = c.env.DB;
+	const id = c.req.param('id');
+	const ticket = await db
+		.prepare('SELECT id, title FROM tickets WHERE id = ?')
+		.bind(id)
+		.first<{ id: string; title: string }>();
+	if (!ticket) throw new ApiError(404, 'Ticket not found.');
+
+	const body = await readJsonObject(c.req.raw);
+
+	/**
+	 * Accepted as hours and stored as minutes, because hours is what a person
+	 * has. The conversion rounds once, here, rather than at every read.
+	 */
+	const hours = Number(requiredText(body.hours, 'Hours', 12));
+	if (!Number.isFinite(hours) || hours <= 0) {
+		throw new ApiError(400, 'Hours must be a positive number, like 1.5.');
+	}
+	if (hours > 24) throw new ApiError(400, 'That is more than a day. Log it as separate entries.');
+
+	const minutes = Math.round(hours * 60);
+	if (minutes < 1) throw new ApiError(400, 'That rounds to no time at all.');
+
+	const loggedOn = optionalDate(body.logged_on, 'Logged on') ?? todayInWorkingZone();
+	const who = optionalText(body.who, 'who', 120);
+
+	await db
+		.prepare(
+			`INSERT INTO ticket_time (id, ticket_id, minutes, logged_on, who, note, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
+		)
+		.bind(
+			crypto.randomUUID(),
+			id,
+			minutes,
+			loggedOn,
+			who,
+			optionalText(body.note, 'note', 500),
+			nowUtc()
+		)
+		.run();
+
+	await logTicket(
+		db,
+		id,
+		'time',
+		`${(minutes / 60).toFixed(2).replace(/\.?0+$/, '')} hours logged for ${loggedOn}.`,
+		who
+	);
+
+	const total = await db
+		.prepare('SELECT COALESCE(SUM(minutes), 0) AS n FROM ticket_time WHERE ticket_id = ?')
+		.bind(id)
+		.first<{ n: number }>();
+
+	return c.json({ ok: true, total_minutes: Number(total?.n ?? 0) }, 201);
+});
+
+tickets.delete('/:id/time/:entryId', async (c) => {
+	const result = await c.env.DB.prepare(
+		'DELETE FROM ticket_time WHERE id = ? AND ticket_id = ?'
+	)
+		.bind(c.req.param('entryId'), c.req.param('id'))
+		.run();
+	if (!result.meta.changes) throw new ApiError(404, 'No time entry with that id on this ticket.');
 	return c.json({ ok: true });
 });
