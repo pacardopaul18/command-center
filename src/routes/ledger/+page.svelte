@@ -21,6 +21,20 @@
 	let busy = $state(false);
 	let errorMessage = $state('');
 	let showForm = $state(false);
+	let showCategories = $state(false);
+	let catDraft = $state({ name: '', kind: 'expense', parent_id: '' });
+	let editingId = $state<string | null>(null);
+	let editDraft = $state({ name: '', parent_id: '' });
+
+	/**
+	 * The receipt, attached after the transaction exists.
+	 *
+	 * A receipt belongs to a transaction, so there is nothing to attach it to
+	 * until the row is saved. The form holds the file and uploads it as the
+	 * second step rather than pretending the two are one.
+	 */
+	let receiptFile = $state<File | null>(null);
+	let receiptNote = $state('');
 
 	let form = $state({
 		txn_date: new Date().toISOString().slice(0, 10),
@@ -34,7 +48,7 @@
 
 	const grouped = $derived.by(() => {
 		const out: Record<string, typeof data.categories> = { income: [], expense: [], overhead: [] };
-		for (const c of data.categories) out[c.kind]?.push(c);
+		for (const c of liveCategories) out[c.kind]?.push(c);
 		return out;
 	});
 
@@ -43,6 +57,66 @@
 		expense: 'Expense',
 		overhead: 'Overhead'
 	};
+
+	/** Only live categories are offered; archived ones stay visible in the editor. */
+	const liveCategories = $derived(data.categories.filter((c) => !c.archived_at));
+
+	const chosenCategory = $derived(data.categories.find((c) => c.id === form.category_id) ?? null);
+
+	/** A receipt makes sense for money going out, not for money arriving. */
+	const wantsReceipt = $derived(chosenCategory !== null && chosenCategory.kind !== 'income');
+
+	async function addCategory(event: SubmitEvent) {
+		event.preventDefault();
+		busy = true;
+		errorMessage = '';
+		const result = await apiWrite('/api/ledger/categories', 'POST', {
+			name: catDraft.name,
+			kind: catDraft.kind,
+			parent_id: catDraft.parent_id || null
+		});
+		if (!result.ok) errorMessage = result.error ?? 'Could not add that category.';
+		else {
+			catDraft = { name: '', kind: catDraft.kind, parent_id: '' };
+			await invalidateAll();
+		}
+		busy = false;
+	}
+
+	async function saveEdit(id: string) {
+		busy = true;
+		errorMessage = '';
+		const result = await apiWrite(`/api/ledger/categories/${id}`, 'PATCH', {
+			name: editDraft.name,
+			parent_id: editDraft.parent_id || null
+		});
+		if (!result.ok) errorMessage = result.error ?? 'Could not save that change.';
+		else {
+			editingId = null;
+			await invalidateAll();
+		}
+		busy = false;
+	}
+
+	async function setArchived(id: string, archived: boolean) {
+		busy = true;
+		errorMessage = '';
+		const result = await apiWrite(`/api/ledger/categories/${id}/archive`, 'POST', { archived });
+		if (!result.ok) errorMessage = result.error ?? 'Could not change that.';
+		else await invalidateAll();
+		busy = false;
+	}
+
+	async function removeCategory(id: string) {
+		busy = true;
+		errorMessage = '';
+		const result = await apiWrite(`/api/ledger/categories/${id}`, 'DELETE', undefined);
+		// The refusal explains itself and offers deactivating instead, so it is
+		// shown as written rather than replaced with something shorter and vaguer.
+		if (!result.ok) errorMessage = result.error ?? 'Could not remove that category.';
+		else await invalidateAll();
+		busy = false;
+	}
 
 	/** Expenses and overhead read as money leaving, which the sign shows. */
 	function signed(t: { amount_cents: number; category_kind: string }): string {
@@ -66,7 +140,26 @@
 		if (!result.ok) {
 			errorMessage = result.error ?? 'Could not add that line.';
 		} else {
+			const created = (result.data as { transaction?: { id: string } } | undefined)?.transaction;
+			if (receiptFile && created?.id) {
+				const formData = new FormData();
+				formData.append('file', receiptFile);
+				const upload = await fetch(`/api/ledger/transactions/${created.id}/receipts`, {
+					method: 'POST',
+					body: formData
+				});
+				if (!upload.ok) {
+					const body = (await upload.json().catch(() => ({}))) as { error?: string };
+					// The line saved and the receipt did not. Said plainly, because
+					// silently keeping one of the two is how a receipt goes missing.
+					errorMessage =
+						(body.error ?? 'The receipt did not upload.') +
+						' The entry was saved, so attach the receipt again from the list.';
+				}
+			}
 			form = { ...form, amount: '', notes: '', client_id: '', project_id: '' };
+			receiptFile = null;
+			receiptNote = '';
 			showForm = false;
 			await invalidateAll();
 		}
@@ -91,11 +184,10 @@
 
 {#if errorMessage}<p class="error" role="alert">{errorMessage}</p>{/if}
 
-{#if data.categories.length === 0}
+{#if liveCategories.length === 0}
 	<Card title="No categories yet">
 		<p class="empty">
-			A line needs a category to sit under. Add one through the API for now; the category
-			editor is a later epic.
+			A line needs a category to sit under. Add one below to get started.
 		</p>
 	</Card>
 {/if}
@@ -157,6 +249,26 @@
 				<input type="text" bind:value={form.notes} />
 			</label>
 
+			{#if wantsReceipt}
+				<label class="wide">
+					<span>Receipt, if you have one</span>
+					<input
+						type="file"
+						accept="application/pdf,image/jpeg,image/png,image/heic,image/webp"
+						onchange={(e) => {
+							const files = (e.currentTarget as HTMLInputElement).files;
+							receiptFile = files && files.length ? files[0] : null;
+							receiptNote = receiptFile ? `${receiptFile.name}` : '';
+						}}
+					/>
+				</label>
+				<p class="fine wide">
+					PDF or an image, up to 12 MB. It attaches once the line is saved, because a
+					receipt belongs to an entry that exists.
+					{#if receiptNote}<strong>{receiptNote}</strong>{/if}
+				</p>
+			{/if}
+
 			<p class="fine wide">
 				Enter the amount as a positive figure. Whether it counts up or down is decided by the
 				category, so an expense of 40 is 40 under an expense category, never -40.
@@ -170,6 +282,103 @@
 		</form>
 	</Card>
 {/if}
+
+<Card title="Categories">
+	<button type="button" class="ghost" onclick={() => (showCategories = !showCategories)}>
+		{showCategories ? 'Hide categories' : `Manage categories (${liveCategories.length})`}
+	</button>
+
+	{#if showCategories}
+		<form class="form" onsubmit={addCategory}>
+			<label>
+				<span>Name</span>
+				<input type="text" bind:value={catDraft.name} required />
+			</label>
+			<label>
+				<span>Kind</span>
+				<select bind:value={catDraft.kind}>
+					<option value="income">Income</option>
+					<option value="expense">Expense</option>
+					<option value="overhead">Overhead</option>
+				</select>
+			</label>
+			<label>
+				<span>Nest under</span>
+				<select bind:value={catDraft.parent_id}>
+					<option value="">Nothing, it is a top level category</option>
+					{#each liveCategories.filter((c) => c.kind === catDraft.kind && !c.parent_id) as parent (parent.id)}
+						<option value={parent.id}>{parent.name}</option>
+					{/each}
+				</select>
+			</label>
+			<div class="wide">
+				<button type="submit" class="primary" disabled={busy || !catDraft.name.trim()}>
+					Add category
+				</button>
+			</div>
+		</form>
+
+		<div class="scroll">
+			<table>
+				<thead>
+					<tr><th>Category</th><th>Kind</th><th class="num">Entries</th><th>Actions</th></tr>
+				</thead>
+				<tbody>
+					{#each data.categories as category (category.id)}
+						<tr class:archived={category.archived_at}>
+							<td>
+								{#if editingId === category.id}
+									<input type="text" bind:value={editDraft.name} aria-label="Category name" />
+									<select bind:value={editDraft.parent_id} aria-label="Nest under">
+										<option value="">Top level</option>
+										{#each liveCategories.filter((c) => c.kind === category.kind && !c.parent_id && c.id !== category.id) as parent (parent.id)}
+											<option value={parent.id}>{parent.name}</option>
+										{/each}
+									</select>
+								{:else}
+									{#if category.parent_name}<span class="dim">{category.parent_name} / </span>{/if}
+									{category.name}
+									{#if category.archived_at}<span class="kind">Deactivated</span>{/if}
+								{/if}
+							</td>
+							<td>{KIND_LABEL[category.kind]}</td>
+							<td class="num mono">{category.transaction_count}</td>
+							<td class="acts">
+								{#if editingId === category.id}
+									<button type="button" class="ghost" disabled={busy} onclick={() => saveEdit(category.id)}>Save</button>
+									<button type="button" class="ghost" onclick={() => (editingId = null)}>Cancel</button>
+								{:else}
+									<button
+										type="button"
+										class="ghost"
+										onclick={() => {
+											editingId = category.id;
+											editDraft = { name: category.name, parent_id: category.parent_id ?? '' };
+										}}
+									>
+										Rename
+									</button>
+									{#if category.archived_at}
+										<button type="button" class="ghost" disabled={busy} onclick={() => setArchived(category.id, false)}>Reactivate</button>
+									{:else}
+										<button type="button" class="ghost" disabled={busy} onclick={() => setArchived(category.id, true)}>Deactivate</button>
+									{/if}
+									{#if category.transaction_count === 0}
+										<button type="button" class="ghost" disabled={busy} onclick={() => removeCategory(category.id)}>Delete</button>
+									{/if}
+								{/if}
+							</td>
+						</tr>
+					{/each}
+				</tbody>
+			</table>
+		</div>
+		<p class="fine">
+			A category with entries filed under it is deactivated rather than deleted. It leaves
+			the pickers and keeps its history, so the reports that already used it still add up.
+		</p>
+	{/if}
+</Card>
 
 <Card title="Totals">
 	{#if data.totals.length === 0}
@@ -388,6 +597,36 @@
 
 	.dim {
 		color: var(--text-secondary);
+	}
+
+	tr.archived td {
+		opacity: 0.55;
+	}
+
+	.acts {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 4px;
+	}
+
+	.ghost {
+		padding: 4px 8px;
+		background: none;
+		border: 1px solid var(--border);
+		border-radius: var(--radius-sm);
+		font: inherit;
+		font-size: var(--text-xs);
+		color: var(--navy-700);
+		cursor: pointer;
+	}
+
+	.ghost:hover {
+		background: var(--surface-hover);
+	}
+
+	.ghost:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
 	}
 
 	.empty,

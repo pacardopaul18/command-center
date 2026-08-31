@@ -45,9 +45,11 @@ ledger.get('/categories', async (c) => {
        (SELECT COUNT(*) FROM ledger_transactions t WHERE t.category_id = c.id) AS transaction_count
      FROM ledger_categories c
      LEFT JOIN ledger_categories p ON p.id = c.parent_id
-     WHERE c.archived_at IS NULL
+     WHERE (c.archived_at IS NULL OR ?1 = 1)
      ORDER BY c.kind, COALESCE(p.name, c.name) COLLATE NOCASE, c.name COLLATE NOCASE`
-	).all();
+	)
+		.bind(c.req.query('include_archived') === 'true' ? 1 : 0)
+		.all();
 
 	return c.json({ categories: results ?? [] });
 });
@@ -105,6 +107,161 @@ ledger.post('/categories', async (c) => {
 		.bind(id)
 		.first();
 	return c.json({ category: created }, 201);
+});
+
+
+/**
+ * Renaming and re-parenting a category.
+ *
+ * The database holds the shape rules: one level of nesting, a child matching
+ * its parent's kind, no self-parenting, no nesting a category that has children
+ * of its own. Those are triggers rather than checks here because an import or a
+ * correction by hand would bypass a route. This translates their words into an
+ * answer a person can act on.
+ *
+ * The kind cannot be changed. Moving a category from expense to income would
+ * silently flip the sign of every transaction already filed under it, and the
+ * numbers in every report built on those rows. Make a new category and move the
+ * rows deliberately.
+ */
+ledger.patch('/categories/:id', async (c) => {
+	const id = c.req.param('id');
+	const body = await readJsonObject(c.req.raw);
+
+	const existing = await c.env.DB.prepare('SELECT * FROM ledger_categories WHERE id = ?')
+		.bind(id)
+		.first<{ id: string; kind: string; name: string }>();
+	if (!existing) throw new ApiError(404, 'No category with that id.');
+
+	if ('kind' in body && body.kind !== existing.kind) {
+		throw new ApiError(
+			400,
+			'A category cannot change kind. Every transaction already filed under it would change ' +
+				'sign. Make a new category and move the entries across.'
+		);
+	}
+
+	const sets: string[] = [];
+	const binds: unknown[] = [];
+
+	if ('name' in body) {
+		sets.push('name = ?');
+		binds.push(requiredText(body.name, 'name', 120));
+	}
+
+	if ('parent_id' in body) {
+		const parentId = optionalText(body.parent_id, 'parent_id', 64);
+		if (parentId) {
+			const parent = await c.env.DB.prepare('SELECT id FROM ledger_categories WHERE id = ?')
+				.bind(parentId)
+				.first();
+			if (!parent) throw new ApiError(404, 'No category with that id to nest under.');
+		}
+		sets.push('parent_id = ?');
+		binds.push(parentId ?? null);
+	}
+
+	if (sets.length === 0) throw new ApiError(400, 'Nothing to change.');
+
+	sets.push('updated_at = ?');
+	binds.push(nowUtc(), id);
+
+	try {
+		await c.env.DB.prepare(`UPDATE ledger_categories SET ${sets.join(', ')} WHERE id = ?`)
+			.bind(...binds)
+			.run();
+	} catch (err) {
+		const message = err instanceof Error ? err.message : '';
+		// The triggers already say the useful thing; passed through rather than
+		// paraphrased, so the words on screen match the rule that produced them.
+		for (const phrase of [
+			'nest one level',
+			'same kind as its parent',
+			'its own parent',
+			'has children'
+		]) {
+			if (message.includes(phrase)) throw new ApiError(409, message.split('SQLITE')[0].trim());
+		}
+		if (message.includes('UNIQUE') || message.includes('ledger_categories.name')) {
+			throw new ApiError(409, 'A category with that name already exists.');
+		}
+		throw err;
+	}
+
+	const updated = await c.env.DB.prepare('SELECT * FROM ledger_categories WHERE id = ?')
+		.bind(id)
+		.first();
+	return c.json({ category: updated });
+});
+
+/**
+ * Retiring a category.
+ *
+ * Deleted only while nothing references it. Once a transaction is filed under a
+ * category, removing it would either orphan the row or take the money with it,
+ * and neither is a thing a books system should offer. So it is deactivated
+ * instead: gone from the pickers, still attached to its history.
+ *
+ * The refusal says which case it is and how many rows are involved, because
+ * "cannot delete" without a number is an argument the reader cannot check.
+ */
+ledger.delete('/categories/:id', async (c) => {
+	const id = c.req.param('id');
+
+	const existing = await c.env.DB.prepare('SELECT id FROM ledger_categories WHERE id = ?')
+		.bind(id)
+		.first();
+	if (!existing) throw new ApiError(404, 'No category with that id.');
+
+	const used = await c.env.DB.prepare(
+		'SELECT COUNT(*) AS n FROM ledger_transactions WHERE category_id = ?'
+	)
+		.bind(id)
+		.first<{ n: number }>();
+
+	const children = await c.env.DB.prepare(
+		'SELECT COUNT(*) AS n FROM ledger_categories WHERE parent_id = ?'
+	)
+		.bind(id)
+		.first<{ n: number }>();
+
+	const usedCount = Number(used?.n ?? 0);
+	const childCount = Number(children?.n ?? 0);
+
+	if (usedCount > 0 || childCount > 0) {
+		throw new ApiError(
+			409,
+			usedCount > 0
+				? `${usedCount} ${usedCount === 1 ? 'entry is' : 'entries are'} filed under this ` +
+					'category, so it cannot be deleted. Deactivate it instead and it will leave the ' +
+					'pickers while keeping its history.'
+				: `It has ${childCount} ${childCount === 1 ? 'child' : 'children'}. Move or remove ` +
+					'those first.'
+		);
+	}
+
+	await c.env.DB.prepare('DELETE FROM ledger_categories WHERE id = ?').bind(id).run();
+	return c.json({ ok: true, deleted: true });
+});
+
+/** Deactivate, or bring one back. Archived categories keep their history. */
+ledger.post('/categories/:id/archive', async (c) => {
+	const id = c.req.param('id');
+	const body = (await c.req.json().catch(() => ({}))) as { archived?: unknown };
+	const archived = body.archived !== false;
+
+	const existing = await c.env.DB.prepare('SELECT id FROM ledger_categories WHERE id = ?')
+		.bind(id)
+		.first();
+	if (!existing) throw new ApiError(404, 'No category with that id.');
+
+	await c.env.DB.prepare(
+		'UPDATE ledger_categories SET archived_at = ?, updated_at = ? WHERE id = ?'
+	)
+		.bind(archived ? nowUtc() : null, nowUtc(), id)
+		.run();
+
+	return c.json({ ok: true, archived });
 });
 
 /** The window a listing or a total covers. Both ends optional, both inclusive. */

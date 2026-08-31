@@ -7,6 +7,7 @@ export interface LedgerCategory {
 	parent_id: string | null;
 	parent_name: string | null;
 	transaction_count: number;
+	archived_at: string | null;
 }
 
 export interface LedgerTransaction {
@@ -44,7 +45,7 @@ export const load: PageLoad = async ({ fetch, url }) => {
 
 	const [txRes, catRes, totalsRes, clientsRes] = await Promise.all([
 		fetch(`/api/ledger/transactions${q}`),
-		fetch('/api/ledger/categories'),
+		fetch('/api/ledger/categories?include_archived=true'),
 		fetch(`/api/ledger/totals${q}`),
 		fetch('/api/clients')
 	]);
