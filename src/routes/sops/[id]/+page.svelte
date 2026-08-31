@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { invalidateAll } from '$app/navigation';
+	import { apiWrite } from '$lib/http';
 	import { formatDay } from '$lib/format';
 	import Button from '$lib/components/Button.svelte';
 	import Card from '$lib/components/Card.svelte';
@@ -7,6 +8,7 @@
 	import Input from '$lib/components/Input.svelte';
 	import StatusChip from '$lib/components/StatusChip.svelte';
 	import Markdown from '$lib/components/Markdown.svelte';
+	import Select from '$lib/components/Select.svelte';
 	import Textarea from '$lib/components/Textarea.svelte';
 	import type { PageData } from './$types';
 
@@ -102,6 +104,58 @@
 			`Version ${versionNumber} carried forward as a new version.`
 		);
 	}
+
+	/* ---------------------------------------------------------------------
+	 * Where this page lives
+	 * ------------------------------------------------------------------ */
+
+	/**
+	 * The picker follows the URL rather than the value it was built with.
+	 *
+	 * Reading `data` once at construction looked right and was not: filing a
+	 * page re-runs the loader without rebuilding the component, and the select
+	 * would still show whatever was chosen before.
+	 */
+	let filing = $state('');
+
+	$effect(() => {
+		filing = data.placement?.chapter_id ?? '';
+	});
+
+	/**
+	 * Files the page into a chapter, or moves it.
+	 *
+	 * One placement per page, so filing a page that is already filed moves it
+	 * rather than adding a second home. A procedure appearing in two books would
+	 * be two procedures that drift.
+	 */
+	async function fileIt() {
+		if (!filing) return;
+		busy = true;
+		errorMessage = '';
+		const res = await apiWrite(`/api/sops/${sop.id}/placement`, 'PUT', {
+			chapter_id: filing
+		});
+		busy = false;
+		if (res.ok) {
+			notice = 'Filed.';
+			await invalidateAll();
+		} else {
+			errorMessage = res.error ?? 'Could not file that page.';
+		}
+	}
+
+	async function unfile() {
+		busy = true;
+		const res = await apiWrite(`/api/sops/${sop.id}/placement`, 'DELETE', null);
+		busy = false;
+		if (res.ok) {
+			notice = 'Taken off the shelf. The page itself is unchanged.';
+			await invalidateAll();
+		} else {
+			errorMessage = res.error ?? 'Could not unfile that page.';
+		}
+	}
 </script>
 
 <svelte:head>
@@ -184,6 +238,43 @@
 	</div>
 {/if}
 
+
+<div class="block">
+	<Card title="Where this lives">
+		{#if data.placement}
+			<p class="placement">
+				<a href="/sops/shelves/{data.placement.shelf_id}">{data.placement.shelf_name}</a>
+				<span aria-hidden="true">/</span>
+				<a href="/sops/books/{data.placement.book_id}">{data.placement.book_title}</a>
+				<span aria-hidden="true">/</span>
+				{data.placement.chapter_title}
+			</p>
+		{:else}
+			<p class="empty">
+				Not filed anywhere yet. Every page was in this state until the shelves arrived;
+				filing it puts it in a chapter without changing a word of it.
+			</p>
+		{/if}
+
+		<div class="file-row">
+			<Select bind:value={filing} aria-label="Chapter to file into">
+				<option value="">Choose a chapter</option>
+				{#each data.chapters as chapter (chapter.id)}
+					<option value={chapter.id}>
+						{chapter.shelf_name} / {chapter.book_title} / {chapter.title}
+					</option>
+				{/each}
+			</Select>
+			<Button variant="secondary" disabled={busy || !filing} onclick={fileIt}>
+				{data.placement ? 'Move it' : 'File it'}
+			</Button>
+			{#if data.placement}
+				<Button variant="ghost" disabled={busy} onclick={unfile}>Take off the shelf</Button>
+			{/if}
+		</div>
+	</Card>
+</div>
+
 <div class="layout">
 	<div class="main">
 		{#if mode === 'edit'}
@@ -261,6 +352,27 @@
 </div>
 
 <style>
+
+	.placement {
+		margin: 0;
+		font-size: var(--text-sm);
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--space-1);
+	}
+
+	.file-row {
+		display: flex;
+		gap: var(--space-2);
+		align-items: center;
+		flex-wrap: wrap;
+		margin-top: var(--space-3);
+	}
+
+	.file-row :global(select) {
+		flex: 1;
+		min-width: 200px;
+	}
 	.crumbs {
 		display: flex;
 		flex-wrap: wrap;

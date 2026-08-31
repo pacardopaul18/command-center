@@ -27,6 +27,10 @@
   "meeting_action_proposals": 700,
   "meetings": 450,
   "projects": 220,
+  "sop_books": 10,
+  "sop_chapters": 20,
+  "sop_placements": 98,
+  "sop_shelves": 5,
   "sop_versions": 372,
   "sops": 120,
   "template_uses": 1553,
@@ -38,7 +42,7 @@
   "time_entries": 3200,
   "users": 7
  },
- "fingerprint": "d2d7f1907daad937",
+ "fingerprint": "621b897c1a5b723d",
  "invoice_bands": {
   "b0_30": 114,
   "b0_30_cents": 137129589,

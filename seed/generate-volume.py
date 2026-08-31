@@ -974,6 +974,97 @@ batched_insert("ticket_links",
 batched_insert("ticket_time",
                ["id","ticket_id","minutes","logged_on","who","note","created_at"], ticket_time_rows)
 
+# --- shelves, books, chapters and where each page lives ----------------------
+#
+# Its own random stream, so adding it leaves every value above byte identical.
+#
+# The hierarchy is derived from the category each SOP already has rather than
+# invented beside it. A shelf per category, two books per shelf, two chapters
+# per book, and every active page filed into one of them. That means the
+# fixture agrees with itself: a page on the Finance shelf is a page whose
+# category is Finance, which is the property the reads assume and the only one
+# worth seeding.
+#
+# A few pages are deliberately left unfiled, because that is the state every
+# real SOP is in the moment the shelves arrive, and a library that only ever
+# showed filed pages would have lost them.
+#
+# No DELETE line at the top of the file: books cascade from shelves, chapters
+# from books, and placements from both chapters and sops, all of which are
+# already cleared.
+library = random.Random(20260906)
+
+BOOK_TITLES = ["Running it", "Reviewing it"]
+CHAPTER_TITLES = ["Doing the work", "Checking the work"]
+
+shelves = []
+books = []
+chapters = []
+placements = []
+
+# The category list, in a fixed order, so the ids are stable across runs.
+shelf_names = sorted(set(SOP_CATEGORIES))
+chapters_by_shelf = {}
+
+for si, name in enumerate(shelf_names, start=1):
+    shelf_id = f"v-sh-{si}"
+    shelves.append((shelf_id, name,
+                    f"Everything about {name.lower()}, written down.",
+                    library.choice(["Paul", "Sofia Okafor", "Rue Mbeki", "Mei Bianchi"]),
+                    si, ts(-500), ts(-500)))
+    bump("counts", "sop_shelves")
+
+    shelf_chapters = []
+    for bi, btitle in enumerate(BOOK_TITLES, start=1):
+        book_id = f"v-bk-{si}-{bi}"
+        books.append((
+            book_id, shelf_id, f"{name}: {btitle}",
+            f"{btitle} for {name.lower()}.",
+            None,
+            library.choice([30, 90, 180, None]),
+            ts(-library.randint(10, 200)),
+            "published" if bi == 1 else "draft",
+            bi, ts(-400), ts(-400),
+        ))
+        bump("counts", "sop_books")
+
+        for ci, ctitle in enumerate(CHAPTER_TITLES, start=1):
+            chapter_id = f"v-ch-{si}-{bi}-{ci}"
+            chapters.append((chapter_id, book_id, ctitle, ci, ts(-400), ts(-400)))
+            bump("counts", "sop_chapters")
+            shelf_chapters.append(chapter_id)
+
+    chapters_by_shelf[name] = shelf_chapters
+
+n_place = 0
+for (sop_id, title, category, _cv, _owner, _review, status, _c, _u) in sops:
+    if status != "active":
+        continue
+    # One in nine stays unfiled, which is the state a page is in before anybody
+    # has put it on a shelf.
+    if library.random() < 0.11:
+        continue
+    targets = chapters_by_shelf.get(category)
+    if not targets:
+        continue
+    n_place += 1
+    placements.append((
+        f"v-pl-{n_place}", sop_id,
+        targets[library.randrange(len(targets))],
+        n_place, ts(-300),
+    ))
+    bump("counts", "sop_placements")
+
+batched_insert("sop_shelves",
+               ["id","name","description","owner","position","created_at","updated_at"], shelves)
+batched_insert("sop_books",
+               ["id","shelf_id","title","description","owner","review_cycle_days",
+                "last_reviewed_at","status","position","created_at","updated_at"], books)
+batched_insert("sop_chapters",
+               ["id","book_id","title","position","created_at","updated_at"], chapters)
+batched_insert("sop_placements",
+               ["id","sop_id","chapter_id","position","created_at"], placements)
+
 # --- templates --------------------------------------------------------------
 templates = []
 for i in range(1, 91):

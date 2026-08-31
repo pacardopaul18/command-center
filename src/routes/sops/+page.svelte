@@ -97,7 +97,10 @@
 <header class="head">
 	<div>
 		<h1>SOPs</h1>
-		<p class="sub">How the work gets done, written down and current.</p>
+		<p class="sub">
+			How the work gets done, written down and current. Shelves hold books, books hold
+			chapters, chapters hold pages.
+		</p>
 	</div>
 	<Button onclick={() => (showForm = !showForm)}>{showForm ? 'Cancel' : 'New SOP'}</Button>
 </header>
@@ -138,6 +141,57 @@
 	</div>
 {/if}
 
+
+<div class="tiles">
+	<div class="tile">
+		<span class="tile-label mono">Pages</span>
+		<span class="tile-value">{data.library.counts.pages}</span>
+		<span class="tile-note mono">
+			{data.library.shelves.length} shelves, {data.library.shelves.reduce((n, s) => n + s.book_count, 0)} books
+		</span>
+	</div>
+	<div class="tile">
+		<span class="tile-label mono">Filed</span>
+		<span class="tile-value">{data.library.counts.pages - data.library.unfiled}</span>
+		<span class="tile-note mono">on a shelf</span>
+	</div>
+	<div class="tile warn">
+		<span class="tile-label mono">Unfiled</span>
+		<span class="tile-value">{data.library.unfiled}</span>
+		<span class="tile-note mono">no chapter yet</span>
+	</div>
+	<div class="tile warn">
+		<span class="tile-label mono">Review overdue</span>
+		<span class="tile-value">{data.library.counts.review_overdue}</span>
+		<span class="tile-note mono">
+			{data.library.counts.review_overdue === 0 ? 'nothing waiting' : 'past their date'}
+		</span>
+	</div>
+</div>
+
+<!--
+	The shelves, and under them the flat list every page still lives in.
+
+	Both are shown rather than one replacing the other, because a hundred and
+	eleven pages were filed under a category and nothing else until the shelves
+	arrived. A library that only showed filed pages would have lost them.
+-->
+{#if data.library.shelves.length > 0}
+	<div class="shelves">
+		{#each data.library.shelves as shelf (shelf.id)}
+			<a class="shelf" href="/sops/shelves/{shelf.id}">
+				<span class="shelf-name">{shelf.name}</span>
+				{#if shelf.description}<span class="shelf-note">{shelf.description}</span>{/if}
+				<span class="shelf-counts mono">
+					{shelf.book_count} books · {shelf.page_count} pages
+					{#if shelf.owner}· {shelf.owner}{/if}
+				</span>
+			</a>
+		{/each}
+	</div>
+{/if}
+
+<h2 class="section">Every page</h2>
 <nav class="tabs" aria-label="Filter SOPs">
 	<a href={urlFor({ status: '' })} class="tab" aria-current={data.status === 'active' ? 'page' : undefined}>
 		Active <span class="count mono">{data.counts.active}</span>
@@ -205,6 +259,88 @@
 {/if}
 
 <style>
+
+	.tiles {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+		gap: var(--space-3);
+		margin: var(--space-4) 0;
+	}
+
+	.tile {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-1);
+		padding: var(--space-3);
+		border: 1px solid var(--border-thin);
+		border-left: 3px solid var(--navy-600);
+		border-radius: var(--radius-md);
+		background: var(--surface-card);
+	}
+
+	.tile.warn {
+		border-left-color: var(--gold-600, #c9a84c);
+	}
+
+	.tile-label {
+		font-size: var(--text-xs);
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+		color: var(--text-muted);
+	}
+
+	.tile-value {
+		font-size: var(--text-xl);
+		color: var(--text-heading);
+	}
+
+	.tile-note {
+		font-size: var(--text-xs);
+		color: var(--text-muted);
+	}
+
+	.shelves {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+		gap: var(--space-3);
+		margin-bottom: var(--space-4);
+	}
+
+	.shelf {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-1);
+		padding: var(--space-3);
+		border: 1px solid var(--border-thin);
+		border-radius: var(--radius-md);
+		background: var(--surface-card);
+		text-decoration: none;
+		min-height: 44px;
+	}
+
+	.shelf:hover {
+		border-color: var(--navy-600);
+	}
+
+	.shelf-name {
+		font-size: var(--text-md);
+		color: var(--text-heading);
+	}
+
+	.shelf-note,
+	.shelf-counts {
+		font-size: var(--text-xs);
+		color: var(--text-muted);
+	}
+
+	.section {
+		margin: 0 0 var(--space-2);
+		font-size: var(--text-sm);
+		font-family: var(--font-mono);
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+		color: var(--text-muted);
+	}
 	.head {
 		display: flex;
 		flex-wrap: wrap;
