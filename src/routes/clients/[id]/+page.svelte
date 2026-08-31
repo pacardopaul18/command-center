@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { invalidateAll } from '$app/navigation';
 	import { apiWrite } from '$lib/http';
-	import { formatDay } from '$lib/format';
+	import { formatDay, formatDayShort } from '$lib/format';
 	import {
 		CONTRACT_STATUSES,
 		CONTRACT_STATUS_LABELS,
@@ -9,7 +9,8 @@
 		INVOICE_STATUS_LABELS,
 		PROJECT_STATUS_LABELS,
 		TICKET_STATUS_LABELS,
-		formatMoney
+		formatMoney,
+		formatUsd
 	} from '$lib/types';
 	import type { Contact, Contract } from '$lib/types';
 	import Button from '$lib/components/Button.svelte';
@@ -156,6 +157,77 @@
 		}
 		busy = false;
 	}
+
+	/* ---------------------------------------------------------------------
+	 * Signed contract files
+	 * ------------------------------------------------------------------ */
+
+	let fileInput = $state<HTMLInputElement | null>(null);
+	let uploading = $state(false);
+	let dragging = $state(false);
+
+	const kb = (bytes: number) =>
+		bytes >= 1_048_576
+			? `${(bytes / 1_048_576).toFixed(1)} MB`
+			: `${Math.max(1, Math.round(bytes / 1024))} KB`;
+
+	/**
+	 * Uploads each file as its own request and reports each failure by name.
+	 *
+	 * One request per file is the point. A single multipart body carrying five
+	 * files fails as one thing, and the reader is told "the upload failed" with
+	 * no way to know that four of them were fine and the fifth was a .exe.
+	 */
+	async function sendFiles(files: File[]) {
+		if (files.length === 0) return;
+		uploading = true;
+		errorMessage = '';
+		const failed: string[] = [];
+
+		for (const file of files) {
+			const form = new FormData();
+			form.set('file', file);
+			const res = await fetch(`/api/clients/${data.client.id}/files`, {
+				method: 'POST',
+				body: form
+			}).catch(() => null);
+
+			if (!res || !res.ok) {
+				const body = res ? ((await res.json().catch(() => ({}))) as { error?: string }) : null;
+				failed.push(`${file.name}: ${body?.error ?? 'could not be uploaded'}`);
+			}
+		}
+
+		uploading = false;
+		if (failed.length > 0) errorMessage = failed.join('. ');
+		notice = failed.length < files.length ? 'Filed.' : '';
+		await invalidateAll();
+	}
+
+	async function uploadFiles(event: Event) {
+		const input = event.currentTarget as HTMLInputElement;
+		await sendFiles([...(input.files ?? [])]);
+		// Cleared so choosing the same file twice in a row still fires a change.
+		input.value = '';
+	}
+
+	async function onDrop(event: DragEvent) {
+		event.preventDefault();
+		dragging = false;
+		await sendFiles([...(event.dataTransfer?.files ?? [])]);
+	}
+
+	async function removeFile(id: string, filename: string) {
+		busy = true;
+		const res = await apiWrite(`/api/clients/${data.client.id}/files/${id}`, 'DELETE', null);
+		busy = false;
+		if (res.ok) {
+			notice = `Removed ${filename}.`;
+			await invalidateAll();
+		} else {
+			errorMessage = res.error ?? 'Could not remove that file.';
+		}
+	}
 </script>
 
 <svelte:head><title>{data.client.name}</title></svelte:head>
@@ -187,16 +259,16 @@
 <dl class="money">
 	<div>
 		<dt>Invoiced</dt>
-		<dd class="mono">{formatMoney(data.money.invoiced_cents)}</dd>
+		<dd class="mono">{formatUsd(data.money.invoiced_cents)}</dd>
 	</div>
 	<div>
 		<dt>Outstanding</dt>
-		<dd class="mono">{formatMoney(data.money.outstanding_cents)}</dd>
+		<dd class="mono">{formatUsd(data.money.outstanding_cents)}</dd>
 	</div>
 	<div class:alarm={data.money.overdue_cents > 0}>
 		<dt>Past due</dt>
 		<dd class="mono">
-			{data.money.overdue_cents > 0 ? formatMoney(data.money.overdue_cents) : 'None'}
+			{data.money.overdue_cents > 0 ? formatUsd(data.money.overdue_cents) : 'None'}
 		</dd>
 	</div>
 	<div>
@@ -455,7 +527,177 @@
 	</Card>
 {/if}
 
+<div class="cols">
+	<!--
+		Signed files, beside the terms they are evidence for.
+
+		Uploads only. The prototype's own copy settles the design question in one
+		line: "Upload signed files as they are, several at once. Nothing is
+		authored in here." Authoring a contract would mean a template engine, a
+		version history, and eventually somebody relying in a dispute on a
+		document this app generated. Filing the signed PDF where the client's
+		other facts live costs nothing and answers the question that gets asked.
+	-->
+	<Card title="Signed files" subtitle="{data.files.length} on file">
+		{#snippet actions()}
+			<Button variant="ghost" size="sm" disabled={uploading} onclick={() => fileInput?.click()}>
+				{uploading ? 'Uploading' : 'Upload'}
+			</Button>
+		{/snippet}
+
+		<p class="muted small">
+			Upload signed files as they are, several at once. Nothing is authored in here.
+		</p>
+
+		<!--
+			One request per file, not one request with several files. Batching them
+			would mean one failure losing the whole batch with nothing to say which
+			file was the problem.
+		-->
+		<input
+			bind:this={fileInput}
+			class="hidden-input"
+			type="file"
+			multiple
+			accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.webp,.heic"
+			onchange={uploadFiles}
+		/>
+
+		<div
+			class="drop"
+			class:over={dragging}
+			role="button"
+			tabindex="0"
+			aria-label="Upload signed contract files"
+			ondragover={(e) => {
+				e.preventDefault();
+				dragging = true;
+			}}
+			ondragleave={() => (dragging = false)}
+			ondrop={onDrop}
+			onclick={() => fileInput?.click()}
+			onkeydown={(e) => {
+				if (e.key === 'Enter' || e.key === ' ') {
+					e.preventDefault();
+					fileInput?.click();
+				}
+			}}
+		>
+			Drop files here or press to browse. PDF, Word and images, up to 25 MB each.
+		</div>
+
+		{#if data.files.length === 0}
+			<p class="muted small">No signed files yet.</p>
+		{:else}
+			<ul class="rows">
+				{#each data.files as file (file.id)}
+					<li>
+						<div class="row-main">
+							<p class="row-title">
+								<a href="/api/clients/{data.client.id}/files/{file.id}" target="_blank" rel="noopener">
+									{file.filename}
+								</a>
+							</p>
+							<p class="row-meta mono">
+								{formatDay(file.uploaded_at.slice(0, 10))} · {kb(file.size_bytes)}
+								{#if file.contract_title}· {file.contract_title}{/if}
+							</p>
+						</div>
+						<Button
+							variant="ghost"
+							size="sm"
+							disabled={busy}
+							onclick={() => removeFile(file.id, file.filename)}
+						>
+							Remove
+						</Button>
+					</li>
+				{/each}
+			</ul>
+		{/if}
+	</Card>
+
+	<!--
+		Derived, never logged. An activity table would be a second place every one
+		of these facts lives, and the two would drift the first time something was
+		created without remembering to write the log line. Everything here is read
+		back out of the records themselves, so it cannot be stale and cannot be
+		missing an entry.
+	-->
+	<Card title="Recent activity" subtitle="From the records themselves">
+		{#if data.activity.length === 0}
+			<p class="muted small">Nothing recorded against this client yet.</p>
+		{:else}
+			<ul class="feed">
+				{#each data.activity as event (event.kind + event.ref + event.at)}
+					<li>
+						<span class="feed-when mono">{formatDayShort(event.at)}</span>
+						<span class="feed-what">{event.detail}</span>
+					</li>
+				{/each}
+			</ul>
+		{/if}
+	</Card>
+</div>
+
 <style>
+
+	.hidden-input {
+		display: none;
+	}
+
+	.drop {
+		margin: var(--space-3) 0;
+		padding: var(--space-4);
+		border: 1px dashed var(--border-thin);
+		border-radius: var(--radius-md);
+		text-align: center;
+		font-size: var(--text-sm);
+		color: var(--text-muted);
+		cursor: pointer;
+		/* Comfortably past the 44px floor, D22, because it is also a drop zone. */
+		min-height: 44px;
+	}
+
+	.drop:hover,
+	.drop:focus-visible,
+	.drop.over {
+		border-color: var(--navy-600);
+		color: var(--text-body);
+	}
+
+	.small {
+		font-size: var(--text-xs);
+	}
+
+	.feed {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+	}
+
+	.feed li {
+		display: flex;
+		gap: var(--space-3);
+		align-items: baseline;
+		padding: var(--space-2) 0;
+	}
+
+	.feed li + li {
+		border-top: 1px solid var(--border-hairline);
+	}
+
+	.feed-when {
+		flex: none;
+		font-size: var(--text-xs);
+		color: var(--text-muted);
+	}
+
+	.feed-what {
+		font-size: var(--text-sm);
+		overflow-wrap: anywhere;
+	}
+
 	.crumbs {
 		font-size: var(--text-xs);
 		margin-bottom: var(--space-3);

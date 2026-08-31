@@ -4229,3 +4229,54 @@ right shape, and the sync's upsert lists its columns explicitly and never
 touches this one, so a person's filing survives every refresh. That last
 property is asserted by replaying the upsert in a test rather than trusted to
 stay true.
+
+### D154: contracts are filed, never authored
+
+The Clients prototype puts an upload box beside the contracts card and settles
+the design question in its own copy: "Upload signed files as they are, several
+at once. Nothing is authored in here." That line is the decision and it is the
+right one.
+
+Authoring a contract in this app would mean a template engine, a version
+history, and eventually somebody relying in a dispute on a document this app
+generated. Filing the signed PDF where the client's other facts live costs a
+table and answers the question that actually gets asked, which is "what did we
+agree". Migration 0027, `contract_files`, same shape as `expense_receipts` from
+0020 because two tables that hold a file in R2 and a row in D1 should look the
+same.
+
+Files hang off the client, not off a `contracts` row. A signed PDF usually
+arrives before anybody records terms, and requiring a contract row first would
+mean either refusing the upload or inventing a row to hang it on. `contract_id`
+is nullable so a file can be attached to specific terms later.
+
+One request per file, not one request carrying five. A single multipart body
+fails as one thing, and the reader is told the upload failed with no way to know
+that four were fine and the fifth was a shell script.
+
+The property the guarantee test exists for is the read, not the write: the row
+is checked against the client in the path before R2 is touched. A route that
+looked a file up by id alone would serve one client's signed agreement from
+another client's URL and look completely normal doing it.
+
+### D155: the client activity feed is derived, never logged
+
+Recent activity merges invoices raised, payments taken, meetings held, projects
+started and contracts filed, in SQL, sorted and cut in SQLite rather than in the
+Worker. Nothing writes to it.
+
+An activity table would be a second place every one of those facts lives, and
+the two would drift the first time something was created without remembering to
+write the log line. A derived feed cannot be stale and cannot be missing an
+entry somebody forgot. It also cannot record anything the records do not already
+say, which is the constraint that makes it trustworthy.
+
+The client list's open balance is filtered by the same `kind = 'invoice'` and
+not-voided rule Invoicing uses, so the one screen a person scans for who to
+chase cannot disagree with the invoice screen about what is owed. D144 again, in
+a second place.
+
+Three fields the prototype draws are absent: website, industry and source. They
+are columns on `clients` and no ALTER may touch an existing table before
+Thursday. Client since is drawn, because `created_at` already answers it. The
+three land on Thursday with the `action_items` columns already queued.

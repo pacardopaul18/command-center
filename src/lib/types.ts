@@ -480,6 +480,19 @@ export interface Client {
 	created_at: string;
 	updated_at: string;
 	project_count?: number;
+	/**
+	 * Facts the list query computes so the table can be scanned, never stored.
+	 *
+	 * The primary contact is joined from `contacts` rather than copied onto the
+	 * client, which is the same rule the invoicing endpoints follow. The money
+	 * is filtered by `kind = 'invoice'` and not voided, so this row cannot
+	 * disagree with the invoice screen about what is owed, D144.
+	 */
+	primary_contact_name?: string | null;
+	primary_contact_email?: string | null;
+	contact_count?: number;
+	outstanding_cents?: number;
+	overdue_cents?: number;
 	// The billing profile, added in migration 0024. Contact name, email and
 	// phone are not here: they live in `contacts`, one row per person, and the
 	// invoicing endpoints join the primary one rather than copying it.

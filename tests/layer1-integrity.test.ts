@@ -286,14 +286,37 @@ describe('layer 1: referential integrity', () => {
 	});
 
 	it('no test contacts or contracts are left behind', () => {
-		// Same guard as tickets, same reasoning: the seed creates none, so any row
-		// is a leak from a test or a probe. The layer 3 cleanup can only satisfy
-		// this if DELETE /api/contacts/:id really works, so the two check each
-		// other rather than each trusting the other.
+		/**
+		 * The seed grew contacts, so this can no longer be "the count is zero".
+		 *
+		 * The guard it replaces was the tickets one: the seed creates none, so any
+		 * row is a leak. The property that actually mattered was never the zero,
+		 * it was that no row exists which the seed did not write, and that
+		 * survives the change: every contact must carry the v- prefix, and there
+		 * must be exactly as many as the generator says. A test that created one
+		 * and failed to clean it up still fails here, on both counts.
+		 *
+		 * The layer 3 cleanup can only satisfy this if DELETE /api/contacts/:id
+		 * really works, so the two check each other rather than each trusting the
+		 * other.
+		 */
 		const contacts = one<{ c: number }>('SELECT COUNT(*) AS c FROM contacts');
+		expect(Number(contacts.c), 'The contacts count does not match the generator.').toBe(
+			expected.counts.contacts
+		);
+
+		const strays = one<{ c: number }>(
+			"SELECT COUNT(*) AS c FROM contacts WHERE id NOT LIKE 'v-%'"
+		);
+		expect(Number(strays.c), 'Contacts exist that the seed did not create.').toBe(0);
+
+		// Contracts are still seeded nowhere, so the original rule stands there.
 		const contracts = one<{ c: number }>('SELECT COUNT(*) AS c FROM contracts');
-		expect(Number(contacts.c), 'Contacts exist that the seed did not create.').toBe(0);
 		expect(Number(contracts.c), 'Contracts exist that the seed did not create.').toBe(0);
+
+		// And the files that hang off them, added with the client redesign.
+		const files = one<{ c: number }>('SELECT COUNT(*) AS c FROM contract_files');
+		expect(Number(files.c), 'Contract files exist that the seed did not create.').toBe(0);
 	});
 
 	it('no test tickets are left behind', () => {

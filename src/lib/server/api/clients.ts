@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import type { ApiEnv } from './env';
-import { nowUtc } from '../dates';
+import { nowUtc, todayInWorkingZone } from '../dates';
 import { ApiError, oneOf, optionalText, readJsonObject, requiredText } from './validate';
 import { CLIENT_STATUSES, parseMoneyToCents } from '$lib/types';
 import type { ClientStatus } from '$lib/types';
@@ -13,9 +13,36 @@ import type { ClientStatus } from '$lib/types';
  * route: a client with work against it is not something to remove by accident.
  */
 
+/**
+ * The list, with the three facts the redesigned table needs beside the name.
+ *
+ * Who to ring, what is owed, and how many projects are running. All three are
+ * subqueries rather than joins: a join to contacts would multiply the row per
+ * contact and a join to invoices would multiply it again, and the count of
+ * projects would then be wrong in a way that reads as plausible.
+ *
+ * The money is filtered by the same rule Invoicing uses, `kind = 'invoice'` and
+ * not voided, so this table cannot disagree with the invoice screen about what
+ * a client owes. An estimate counted as a receivable inflates the number on the
+ * one screen a person scans for who to chase. D144.
+ */
 const LIST_SELECT = `
   SELECT c.*,
-    (SELECT COUNT(*) FROM projects WHERE client_id = c.id) AS project_count
+    (SELECT COUNT(*) FROM projects WHERE client_id = c.id) AS project_count,
+    (SELECT name FROM contacts WHERE client_id = c.id AND is_primary = 1 LIMIT 1)
+      AS primary_contact_name,
+    (SELECT email FROM contacts WHERE client_id = c.id AND is_primary = 1 LIMIT 1)
+      AS primary_contact_email,
+    (SELECT COUNT(*) FROM contacts WHERE client_id = c.id) AS contact_count,
+    COALESCE((
+      SELECT SUM(MAX(0, i.amount_cents - i.amount_paid_cents)) FROM invoices i
+      WHERE i.client_id = c.id AND i.kind = 'invoice' AND i.voided_at IS NULL
+    ), 0) AS outstanding_cents,
+    COALESCE((
+      SELECT SUM(MAX(0, i.amount_cents - i.amount_paid_cents)) FROM invoices i
+      WHERE i.client_id = c.id AND i.kind = 'invoice' AND i.voided_at IS NULL
+        AND i.amount_paid_cents < i.amount_cents AND i.due_date < ?1
+    ), 0) AS overdue_cents
   FROM clients c
 `;
 
@@ -25,10 +52,18 @@ clients.get('/', async (c) => {
 	const raw = c.req.query('status') ?? 'active';
 	const status = raw === 'all' ? null : oneOf<ClientStatus>(raw, CLIENT_STATUSES, 'status', 'active');
 
+	/**
+	 * Overdue is measured against today rather than stored, the same way the
+	 * invoice list measures it. Bound as ?1 because the subqueries in the select
+	 * come before the WHERE clause and positional binds keep the two from
+	 * swapping places the next time a filter is added.
+	 */
+	const today = todayInWorkingZone();
+
 	const { results } = await c.env.DB.prepare(
-		`${LIST_SELECT} ${status ? 'WHERE c.status = ?' : ''} ORDER BY c.name COLLATE NOCASE`
+		`${LIST_SELECT} ${status ? 'WHERE c.status = ?2' : ''} ORDER BY c.name COLLATE NOCASE`
 	)
-		.bind(...(status ? [status] : []))
+		.bind(...(status ? [today, status] : [today]))
 		.all();
 
 	const counts = await c.env.DB.prepare(
@@ -40,6 +75,7 @@ clients.get('/', async (c) => {
 
 	return c.json({
 		clients: results ?? [],
+		today,
 		counts: { active: counts?.active ?? 0, archived: counts?.archived ?? 0 }
 	});
 });
@@ -72,7 +108,13 @@ clients.post('/', async (c) => {
 		throw err;
 	}
 
-	const created = await c.env.DB.prepare(`${LIST_SELECT} WHERE c.id = ?`).bind(id).first();
+	// LIST_SELECT takes ?1 for today, because the overdue subquery needs it.
+	// Every caller binds it, or the row comes back short one placeholder and the
+	// route answers with no client at all. D134: a shared fragment changing its
+	// contract is a caller audit, not a local edit.
+	const created = await c.env.DB.prepare(`${LIST_SELECT} WHERE c.id = ?2`)
+		.bind(todayInWorkingZone(), id)
+		.first();
 	return c.json({ client: created }, 201);
 });
 
@@ -157,6 +199,8 @@ clients.patch('/:id', async (c) => {
 		throw err;
 	}
 
-	const updated = await c.env.DB.prepare(`${LIST_SELECT} WHERE c.id = ?`).bind(id).first();
+	const updated = await c.env.DB.prepare(`${LIST_SELECT} WHERE c.id = ?2`)
+		.bind(todayInWorkingZone(), id)
+		.first();
 	return c.json({ client: updated });
 });

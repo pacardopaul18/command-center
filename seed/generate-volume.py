@@ -260,6 +260,53 @@ for i in range(1, N_CLIENTS + 1):
                     ts(-random.randint(200, 700))))
 batched_insert("clients", ["id","name","billing_terms","status","notes","created_at"], clients)
 
+# --- contacts ---------------------------------------------------------------
+#
+# Its own random stream, so adding people to the fixture leaves every value
+# generated above byte identical. Same property the invoice detail stream holds
+# and for the same reason: a fixture that reshuffles the whole database when one
+# table is added makes every expected figure change at once, and nobody can tell
+# which change was the intended one.
+#
+# No DELETE line at the top of the file. `contacts.client_id` is ON DELETE
+# CASCADE from clients, which is already cleared, so a reload takes these with
+# it. Stated because its absence from that list otherwise reads as an oversight.
+people = random.Random(20260902)
+
+ROLES = ["Managing director", "Finance lead", "Operations manager",
+         "Programme director", "Head of delivery", "Chief of staff",
+         "Financial controller", "Partner"]
+
+contacts = []
+n_contact = 0
+for cid, nm, *_ in clients:
+    # A domain built from the client's own name, so an address on screen is
+    # recognisably that client's rather than a random string.
+    domain = "".join(ch for ch in nm.lower() if ch.isalnum()) + ".example"
+
+    # One to three people, and exactly one of them primary. The partial unique
+    # index enforces that; generating two would abort the load, which is the
+    # constraint doing its job and not something to work around here.
+    for pos in range(people.randint(1, 3)):
+        n_contact += 1
+        first = FIRST[people.randrange(len(FIRST))]
+        last = LAST[people.randrange(len(LAST))]
+        contacts.append((
+            f"v-ct-{n_contact}",
+            cid,
+            f"{first} {last}",
+            f"{first.lower()}.{last.lower()}@{domain}",
+            f"+1 555 {people.randint(1000, 9999)}",
+            ROLES[people.randrange(len(ROLES))],
+            1 if pos == 0 else 0,
+            None,
+        ))
+        bump("counts", "contacts")
+
+batched_insert("contacts",
+               ["id","client_id","name","email","phone","role","is_primary","notes"],
+               contacts)
+
 # --- projects ---------------------------------------------------------------
 N_PROJECTS = 220
 projects = []

@@ -1,3 +1,4 @@
+import type { D1Database } from '@cloudflare/workers-types';
 import { Hono } from 'hono';
 import type { ApiEnv } from './env';
 import { nowUtc, todayInWorkingZone } from '../dates';
@@ -332,6 +333,231 @@ client360.delete('/contracts/:id', async (c) => {
  * Aging is deliberately not recomputed here either. It is read off the same
  * bucket the invoice list assigns.
  */
+/* -------------------------------------------------------------------------
+ * Contract files
+ * ---------------------------------------------------------------------- */
+
+/**
+ * What a signed contract is allowed to be.
+ *
+ * A signed agreement arrives as a PDF, as a Word file somebody exported, or as
+ * a photograph of a page. Nothing else is a contract, and an allowlist rather
+ * than a blocklist is the difference between refusing an executable and
+ * refusing the next executable extension somebody invents.
+ */
+const CONTRACT_TYPES = [
+	'application/pdf',
+	'application/msword',
+	'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+	'image/jpeg',
+	'image/png',
+	'image/webp',
+	'image/heic'
+];
+
+const MAX_CONTRACT_BYTES = 25 * 1024 * 1024;
+
+client360.get('/clients/:id/files', async (c) => {
+	const { results } = await c.env.DB.prepare(
+		`SELECT f.id, f.client_id, f.contract_id, f.filename, f.mime_type, f.size_bytes,
+        f.uploaded_at, k.title AS contract_title
+     FROM contract_files f
+     LEFT JOIN contracts k ON k.id = f.contract_id
+     WHERE f.client_id = ? ORDER BY f.uploaded_at DESC`
+	)
+		.bind(c.req.param('id'))
+		.all();
+	return c.json({ files: results ?? [] });
+});
+
+/**
+ * Uploads one signed file against a client.
+ *
+ * One per request, and the screen sends several requests for several files.
+ * Batching them into one multipart body would mean one failure losing the whole
+ * batch with nothing to say which file was the problem.
+ */
+client360.post('/clients/:id/files', async (c) => {
+	const clientId = c.req.param('id');
+	const client = await c.env.DB.prepare('SELECT id FROM clients WHERE id = ?')
+		.bind(clientId)
+		.first();
+	if (!client) throw new ApiError(404, 'Client not found.');
+
+	const form = await c.req.formData().catch(() => null);
+	const file = form?.get('file');
+	if (!(file instanceof File)) throw new ApiError(400, 'Attach a file as the "file" field.');
+	if (file.size === 0) throw new ApiError(400, 'That file is empty.');
+	if (file.size > MAX_CONTRACT_BYTES) throw new ApiError(413, 'That file is larger than 25 MB.');
+
+	const mime = file.type || 'application/octet-stream';
+	if (!CONTRACT_TYPES.includes(mime)) {
+		throw new ApiError(415, `A contract must be a PDF, a Word file or an image. That one is ${mime}.`);
+	}
+
+	/**
+	 * The terms this file is evidence for, when the caller names them, and
+	 * checked against this client rather than trusted. Attaching a file to
+	 * another client's contract row would file the document under a client who
+	 * never signed it.
+	 */
+	const contractId = optionalText(form?.get('contract_id'), 'contract_id', 100);
+	if (contractId) {
+		const owned = await c.env.DB.prepare(
+			'SELECT id FROM contracts WHERE id = ? AND client_id = ?'
+		)
+			.bind(contractId, clientId)
+			.first();
+		if (!owned) throw new ApiError(404, 'No contract with that id on this client.');
+	}
+
+	const id = crypto.randomUUID();
+	const key = `contracts/${clientId}/${id}`;
+	const now = nowUtc();
+
+	await c.env.FILES.put(key, await file.arrayBuffer(), { httpMetadata: { contentType: mime } });
+
+	try {
+		await c.env.DB.prepare(
+			`INSERT INTO contract_files
+       (id, client_id, contract_id, filename, mime_type, size_bytes, r2_key, uploaded_at, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+		)
+			.bind(id, clientId, contractId, file.name || 'contract', mime, file.size, key, now, now)
+			.run();
+	} catch (err) {
+		// The row is the record. If it did not land, the object is unreachable
+		// and is removed rather than left as a file nothing points at.
+		await c.env.FILES.delete(key).catch(() => {});
+		throw asClientError(err);
+	}
+
+	const created = await c.env.DB.prepare(
+		`SELECT id, client_id, contract_id, filename, mime_type, size_bytes, uploaded_at
+     FROM contract_files WHERE id = ?`
+	)
+		.bind(id)
+		.first();
+	return c.json({ file: created }, 201);
+});
+
+/**
+ * The bytes, reached through the client that owns them.
+ *
+ * The row is checked before R2 is touched, and it is checked against the client
+ * in the path, so a guessed key cannot serve a file and a real id belonging to
+ * another client cannot either. Same rule the receipt route follows.
+ */
+client360.get('/clients/:id/files/:fileId', async (c) => {
+	const row = await c.env.DB.prepare(
+		`SELECT r2_key, filename, mime_type FROM contract_files
+     WHERE id = ? AND client_id = ?`
+	)
+		.bind(c.req.param('fileId'), c.req.param('id'))
+		.first<{ r2_key: string; filename: string; mime_type: string | null }>();
+	if (!row) throw new ApiError(404, 'No file with that id on this client.');
+
+	const object = await c.env.FILES.get(row.r2_key);
+	if (!object) throw new ApiError(404, 'That file is recorded but its contents are missing.');
+
+	// Buffered rather than piped, matching the receipt route: the Workers R2
+	// stream and the platform Response type disagree.
+	const bytes = new Uint8Array(await object.arrayBuffer());
+	const safe = row.filename.replace(new RegExp('["' + String.fromCharCode(13, 10) + ']', 'g'), '');
+
+	return new Response(bytes.buffer as ArrayBuffer, {
+		headers: {
+			'content-type': row.mime_type ?? 'application/octet-stream',
+			// Inline, so a signed PDF opens in the tab rather than landing in
+			// Downloads. The filename is still given, for when it is saved.
+			'content-disposition': `inline; filename="${safe}"`,
+			// Never cached by a shared cache: this is a client's contract.
+			'cache-control': 'private, no-store'
+		}
+	});
+});
+
+client360.delete('/clients/:id/files/:fileId', async (c) => {
+	const row = await c.env.DB.prepare(
+		'SELECT r2_key FROM contract_files WHERE id = ? AND client_id = ?'
+	)
+		.bind(c.req.param('fileId'), c.req.param('id'))
+		.first<{ r2_key: string }>();
+	if (!row) throw new ApiError(404, 'No file with that id on this client.');
+
+	// The row goes first. An object deleted while its row survived would leave a
+	// contract on screen that cannot be opened, which is worse than a stray
+	// object in a bucket nothing points at.
+	await c.env.DB.prepare('DELETE FROM contract_files WHERE id = ?')
+		.bind(c.req.param('fileId'))
+		.run();
+	await c.env.FILES.delete(row.r2_key).catch(() => {});
+
+	return c.json({ ok: true });
+});
+
+/**
+ * What has happened on this client lately.
+ *
+ * Merged from records that already exist rather than written to a log. An
+ * activity table would be a second place every one of these facts lives, and
+ * the two would drift the first time something was created without remembering
+ * to log it. Everything here is derived, so it cannot be out of date and
+ * cannot be missing an entry somebody forgot to write.
+ *
+ * Five sources, one shape, sorted by date and cut to a page. Invoices raised,
+ * payments taken, meetings held, projects started and contracts filed: the
+ * facts a person asks about when they say "where are we with them".
+ *
+ * The union is written out rather than assembled in TypeScript so the sort and
+ * the limit happen in SQLite. Pulling five full lists into the Worker to sort
+ * and throw most of it away is the version of this that gets slow quietly.
+ */
+async function recentActivity(db: D1Database, clientId: string, limit = 12) {
+	const { results } = await db
+		.prepare(
+			`SELECT * FROM (
+         SELECT i.issue_date AS at, 'invoice' AS kind, i.id AS ref,
+                'Invoice ' || i.invoice_number || ' raised.' AS detail
+         FROM invoices i
+         WHERE i.client_id = ?1 AND i.kind = 'invoice' AND i.voided_at IS NULL
+
+         UNION ALL
+
+         SELECT p.paid_on AS at, 'payment' AS kind, i.id AS ref,
+                'Payment recorded against ' || i.invoice_number || '.' AS detail
+         FROM invoice_payments p
+         JOIN invoices i ON i.id = p.invoice_id
+         WHERE i.client_id = ?1
+
+         UNION ALL
+
+         SELECT m.meeting_date AS at, 'meeting' AS kind, m.id AS ref,
+                'Met: ' || m.title || '.' AS detail
+         FROM meetings m WHERE m.client_id = ?1
+
+         UNION ALL
+
+         SELECT SUBSTR(pr.created_at, 1, 10) AS at, 'project' AS kind, pr.id AS ref,
+                'Project started: ' || pr.name || '.' AS detail
+         FROM projects pr WHERE pr.client_id = ?1
+
+         UNION ALL
+
+         SELECT SUBSTR(f.uploaded_at, 1, 10) AS at, 'file' AS kind, f.id AS ref,
+                'Contract filed: ' || f.filename || '.' AS detail
+         FROM contract_files f WHERE f.client_id = ?1
+       )
+       WHERE at IS NOT NULL
+       ORDER BY at DESC
+       LIMIT ?2`
+		)
+		.bind(clientId, limit)
+		.all();
+
+	return results ?? [];
+}
+
 client360.get('/clients/:id/overview', async (c) => {
 	const id = c.req.param('id');
 	const today = todayInWorkingZone();
@@ -341,7 +567,8 @@ client360.get('/clients/:id/overview', async (c) => {
 	).bind(id).first();
 	if (!client) throw new ApiError(404, 'Client not found.');
 
-	const [contacts, contracts, projects, invoices, meetings, tickets] = await Promise.all([
+	const [contacts, contracts, projects, invoices, meetings, tickets, contractFiles, activity] =
+		await Promise.all([
 		c.env.DB.prepare(
 			`SELECT * FROM contacts WHERE client_id = ?
        ORDER BY is_primary DESC, name COLLATE NOCASE`
@@ -384,7 +611,16 @@ client360.get('/clients/:id/overview', async (c) => {
        FROM tickets t JOIN projects p ON p.id = t.project_id
        WHERE p.client_id = ? AND t.status NOT IN ('done','cancelled')
        ORDER BY COALESCE(t.due_date, '9999') ASC LIMIT 10`
-		).bind(id).all()
+		).bind(id).all(),
+
+		c.env.DB.prepare(
+			`SELECT f.id, f.contract_id, f.filename, f.mime_type, f.size_bytes, f.uploaded_at,
+          k.title AS contract_title
+       FROM contract_files f
+       LEFT JOIN contracts k ON k.id = f.contract_id
+       WHERE f.client_id = ? ORDER BY f.uploaded_at DESC`
+		).bind(id).all(),
+		recentActivity(c.env.DB, id)
 	]);
 
 	// Totals summed from the rows above rather than queried again, so the
@@ -413,6 +649,8 @@ client360.get('/clients/:id/overview', async (c) => {
 		invoices: invoiceRows,
 		meetings: meetings.results ?? [],
 		tickets: tickets.results ?? [],
+		files: contractFiles.results ?? [],
+		activity,
 		money
 	});
 });
