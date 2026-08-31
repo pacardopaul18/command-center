@@ -424,23 +424,34 @@ test.describe('invoicing, one client at a time', () => {
 });
 
 test.describe('the dashboard', () => {
-	test('shows the six cards and the four headline tiles', async ({ page }) => {
+	test('shows the eight cards and the six headline tiles', async ({ page }) => {
 		await page.goto('/');
 		for (const title of [
+			'Projects',
 			'Needs you now',
-			"Today's meetings",
+			'Open tickets',
 			'The week ahead',
-			'Money past due',
-			'Finished today',
+			"Today's meetings",
+			'Money',
+			'Mail needing you',
 			'What will slip'
 		]) {
-			await expect(page.getByRole('heading', { name: title })).toBeVisible();
+			await expect(page.getByRole('heading', { name: title, exact: true })).toBeVisible();
 		}
-		for (const label of ['Overdue', 'Due today', 'Awaiting a decision', 'Past due']) {
+		for (const label of [
+			'Overdue items',
+			'Due today',
+			'Awaiting a decision',
+			'Projects at risk',
+			'Tickets breaching',
+			'Past due'
+		]) {
 			await expect(page.locator('.tile-label', { hasText: new RegExp(`^${label}$`) })).toBeVisible();
 		}
-		// The design mocks meeting times and agendas. Neither is in the schema.
+		// The design mocks meeting times, agendas, ticket references and an SLA
+		// countdown. None of them is in the schema, so none of them is drawn.
 		await expect(page.getByText('agenda drafted')).toHaveCount(0);
+		await expect(page.getByText(/breach in \d+h/)).toHaveCount(0);
 	});
 
 	test('every headline tile is a link to the screen that owns the number', async ({ page }) => {
@@ -452,6 +463,8 @@ test.describe('the dashboard', () => {
 			'/actions?view=overdue',
 			'/actions?view=today',
 			'/reports/slipping',
+			'/projects',
+			'/projects',
 			'/invoices'
 		]);
 	});
@@ -467,8 +480,10 @@ test.describe('the dashboard', () => {
 		expect(rows).toBeGreaterThan(0);
 		expect(rows).toBeLessThanOrEqual(6);
 
-		// At volume the card must say what it is not showing.
-		await expect(card).toContainText(/Showing \d+ of \d+/);
+		// At volume the card must say what it is not showing. The redesign drops
+		// the word "Showing" and keeps the two numbers, which is the assertion
+		// that was ever worth making.
+		await expect(card).toContainText(/\d+ of \d+/);
 	});
 
 	test('the headline sentence names the worst thing first', async ({ page }) => {
