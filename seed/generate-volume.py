@@ -849,6 +849,58 @@ for i in range(1, 91):
 batched_insert("templates", ["id","name","scenario","body","type","status",
                              "created_at","updated_at"], templates)
 
+# --- what each template has been used for -----------------------------------
+#
+# Its own random stream, so adding it leaves every value above byte identical.
+#
+# Without these the Most used tile has nothing to name and the library sorts by
+# a column of zeroes, which is a redesign that cannot be judged. Nothing here
+# stores a draft: the row records that a use happened and roughly how long the
+# result was, which is the whole of what migration 0028 keeps. D158.
+#
+# No DELETE line at the top of the file: template_uses is ON DELETE CASCADE from
+# templates, which is already cleared, so a reload takes these with it.
+uses = random.Random(20260904)
+
+USE_CONTEXTS = [
+    "Weekly run for the active engagements",
+    "Partner asked for a summary",
+    "Month end pack",
+    "Client requested an update",
+    "Escalation on the migration",
+    "Quarterly review preparation",
+    "Ahead of the steering committee",
+    None,
+]
+
+template_uses = []
+n_use = 0
+for tid, name, scenario, body, kind, status, created, _updated in templates:
+    if status == "archived":
+        continue
+    # A long tail: most templates are used a handful of times and one or two
+    # carry the library. A flat distribution would make the Most used tile
+    # arbitrary, which is the same as it being wrong.
+    weight = uses.random()
+    n = int(1 + (weight ** 3) * 60)
+    for _ in range(n):
+        n_use += 1
+        when = uses.randint(-120, 0)
+        model = "claude-sonnet-5" if uses.random() < 0.65 else None
+        template_uses.append((
+            f"v-tu-{n_use}",
+            tid,
+            uses.choice(USE_CONTEXTS),
+            uses.randint(400, 4000) if model else None,
+            model,
+            ts(when, hour=uses.randint(8, 18)),
+        ))
+        bump("counts", "template_uses")
+
+batched_insert("template_uses",
+               ["id","template_id","context","drafted_chars","model","created_at"],
+               template_uses)
+
 # Derived rollups the suite asserts on, so a mistake in one table shows up
 # against a number computed from a different table's generation.
 EXPECT["totals"]["action_items_open"] = (

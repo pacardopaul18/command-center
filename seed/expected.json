@@ -29,11 +29,12 @@
   "projects": 220,
   "sop_versions": 372,
   "sops": 120,
+  "template_uses": 1553,
   "templates": 90,
   "time_entries": 3200,
   "users": 7
  },
- "fingerprint": "19ecabc5435f7d03",
+ "fingerprint": "7ef6024069ebcba0",
  "invoice_bands": {
   "b0_30": 114,
   "b0_30_cents": 137129589,

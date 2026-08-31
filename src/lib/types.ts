@@ -614,6 +614,15 @@ export interface Template {
 	status: TemplateStatus;
 	created_at: string;
 	updated_at: string;
+	/**
+	 * Counted from `template_uses` on every read, never stored on the template.
+	 *
+	 * A counter column is a number maintained by hand, and a number maintained
+	 * by hand eventually disagrees with reality with no way to check it.
+	 * Migration 0028.
+	 */
+	use_count?: number;
+	last_used_at?: string | null;
 }
 
 // --- Reports ---
