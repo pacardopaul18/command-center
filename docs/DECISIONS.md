@@ -3811,3 +3811,55 @@ returned both the broken call and the wrong words at once.
 Related to D123, which is the same failure from the other end: there, a screen
 was never opened under the condition the feature introduced; here, a screen was
 never opened after the contract beneath it moved.
+
+### D135: one recorder, and an unknown model priced as the dearest
+
+The spend meter read zero while the app had summarised 583 threads. Two causes.
+The drafting route recorded nothing at all, and it is the most expensive call
+the app makes. The recorder that did exist omitted `connection_id`, while a
+second recorder in `context.ts` set it, which is how two writers to one table
+came to disagree about what a row contains.
+
+One recorder now, in `ai-usage.ts`, used by every path, with every field. A
+failed write is caught and returned rather than thrown: losing the meter must
+not lose Paul the answer he already paid for.
+
+Cost is computed beside the recorder from the tokens the API reported, and an
+unknown model is priced as the dearest known one. A model nobody has priced
+would otherwise read as free, and free is the direction that flatters.
+
+Pillar 4 is a cost decision before it is anything else, and a ceiling nobody can
+read is not a ceiling.
+
+### D136: the rules decide the bill, not the prompts
+
+Measured on the real mailbox rather than estimated. Of 865 messages, Gmail had
+already filed 201 as Promotions and 537 as Updates, and Paul had written in 19
+threads out of 775. Applying the rules to the live corpus: 88 messages are
+correspondence and 355 are bulk by Gmail's own labels or a no-reply sender.
+
+About one message in ten needs a model, decided by data the app already stores
+and pays nothing for. That single fact is worth more than any prompt tuning.
+
+Two deliberate asymmetries. Anyone Paul has written to is correspondence
+whatever Gmail thinks, because filing a client's invoice as a newsletter loses
+an obligation and saves a fraction of a cent. And Updates get their own class,
+embedded so they can be found but never summarised: a receipt does not need a
+paragraph written about it, it needs to be findable when somebody asks what was
+paid.
+
+### D137: a refusal is not a quiet success
+
+The pilot could not run: the Anthropic account had reached its usage limit. The
+route reported that as `ok: true` with every count at zero, which reads as
+"there was nothing to do" and is the opposite of what happened.
+
+The stop reason is now carried in the outcome and says which of the two it is: a
+usage limit that will not clear until it resets, or a brief unavailability that
+will resume by itself. The distinction matters because one is worth waiting for
+and the other is worth telling somebody about.
+
+Same class as D113 and D124: a real condition reported with the vocabulary of
+nothing having happened. It keeps recurring in this app because the honest
+report and the empty one look identical at the call site, and only the caller
+can tell them apart.

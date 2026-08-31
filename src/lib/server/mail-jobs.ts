@@ -485,6 +485,16 @@ export interface TriageOutcome {
 	failed: number;
 	remaining: number;
 	spent: number;
+	/**
+	 * Why the run stopped early, when it did.
+	 *
+	 * A hard refusal from the API used to come back as ok:true with every count
+	 * at zero, which reads as "there was nothing to do" and is the opposite of
+	 * what happened. The usage limit is the case that matters: the app is not
+	 * broken and nothing is wrong with the mail, the account simply cannot spend
+	 * until the limit resets, and that is worth saying rather than implying.
+	 */
+	stopped: string | null;
 }
 
 /**
@@ -537,6 +547,7 @@ export async function triageBatch(
 	let summarised = 0;
 	let skipped = 0;
 	let failed = 0;
+	let stopped: string | null = null;
 
 	for (const thread of results ?? []) {
 		if (!budget.canAfford(COST_PER_THREAD)) break;
@@ -667,9 +678,18 @@ export async function triageBatch(
 
 			summarised += 1;
 		} catch (err) {
-			const transient = err instanceof AiError && (err.status === 429 || err.status >= 500);
+			const message = String(err);
+			// A spending limit is not a transient blip and not a bad thread: it
+			// stops the whole run and will keep stopping it until it resets.
+			const limited = /usage limit|regain access|credit balance|quota/i.test(message);
+			const transient =
+				limited || (err instanceof AiError && (err.status === 429 || err.status >= 500));
 			if (transient) {
-				console.error('triage stopping, transient failure', String(err));
+				stopped = limited
+					? 'The AI account has reached its usage limit, so nothing can be read until it resets. ' +
+						'Nothing is wrong with the mail or the app.'
+					: 'The AI service was briefly unavailable, so the run stopped and will resume.';
+				console.error('triage stopping', message);
 				break;
 			}
 			console.error('triage failed for thread', thread.id, String(err));
@@ -699,7 +719,8 @@ export async function triageBatch(
 		skipped,
 		failed,
 		remaining: Number(remaining?.n ?? 0),
-		spent: budget.spent
+		spent: budget.spent,
+		stopped
 	};
 }
 
