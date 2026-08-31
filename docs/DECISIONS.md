@@ -3789,3 +3789,25 @@ Recording a payment as an event rather than a new total also restores something
 cash basis needs and the old shape destroyed: the date the money arrived. A
 ledger entry dated when someone happened to edit an invoice is not a cash-basis
 record.
+
+### D134: changing a route's contract requires a caller audit, exercised in a browser
+
+P3-E2 retired the PATCH that set `amount_paid_cents` directly, correctly: the
+figure is derived now. The invoices screen was calling it. Retiring the route
+without rewiring the screen would have shipped a Record payment button that
+failed on every press, and the API tests would all have passed, because they
+call the new route.
+
+So: before a route's contract changes, every caller of it is found and updated
+in the same change, and the caller's path is exercised through the browser
+rather than only through the API. The API test proves the new route works. It
+cannot prove the button still does.
+
+Cheap to do and it has now caught one: `grep` for the route and for the field
+name, then click the thing. The field in this case still said "Total paid to
+date", which was also the old shape written into the label, so the audit
+returned both the broken call and the wrong words at once.
+
+Related to D123, which is the same failure from the other end: there, a screen
+was never opened under the condition the feature introduced; here, a screen was
+never opened after the contract beneath it moved.
