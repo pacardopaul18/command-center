@@ -652,8 +652,12 @@
 </Card>
 
 <Card title="Mail" subtitle="Reading only. Nothing is ever sent, drafted or labelled.">
-	{#if !data.mail}
+	{#if data.mailError}
+		<p class="error" role="alert">{data.mailError}</p>
+	{:else if !data.accountConnected}
 		<p class="empty">Connect a Google account to read mail.</p>
+	{:else if !data.mail}
+		<p class="empty">No mail has been read for this account yet.</p>
 	{:else}
 		<IngestProgress
 			ingest={data.mail.state}
@@ -690,6 +694,9 @@
 
 
 <Card title="Calendars" subtitle="Nothing syncs until you choose it.">
+	{#if data.calendarError}
+		<p class="error" role="alert">{data.calendarError}</p>
+	{/if}
 	<CalendarList
 		calendars={data.calendars}
 		busy={calBusy}
@@ -704,7 +711,9 @@
 </Card>
 
 <Card title="What the AI has spent" subtitle="Measured, not estimated.">
-	{#if !data.spend}
+	{#if data.spendError}
+		<p class="error" role="alert">{data.spendError}</p>
+	{:else if !data.spend}
 		<p class="hint">Could not read usage.</p>
 	{:else}
 		<dl class="facts">

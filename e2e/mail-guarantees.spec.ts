@@ -242,6 +242,67 @@ test.describe('mail views: account segregation survives the redesign', () => {
 	});
 
 	/**
+	 * D127: every page loader that reads account-scoped data names an account.
+	 *
+	 * This is the enumeration asserted rather than performed. F1 was found by
+	 * hand and the two siblings were found by grepping once, which protects
+	 * nothing: the next loader added without a scope passes every existing test.
+	 *
+	 * So the list is checked here. A loader that fetches account-scoped data has
+	 * to name the account, and the fixture guarantees two connected accounts,
+	 * which is the condition that makes an unscoped read fail.
+	 */
+	test('every page reading account-scoped data says which account', async ({ page }) => {
+		// Two accounts are connected by the fixture, so an unscoped read is
+		// refused by resolveAccount and the page has nowhere to hide it.
+		for (const path of ['/meetings', '/settings', `/mail?account=${A}`]) {
+			const errors: string[] = [];
+			page.on('pageerror', (e) => errors.push(String(e)));
+
+			const response = await page.goto(path);
+			await page.waitForLoadState('networkidle');
+
+			expect(response?.status(), `${path} did not load`).toBeLessThan(400);
+			expect(errors, `${path} threw while loading`).toEqual([]);
+
+			// The refusal message is the tell. If it reaches the page, something
+			// asked without naming an account.
+			const text = await page.locator('body').innerText();
+			expect(text, `${path} made an unscoped request`).not.toContain(
+				'More than one account is connected'
+			);
+		}
+	});
+
+	/**
+	 * A refused read and an empty one must not look the same.
+	 *
+	 * The silent blank is the actual defect D127 names on these two pages:
+	 * neither crashed and neither leaked, they just stopped showing the
+	 * calendar and the ingest progress with no explanation, on the page a
+	 * reader would open to find out why.
+	 */
+	test('a failed scoped read is shown, not swallowed', async ({ page }) => {
+		// A well-formed id that belongs to nobody. The route 404s it, which is
+		// the failure the page has to report rather than absorb.
+		await page.goto('/settings?account=view-does-not-exist');
+		await page.waitForLoadState('networkidle');
+
+		const settings = await page.locator('body').innerText();
+		expect(settings, 'settings absorbed a failed read').toMatch(
+			/No connected account with that id|Could not load/i
+		);
+
+		await page.goto('/meetings?account=view-does-not-exist');
+		await page.waitForLoadState('networkidle');
+
+		const meetings = await page.locator('body').innerText();
+		expect(meetings, 'meetings absorbed a failed read').toMatch(
+			/No connected account with that id|Could not load/i
+		);
+	});
+
+	/**
 	 * Opening mail must not tell the sender it was opened.
 	 *
 	 * A remote image in an email is a tracking pixel as often as a picture, so

@@ -6,16 +6,41 @@ import type {
 	EmailIngestStatus
 } from '$lib/types';
 import type { CalendarRow } from '$lib/components/CalendarList.svelte';
+import { accountQuery, resolveAccountScope, scopedError } from '$lib/account-scope';
 
-export const load: PageLoad = async ({ fetch }) => {
+export const load: PageLoad = async ({ fetch, url }) => {
+	/**
+	 * Three of these reads belong to one account, and none of them said which.
+	 *
+	 * Settings is the worst page in the app to leave unscoped, because it holds
+	 * the calendar list and the mail ingest progress. Once a second account was
+	 * connected those reads would be refused and rendered as nothing, so the
+	 * page a reader opens to find out why the app stopped showing them would be
+	 * one of the pages that had stopped showing them. D127.
+	 */
+	const scope = await resolveAccountScope(fetch, url);
+	const acct = accountQuery(scope.account);
+
 	const [res, syncRes, connRes, mailRes, calRes, spendRes] = await Promise.all([
 		fetch('/api/asana'),
 		fetch('/api/asana/sync'),
 		fetch('/api/connections'),
-		fetch('/api/email/ingest'),
-		fetch('/api/connections/google/calendars'),
-		fetch('/api/email/summarise')
+		fetch(`/api/email/ingest${acct}`),
+		fetch(`/api/connections/google/calendars${acct}`),
+		fetch(`/api/email/summarise${acct}`)
 	]);
+
+	/**
+	 * Read before anything consumes a body.
+	 *
+	 * `scopedError` only reads a response that failed, which is exactly the case
+	 * where no success branch reads it, so the two never touch the same body.
+	 * Ordered first anyway, because a body is read once and a rule that depends
+	 * on statement order is a rule waiting to be broken by the next edit.
+	 */
+	const mailError = scope.connected ? await scopedError(mailRes, 'mail status') : null;
+	const calendarError = scope.connected ? await scopedError(calRes, 'the calendars') : null;
+	const spendError = scope.connected ? await scopedError(spendRes, 'the spend meter') : null;
 
 	if (!res.ok) {
 		const body = (await res.json().catch(() => ({}))) as { error?: string };
@@ -49,5 +74,17 @@ export const load: PageLoad = async ({ fetch }) => {
 			})
 		: null;
 
-	return { asana: (await res.json()) as AsanaStatus, sync, connections, mail, calendars, spend };
+	return {
+		asana: (await res.json()) as AsanaStatus,
+		sync,
+		connections,
+		mail,
+		calendars,
+		spend,
+		account: scope.account,
+		accountConnected: scope.connected,
+		mailError,
+		calendarError,
+		spendError
+	};
 };

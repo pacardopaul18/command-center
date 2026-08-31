@@ -84,7 +84,13 @@
 	<Button onclick={() => (showForm = !showForm)}>{showForm ? 'Cancel' : 'New meeting'}</Button>
 </header>
 
-{#if data.calendar.events.length > 0 || data.calendar.last_read_at}
+{#if data.calendarError}
+	<div class="block">
+		<Card title="What is coming up" subtitle="The next two weeks, from the calendars you chose.">
+			<p class="error-banner" role="alert">{data.calendarError}</p>
+		</Card>
+	</div>
+{:else if data.calendar.events.length > 0 || data.calendar.last_read_at}
 	<div class="block">
 		<Card title="What is coming up" subtitle="The next two weeks, from the calendars you chose.">
 			<CalendarWeek events={data.calendar.events} lastReadAt={data.calendar.last_read_at} />
