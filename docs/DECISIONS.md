@@ -4470,3 +4470,29 @@ The next review date is computed from the cycle and the last reading rather than
 stored. Changing a cycle from quarterly to monthly then moves every book at
 once, instead of needing every row rewritten. A book with no cycle has no next
 date, which the screen shows as "no cycle" rather than as an overdue review.
+
+### D163: a report exports one table, named, and every other one is reachable
+
+Every report answers with several arrays and a CSV is one table. The route picks
+a primary section per report, and that is a judgement rather than a
+technicality: the primary section is the list a person opened the report to
+read, and the summaries beside it are context they can already see.
+
+The others are reachable by name, so nothing is hidden, and asking for a section
+that does not exist is answered with the list of ones that do. An empty file
+with headers and no rows is the failure to avoid: it reads as "none" and a
+reader cannot tell it from a section name typed wrong.
+
+Headers come from the first row and every later row is read against them.
+Taking each row's own keys would let a row with an extra column shift every
+field after it, which is the CSV failure nobody notices until a spreadsheet sums
+the wrong column. The guarantee test asserts every row is the header's width, in
+every report, so a report added later cannot ship an export that silently
+misaligns.
+
+One function runs a report for both the screen and the export. Two copies of
+that chain is how a file ends up a version behind the page it was taken from.
+
+Quoting and formula-prefixing follow the ledger export, D156's file: every field
+quoted because a note is where a comma turns up, and a leading =, +, - or @
+prefixed so a spreadsheet reads it as text.
