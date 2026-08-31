@@ -290,12 +290,14 @@ email.get('/threads', async (c) => {
 	}
 
 	const limit = Math.min(Math.max(Number(c.req.query('limit') ?? 50), 1), 200);
+	const offset = Math.max(Number(c.req.query('offset') ?? 0), 0);
 
 	const { results } = await c.env.DB.prepare(
 		`SELECT t.id, t.subject, t.message_count, t.first_at, t.last_at,
         t.client_id, t.gist, t.summary, t.summary_at,
         t.severity, t.category, t.severity_override, t.category_override,
         t.corrected_at, t.archived_at, t.read_at,
+        st.starred_at,
         ${effective} AS effective_severity,
         ${effectiveCategory} AS effective_category,
         cl.name AS client_name,
@@ -311,16 +313,25 @@ email.get('/threads', async (c) => {
      FROM email_threads t
      LEFT JOIN clients cl ON cl.id = t.client_id
      LEFT JOIN connections conn ON conn.id = t.connection_id
+     LEFT JOIN thread_stars st ON st.thread_id = t.id
      WHERE ${where.join(' AND ')}
-     ORDER BY
-       CASE ${effective}
-         WHEN 'urgent' THEN 0 WHEN 'important' THEN 1
-         WHEN 'routine' THEN 2 WHEN 'noise' THEN 3 ELSE 1 END,
-       t.last_at DESC
-     LIMIT ?`
+     ORDER BY t.last_at DESC
+     LIMIT ? OFFSET ?`
 	)
-		.bind(...binds, limit)
+		.bind(...binds, limit, offset)
 		.all();
+
+	// How many the current filters match in total, so the pager can say "of 340"
+	// rather than only how many fit on this page. Counted with the same WHERE the
+	// list uses, or the two would disagree at the edges.
+	const totalRow = await c.env.DB.prepare(
+		`SELECT COUNT(*) AS n FROM email_threads t
+     LEFT JOIN connections conn ON conn.id = t.connection_id
+     LEFT JOIN thread_stars st ON st.thread_id = t.id
+     WHERE ${where.join(' AND ')}`
+	)
+		.bind(...binds)
+		.first<{ n: number }>();
 
 	// The needs-you count, computed the same way the filter is, so the tab and
 	// the list can never disagree about how many are waiting.
@@ -367,6 +378,9 @@ email.get('/threads', async (c) => {
 		.first<{ n: number }>();
 
 	return c.json({
+		total: Number(totalRow?.n ?? 0),
+		limit,
+		offset,
 		archived_count: archivedCount?.n ?? 0,
 		scope: scope.kind,
 		needs_you: Number(needsYou?.n ?? 0),
@@ -636,6 +650,37 @@ email.post('/threads/:id/correct', async (c) => {
  * limitation and it is the price of the guarantee: nothing this app does can
  * alter Paul's actual mail.
  */
+
+/**
+ * Starring a thread.
+ *
+ * Its own table, so nothing on email_threads changes. A star is Paul saying
+ * "come back to this", which is a different statement from the model's severity
+ * and outranks it: the tabs sort by what the classifier thought, and this is
+ * the one signal the classifier has no say in.
+ */
+email.post('/threads/:id/star', async (c) => {
+	const account = await resolveAccount(c.env.DB, c.req.query('account'));
+	await assertThreadOwned(c.env.DB, c.req.param('id'), account.id);
+
+	const body = (await c.req.json().catch(() => ({}))) as { starred?: unknown };
+	const starred = body.starred !== false;
+
+	if (starred) {
+		await c.env.DB.prepare(
+			'INSERT INTO thread_stars (thread_id, starred_at) VALUES (?, ?) ON CONFLICT(thread_id) DO NOTHING'
+		)
+			.bind(c.req.param('id'), nowUtc())
+			.run();
+	} else {
+		await c.env.DB.prepare('DELETE FROM thread_stars WHERE thread_id = ?')
+			.bind(c.req.param('id'))
+			.run();
+	}
+
+	return c.json({ ok: true, starred });
+});
+
 email.post('/threads/:id/archive', async (c) => {
 	const account = await resolveAccount(c.env.DB, c.req.query('account'));
 	await assertThreadOwned(c.env.DB, c.req.param('id'), account.id);

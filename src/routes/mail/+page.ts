@@ -33,6 +33,11 @@ export const load: PageLoad = async ({ fetch, url }) => {
 	 */
 	const tab = url.searchParams.get('tab') ?? url.searchParams.get('severity') ?? DEFAULT_TAB;
 
+	// Paging. The size is remembered in the URL so a link to page three of fifty
+	// is a link to that, and a reload does not silently move the reader.
+	const perPage = Math.min(Math.max(Number(url.searchParams.get('per') ?? 20), 1), 100);
+	const page = Math.max(Number(url.searchParams.get('page') ?? 1), 1);
+
 	const remembered = accountParam
 		? null
 		: await fetch('/api/connections/active-account')
@@ -41,7 +46,10 @@ export const load: PageLoad = async ({ fetch, url }) => {
 
 	const account: string = accountParam ?? (remembered as { active?: string } | null)?.active ?? '';
 
-	const params = new URLSearchParams({ limit: '100' });
+	const params = new URLSearchParams({
+		limit: String(perPage),
+		offset: String((page - 1) * perPage)
+	});
 	if (account) params.set('account', account);
 	if (q) params.set('q', q);
 	if (clientId) params.set('client_id', clientId);
@@ -71,6 +79,9 @@ export const load: PageLoad = async ({ fetch, url }) => {
 			tab,
 			archived,
 			archivedCount: 0,
+			total: 0,
+			perPage,
+			page,
 			noAccount: true
 		};
 	}
@@ -85,6 +96,7 @@ export const load: PageLoad = async ({ fetch, url }) => {
 		counts: Record<string, number>;
 		needs_you: number;
 		archived_count: number;
+		total: number;
 		scope: 'one' | 'all';
 	};
 
@@ -114,6 +126,9 @@ export const load: PageLoad = async ({ fetch, url }) => {
 		tab,
 		archived,
 		archivedCount: payload.archived_count ?? 0,
+		total: payload.total ?? payload.threads.length,
+		perPage,
+		page,
 		noAccount: false
 	};
 };

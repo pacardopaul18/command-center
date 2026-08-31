@@ -56,6 +56,8 @@ export interface ThreadRow {
 	effective_category: Category | null;
 	corrected_at: string | null;
 	archived_at: string | null;
+	/** Set when Paul starred it. Its own table, so no column on email_threads. */
+	starred_at: string | null;
 	read_at: string | null;
 	/** Which account this thread belongs to. Rendered only in the unified view. */
 	account_id?: string;

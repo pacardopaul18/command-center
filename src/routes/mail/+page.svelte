@@ -31,9 +31,71 @@
 	let busy = $state(false);
 	let errorMessage = $state('');
 
+	/**
+	 * Whether the reclassify pills are on screen.
+	 *
+	 * They are the single biggest thing between one row and the next, and most
+	 * of the time the classifier is right and they are not wanted. Remembered
+	 * per browser, because it is a preference about looking rather than a fact
+	 * about the mail.
+	 */
+	let showPills = $state(false);
+
+	/** The client filter, typed rather than picked from a list of sixty. */
+	let clientQuery = $state('');
+	let clientOpen = $state(false);
+
 	$effect(() => {
 		q = data.q;
 	});
+
+	$effect(() => {
+		try {
+			const stored = localStorage.getItem('mail:show-pills');
+			if (stored !== null) showPills = stored === 'true';
+		} catch {
+			// A browser refusing storage is not a reason to fail to render.
+		}
+	});
+
+	function togglePills() {
+		showPills = !showPills;
+		try {
+			localStorage.setItem('mail:show-pills', String(showPills));
+		} catch {
+			// Same: the preference simply does not persist.
+		}
+	}
+
+	/**
+	 * Search as you type.
+	 *
+	 * Debounced rather than fired per keystroke, because each one is a round
+	 * trip and a query. Emptying the field is a search too: it used to leave the
+	 * old results on screen until Enter was pressed, which reads as the list
+	 * having stopped working.
+	 */
+	let searchTimer: ReturnType<typeof setTimeout> | null = null;
+
+	function onSearchInput(value: string) {
+		q = value;
+		if (searchTimer) clearTimeout(searchTimer);
+		searchTimer = setTimeout(() => {
+			if (value.trim() === (data.q ?? '').trim()) return;
+			apply({ q: value.trim() || null, page: null });
+		}, 250);
+	}
+
+	async function toggleStar(thread: ThreadRow) {
+		const account = thread.account_id ?? data.account;
+		const result = await apiWrite(
+			`/api/email/threads/${thread.id}/star?account=${account}`,
+			'POST',
+			{ starred: !thread.starred_at }
+		);
+		if (!result.ok) errorMessage = result.error ?? 'Could not change that.';
+		else await invalidateAll();
+	}
 
 	function urlFor(next: Record<string, string | null>) {
 		const params = new URLSearchParams();
@@ -43,6 +105,8 @@
 			client_id: data.clientId,
 			tab: data.tab,
 			archived: data.archived ? 'true' : null,
+			per: String(data.perPage),
+			page: data.page > 1 ? String(data.page) : null,
 			...next
 		};
 		for (const [key, value] of Object.entries(merged)) {
@@ -98,6 +162,31 @@
 		{ key: 'noise', label: 'Noise' },
 		{ key: 'all', label: 'Everything' }
 	];
+
+	const clientMatches = $derived(
+		clientQuery.trim() === ''
+			? data.clients
+			: data.clients.filter((c) =>
+					c.name.toLowerCase().includes(clientQuery.trim().toLowerCase())
+				)
+	);
+
+	const activeClientName = $derived(
+		data.clients.find((c) => c.id === data.clientId)?.name ?? ''
+	);
+
+	function chooseClient(id: string | null) {
+		clientOpen = false;
+		clientQuery = '';
+		apply({ client_id: id, page: null });
+	}
+
+	/** Paging arithmetic, kept here so the markup stays readable. */
+	const pageCount = $derived(Math.max(1, Math.ceil(data.total / data.perPage)));
+	const firstOnPage = $derived(data.total === 0 ? 0 : (data.page - 1) * data.perPage + 1);
+	const lastOnPage = $derived(Math.min(data.page * data.perPage, data.total));
+
+	const PAGE_SIZES = [10, 20, 50, 100];
 
 	function countFor(key: string): number {
 		if (key === 'needs') return data.needsYou;
@@ -155,6 +244,7 @@
 
 	{#if errorMessage}<p class="error" role="alert">{errorMessage}</p>{/if}
 
+	<div class="sticky">
 	<nav class="tabs" aria-label="Filter mail by what it needs from you">
 		{#each TABS as tab (tab.key)}
 			<a
@@ -173,24 +263,61 @@
 		class="filters"
 		onsubmit={(e) => {
 			e.preventDefault();
-			apply({ q });
+			apply({ q, page: null });
 		}}
 	>
 		<div class="search">
-			<Input bind:value={q} placeholder="Search subjects, senders and gists" />
+			<input
+				type="search"
+				value={q}
+				placeholder="Search subjects, senders and gists"
+				aria-label="Search mail"
+				oninput={(e) => onSearchInput((e.currentTarget as HTMLInputElement).value)}
+			/>
 		</div>
-		<Button type="submit">Search</Button>
+
+		<!--
+			Typed, not picked. A native select jumps to the first name starting
+			with the letter pressed and forgets it a moment later, so "Ba" lands
+			on the first B and stays there. This matches anywhere in the name.
+		-->
 		<div class="client">
-			<Select
-				value={data.clientId}
-				onchange={(e) => apply({ client_id: (e.currentTarget as HTMLSelectElement).value })}
-			>
-				<option value="">Every client</option>
-				{#each data.clients as client (client.id)}
-					<option value={client.id}>{client.name}</option>
-				{/each}
-			</Select>
+			<input
+				type="text"
+				role="combobox"
+				aria-expanded={clientOpen}
+				aria-controls="client-options"
+				aria-autocomplete="list"
+				aria-label="Filter by client"
+				placeholder={activeClientName || 'Every client'}
+				value={clientQuery}
+				oninput={(e) => {
+					clientQuery = (e.currentTarget as HTMLInputElement).value;
+					clientOpen = true;
+				}}
+				onfocus={() => (clientOpen = true)}
+				onblur={() => setTimeout(() => (clientOpen = false), 150)}
+			/>
+			{#if clientOpen}
+				<ul class="options" id="client-options" role="listbox">
+					<li role="option" aria-selected={!data.clientId}>
+						<button type="button" onclick={() => chooseClient(null)}>Every client</button>
+					</li>
+					{#each clientMatches.slice(0, 8) as client (client.id)}
+						<li role="option" aria-selected={data.clientId === client.id}>
+							<button type="button" onclick={() => chooseClient(client.id)}>{client.name}</button>
+						</li>
+					{/each}
+					{#if clientMatches.length === 0}
+						<li class="none" role="presentation">No client matches that.</li>
+					{/if}
+				</ul>
+			{/if}
 		</div>
+
+		<button type="button" class="ghost" onclick={togglePills} aria-pressed={showPills}>
+			{showPills ? 'Hide labels' : 'Show labels'}
+		</button>
 		<a class="ghost" href={urlFor({ archived: data.archived ? null : 'true' })}>
 			<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 				<rect x="2" y="4" width="20" height="5" rx="1" />
@@ -200,6 +327,7 @@
 			{data.archived ? 'Hide archived' : 'Show archived'} ({data.archivedCount})
 		</a>
 	</form>
+	</div>
 
 	{#if (data.counts.untriaged ?? 0) > 0}
 		<div class="callout">
@@ -213,50 +341,64 @@
 
 	<div class="threads">
 		{#each data.threads as thread (thread.id)}
-			<div class="thread">
+			{@const unread = !thread.read_at}
+			<div class="thread" class:unread class:read={!unread}>
+				<!--
+					One line, the way a mail client shows one. The gist and the
+					correction pills used to make every row four lines deep, so
+					eight threads filled the screen.
+				-->
+				<button
+					type="button"
+					class="star"
+					aria-pressed={Boolean(thread.starred_at)}
+					aria-label={thread.starred_at ? 'Remove from favourites' : 'Add to favourites'}
+					title={thread.starred_at ? 'Remove from favourites' : 'Add to favourites'}
+					onclick={() => toggleStar(thread)}
+				>
+					<svg width="16" height="16" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" fill={thread.starred_at ? 'currentColor' : 'none'} aria-hidden="true">
+						<path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1.1 1L12 21l7.7-7.6 1.1-1a5.5 5.5 0 0 0 0-7.8z" />
+					</svg>
+				</button>
+
 				<a class="row" href="/mail/{thread.id}?account={thread.account_id ?? data.account}">
 					<span class="chip {chipClass(thread)}">{chipLabel(thread)}</span>
-					{#if thread.severity_override}<span class="edited mono">edited</span>{/if}
 					<span class="subject">{thread.subject ?? '(no subject)'}</span>
+					<span class="from">
+						{#if data.scope === 'all' && thread.account_email}
+							<span class="acct mono">{thread.account_email}</span>
+						{/if}
+						{thread.latest_from_name ?? thread.latest_from ?? 'Unknown sender'}
+						{#if thread.actual_count > 1}<span class="n mono">{thread.actual_count}</span>{/if}
+					</span>
+					<span class="preview">
+						{thread.gist ?? thread.latest_snippet ?? ''}
+					</span>
+					{#if thread.client_name}<span class="client-tag">{thread.client_name}</span>{/if}
+					{#if thread.severity_override}<span class="edited mono">edited</span>{/if}
 					<span class="when mono">{thread.last_at ? formatMoment(thread.last_at) : ''}</span>
-					<svg class="go" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-						<path d="M9 18l6-6-6-6" />
-					</svg>
 				</a>
 
-				<p class="meta">
-					{#if data.scope === 'all' && thread.account_email}
-						<span class="acct mono">{thread.account_email}</span>
-					{/if}
-					{thread.latest_from_name ?? thread.latest_from ?? 'Unknown sender'}
-					{#if thread.actual_count > 1}&middot; {thread.actual_count} messages{/if}
-					{#if thread.client_name}&middot; {thread.client_name}{/if}
-				</p>
-
-				{#if thread.gist}
-					<p class="gist">{thread.gist}</p>
-				{:else if thread.latest_snippet}
-					<p class="gist faint">{thread.latest_snippet}</p>
+				{#if showPills}
+					<div class="fixes">
+						<span class="fixes-label mono">Not right?</span>
+						{#each SEVERITIES as severity (severity)}
+							{#if severity !== thread.effective_severity}
+								<button
+									type="button"
+									class="pill"
+									disabled={busy}
+									onclick={() => correct(thread, severity)}
+								>
+									{SEVERITY_LABELS[severity]}
+								</button>
+							{/if}
+						{/each}
+						<button type="button" class="pill" disabled={busy} onclick={() => archive(thread)}>
+							{thread.archived_at ? 'Unarchive' : 'Archive'}
+						</button>
+					</div>
 				{/if}
-
-				<div class="fixes">
-					<span class="fixes-label mono">Not right?</span>
-					{#each SEVERITIES as severity (severity)}
-						{#if severity !== thread.effective_severity}
-							<button
-								type="button"
-								class="pill"
-								disabled={busy}
-								onclick={() => correct(thread, severity)}
-							>
-								{SEVERITY_LABELS[severity]}
-							</button>
-						{/if}
-					{/each}
-					<button type="button" class="pill" disabled={busy} onclick={() => archive(thread)}>
-						{thread.archived_at ? 'Unarchive' : 'Archive'}
-					</button>
-				</div>
 			</div>
 		{/each}
 
@@ -264,6 +406,41 @@
 			<p class="none">No threads in this view. Pick another tab above.</p>
 		{/if}
 	</div>
+
+	{#if data.total > 0}
+		<div class="pager">
+			<span class="mono count">
+				{firstOnPage} to {lastOnPage} of {data.total}
+			</span>
+
+			<label class="per">
+				<span>Per page</span>
+				<select
+					value={String(data.perPage)}
+					onchange={(e) =>
+						apply({ per: (e.currentTarget as HTMLSelectElement).value, page: null })}
+				>
+					{#each PAGE_SIZES as size (size)}
+						<option value={String(size)}>{size}</option>
+					{/each}
+				</select>
+			</label>
+
+			<div class="steps">
+				{#if data.page > 1}
+					<a class="ghost" href={urlFor({ page: String(data.page - 1) })}>Previous</a>
+				{:else}
+					<span class="ghost off">Previous</span>
+				{/if}
+				<span class="mono">Page {data.page} of {pageCount}</span>
+				{#if data.page < pageCount}
+					<a class="ghost" href={urlFor({ page: String(data.page + 1) })}>Next</a>
+				{:else}
+					<span class="ghost off">Next</span>
+				{/if}
+			</div>
+		</div>
+	{/if}
 {/if}
 
 <style>
@@ -405,17 +582,141 @@
 		overflow: hidden;
 	}
 
+	.thread {
+		display: flex;
+		align-items: center;
+		min-width: 0;
+	}
+
 	.thread + .thread {
 		border-top: 1px solid var(--border-thin);
 	}
 
+	.thread:hover {
+		background: var(--surface-hover);
+	}
+
+	/* The controls stay put while the list moves under them. Reaching for a tab
+	   after scrolling should not mean scrolling back first. */
+	.sticky {
+		position: sticky;
+		top: 0;
+		z-index: 5;
+		padding: var(--space-3) 0;
+		margin-bottom: var(--space-3);
+		background: var(--surface-page);
+		border-bottom: 1px solid var(--border-thin);
+	}
+
+	.pager {
+		display: flex;
+		align-items: center;
+		flex-wrap: wrap;
+		gap: var(--space-4);
+		margin-top: var(--space-4);
+		font-size: var(--text-sm);
+	}
+
+	.pager .count {
+		color: var(--text-secondary);
+	}
+
+	.per {
+		display: inline-flex;
+		align-items: center;
+		gap: var(--space-2);
+		font-size: var(--text-sm);
+	}
+
+	.per select {
+		padding: 4px 8px;
+		font: inherit;
+		font-size: var(--text-sm);
+		border: 1px solid var(--border-strong);
+		border-radius: var(--radius-sm);
+		background: var(--surface-card);
+	}
+
+	.steps {
+		display: inline-flex;
+		align-items: center;
+		gap: var(--space-3);
+		margin-left: auto;
+	}
+
+	.off {
+		opacity: 0.4;
+		pointer-events: none;
+	}
+
+	/* The client typeahead's list of matches. */
+	.client {
+		position: relative;
+	}
+
+	.client input,
+	.search input {
+		width: 100%;
+		box-sizing: border-box;
+		padding: 8px 10px;
+		font: inherit;
+		font-size: var(--text-sm);
+		border: 1px solid var(--border-strong);
+		border-radius: var(--radius-sm);
+		background: var(--surface-card);
+		color: var(--ink);
+	}
+
+	.options {
+		position: absolute;
+		z-index: 10;
+		top: calc(100% + 4px);
+		left: 0;
+		right: 0;
+		margin: 0;
+		padding: 4px;
+		list-style: none;
+		max-height: 16rem;
+		overflow-y: auto;
+		background: var(--surface-card);
+		border: 1px solid var(--border-strong);
+		border-radius: var(--radius-sm);
+		box-shadow: var(--shadow-card);
+	}
+
+	.options button {
+		display: block;
+		width: 100%;
+		text-align: left;
+		padding: 6px 8px;
+		font: inherit;
+		font-size: var(--text-sm);
+		background: none;
+		border: 0;
+		border-radius: var(--radius-sm);
+		cursor: pointer;
+	}
+
+	.options button:hover {
+		background: var(--surface-hover);
+	}
+
+	.options .none {
+		padding: 6px 8px;
+		font-size: var(--text-sm);
+		color: var(--text-secondary);
+	}
+
 	/* The whole row is the link, so the target is the size of the row rather
-	   than the size of the words. */
+	   than the size of the words. One line, like a mail client: subject, sender
+	   and preview share it and each is truncated rather than wrapped. */
 	.row {
 		display: flex;
-		align-items: baseline;
-		gap: var(--space-2);
-		padding: 14px 20px 4px;
+		align-items: center;
+		gap: var(--space-3);
+		flex: 1;
+		min-width: 0;
+		padding: 9px 20px 9px 0;
 		text-decoration: none;
 		color: inherit;
 		transition: background-color var(--transition-fast);
@@ -426,16 +727,94 @@
 	}
 
 	.subject {
-		flex: 1;
+		flex: 0 1 auto;
+		max-width: 40%;
 		min-width: 0;
-		font-weight: 600;
-		font-size: var(--text-md);
+		font-size: var(--text-sm);
 		color: var(--text-link);
-		overflow-wrap: anywhere;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
 		text-decoration: underline;
 		text-decoration-color: transparent;
 		text-underline-offset: 3px;
 		transition: text-decoration-color var(--transition-fast);
+	}
+
+	/* Unread reads as unread: the subject carries the weight, the row sits on
+	   plain white. Read rows step back rather than disappearing. */
+	.thread.unread .subject {
+		font-weight: 700;
+	}
+
+	.thread.read {
+		background: var(--surface-page);
+	}
+
+	.thread.read .subject,
+	.thread.read .from,
+	.thread.read .preview {
+		color: var(--text-secondary);
+	}
+
+	.from {
+		flex: 0 1 auto;
+		max-width: 22%;
+		min-width: 0;
+		font-size: var(--text-sm);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	.thread.unread .from {
+		font-weight: 600;
+	}
+
+	.from .n {
+		font-size: var(--text-xs);
+		color: var(--text-secondary);
+	}
+
+	.preview {
+		flex: 1 1 auto;
+		min-width: 0;
+		font-size: var(--text-sm);
+		color: var(--text-secondary);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	.client-tag {
+		flex: none;
+		font-size: var(--text-xs);
+		padding: 2px 8px;
+		border-radius: var(--radius-pill);
+		background: var(--navy-50);
+		color: var(--navy-500);
+		white-space: nowrap;
+	}
+
+	/* The heart. Its own control beside the link, not inside it: a button inside
+	   an anchor is invalid and the browser resolves it by dropping one. */
+	.star {
+		flex: none;
+		display: inline-flex;
+		align-items: center;
+		padding: 0 10px 0 14px;
+		background: none;
+		border: 0;
+		color: var(--border-strong);
+		cursor: pointer;
+	}
+
+	.star[aria-pressed='true'] {
+		color: var(--red);
+	}
+
+	.star:hover {
+		color: var(--red);
 	}
 
 	.row:hover .subject {
@@ -453,10 +832,15 @@
 		white-space: nowrap;
 	}
 
-	/* Colour is a second signal. The word in the chip carries the state. */
+	/* Colour is a second signal and the word still carries the state, but the
+	   ladder has to be visible at a glance: urgent in red, important in gold,
+	   then the quiet ones. Urgent used to be a shade of the same gold as
+	   important, which made the two hardest to tell apart the two that most
+	   need telling apart. Contrast checked against the pale ground. */
 	.chip-urgent {
-		background: #f3e5c2;
-		color: #77590f;
+		background: var(--red-100);
+		color: var(--red);
+		font-weight: 700;
 	}
 	.chip-important {
 		background: var(--gold-100);
