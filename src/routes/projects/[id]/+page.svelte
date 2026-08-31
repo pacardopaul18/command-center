@@ -18,7 +18,7 @@
 		nextPhase
 	} from '$lib/types';
 	import type { ProjectPhase, ProjectStatus } from '$lib/types';
-	import { deadlineLabel, formatDay } from '$lib/format';
+	import { deadlineLabel, formatDay, formatDayShort } from '$lib/format';
 	import Button from '$lib/components/Button.svelte';
 	import Card from '$lib/components/Card.svelte';
 	import FormField from '$lib/components/FormField.svelte';
@@ -137,6 +137,120 @@
 			await invalidateAll();
 		}
 		busy = false;
+	}
+
+	/* ---------------------------------------------------------------------
+	 * Milestones
+	 * ------------------------------------------------------------------ */
+
+	const milestonesDone = $derived(data.milestones.filter((m) => m.done_at).length);
+
+	let milestoneDraft = $state({ title: '', due_date: '' });
+
+	async function addMilestone(event: SubmitEvent) {
+		event.preventDefault();
+		if (!milestoneDraft.title.trim()) {
+			errorMessage = 'Give the milestone a name.';
+			return;
+		}
+		busy = true;
+		errorMessage = '';
+		const res = await apiWrite(`/api/projects/${project.id}/milestones`, 'POST', {
+			title: milestoneDraft.title,
+			due_date: milestoneDraft.due_date || null
+		});
+		busy = false;
+		if (res.ok) {
+			milestoneDraft = { title: '', due_date: '' };
+			await invalidateAll();
+		} else {
+			errorMessage = res.error ?? 'Could not add that milestone.';
+		}
+	}
+
+	async function setMilestone(id: string, done: boolean) {
+		busy = true;
+		const res = await apiWrite(`/api/projects/${project.id}/milestones/${id}`, 'PATCH', { done });
+		busy = false;
+		if (res.ok) await invalidateAll();
+		else errorMessage = res.error ?? 'Could not change that milestone.';
+	}
+
+	async function removeMilestone(id: string) {
+		busy = true;
+		const res = await apiWrite(`/api/projects/${project.id}/milestones/${id}`, 'DELETE', null);
+		busy = false;
+		if (res.ok) await invalidateAll();
+		else errorMessage = res.error ?? 'Could not remove that milestone.';
+	}
+
+	/* ---------------------------------------------------------------------
+	 * Files
+	 * ------------------------------------------------------------------ */
+
+	let fileInput = $state<HTMLInputElement | null>(null);
+	let uploading = $state(false);
+	let dragging = $state(false);
+
+	const kb = (bytes: number) =>
+		bytes >= 1_048_576
+			? `${(bytes / 1_048_576).toFixed(1)} MB`
+			: `${Math.max(1, Math.round(bytes / 1024))} KB`;
+
+	/**
+	 * One request per file, and every failure named.
+	 *
+	 * A single multipart body carrying five files fails as one thing, and the
+	 * reader is told the upload failed with no way to know four were fine.
+	 */
+	async function sendFiles(files: File[]) {
+		if (files.length === 0) return;
+		uploading = true;
+		errorMessage = '';
+		const failed: string[] = [];
+
+		for (const file of files) {
+			const form = new FormData();
+			form.set('file', file);
+			const res = await fetch(`/api/projects/${project.id}/files`, {
+				method: 'POST',
+				body: form
+			}).catch(() => null);
+
+			if (!res || !res.ok) {
+				const body = res ? ((await res.json().catch(() => ({}))) as { error?: string }) : null;
+				failed.push(`${file.name}: ${body?.error ?? 'could not be uploaded'}`);
+			}
+		}
+
+		uploading = false;
+		if (failed.length > 0) errorMessage = failed.join('. ');
+		await invalidateAll();
+	}
+
+	async function uploadFiles(event: Event) {
+		const input = event.currentTarget as HTMLInputElement;
+		await sendFiles([...(input.files ?? [])]);
+		// Cleared so choosing the same file twice in a row still fires a change.
+		input.value = '';
+	}
+
+	async function onDrop(event: DragEvent) {
+		event.preventDefault();
+		dragging = false;
+		await sendFiles([...(event.dataTransfer?.files ?? [])]);
+	}
+
+	async function removeFile(id: string, filename: string) {
+		busy = true;
+		const res = await apiWrite(`/api/projects/${project.id}/files/${id}`, 'DELETE', null);
+		busy = false;
+		if (res.ok) {
+			notice = `Removed ${filename}.`;
+			await invalidateAll();
+		} else {
+			errorMessage = res.error ?? 'Could not remove that file.';
+		}
 	}
 </script>
 
@@ -259,6 +373,132 @@
 				</FormField>
 			</div>
 		</div>
+	</Card>
+</div>
+
+<div class="two-up">
+	<!--
+		The plan, and how much of it has landed.
+
+		`projects.next_milestone` is a free-text column somebody types, and it
+		stays: it is what every existing project has. Once a project has real
+		milestones the earliest undone one is the honest answer, so the read
+		prefers these rows and the column is the fallback.
+	-->
+	<Card title="Milestones" subtitle="{milestonesDone} of {data.milestones.length} done">
+		{#if data.milestones.length === 0}
+			<p class="empty">
+				No milestones yet. Add the ones this project is actually measured against and the
+				progress figure starts counting them instead of its action items.
+			</p>
+		{/if}
+
+		<ul class="plan">
+			{#each data.milestones as milestone (milestone.id)}
+				<li class:done={milestone.done_at}>
+					<label class="tick">
+						<input
+							type="checkbox"
+							checked={Boolean(milestone.done_at)}
+							disabled={busy}
+							onchange={(e) =>
+								setMilestone(milestone.id, (e.currentTarget as HTMLInputElement).checked)}
+						/>
+						<span class="plan-title">{milestone.title}</span>
+					</label>
+					<span class="plan-when mono">
+						{#if milestone.due_date}{formatDayShort(milestone.due_date)}{:else}No date{/if}
+					</span>
+					<button
+						type="button"
+						class="ghost"
+						disabled={busy}
+						onclick={() => removeMilestone(milestone.id)}
+						aria-label="Remove {milestone.title}"
+					>
+						Remove
+					</button>
+				</li>
+			{/each}
+		</ul>
+
+		<form class="add-row" onsubmit={addMilestone}>
+			<Input bind:value={milestoneDraft.title} placeholder="What has to land" maxlength={300} />
+			<Input bind:value={milestoneDraft.due_date} type="date" aria-label="Due date" />
+			<Button type="submit" variant="secondary" disabled={busy}>Add</Button>
+		</form>
+	</Card>
+
+	<!--
+		Whatever the work produced. Unlike contracts and receipts there is no type
+		allowlist: a project file is a spreadsheet, an export, an archive, a design
+		somebody sent, and refusing the next legitimate format would teach people
+		to put files somewhere else. The read route always serves them as a
+		download, never inline, so a file is a file.
+	-->
+	<Card title="Files" subtitle="{data.files.length} on file">
+		{#snippet actions()}
+			<Button variant="ghost" size="sm" disabled={uploading} onclick={() => fileInput?.click()}>
+				{uploading ? 'Uploading' : 'Upload'}
+			</Button>
+		{/snippet}
+
+		<input
+			bind:this={fileInput}
+			class="hidden-input"
+			type="file"
+			multiple
+			onchange={uploadFiles}
+		/>
+
+		<div
+			class="drop"
+			class:over={dragging}
+			role="button"
+			tabindex="0"
+			aria-label="Upload files to this project"
+			ondragover={(e) => {
+				e.preventDefault();
+				dragging = true;
+			}}
+			ondragleave={() => (dragging = false)}
+			ondrop={onDrop}
+			onclick={() => fileInput?.click()}
+			onkeydown={(e) => {
+				if (e.key === 'Enter' || e.key === ' ') {
+					e.preventDefault();
+					fileInput?.click();
+				}
+			}}
+		>
+			Drop files here or press to browse. Several at once is fine, up to 25 MB each.
+		</div>
+
+		{#if data.files.length === 0}
+			<p class="empty">Nothing attached yet.</p>
+		{:else}
+			<ul class="files">
+				{#each data.files as file (file.id)}
+					<li>
+						<a class="file-name" href="/api/projects/{project.id}/files/{file.id}">
+							{file.filename}
+						</a>
+						<span class="file-meta mono">
+							{kb(file.size_bytes)} · {formatDayShort(file.uploaded_at.slice(0, 10))}
+						</span>
+						<button
+							type="button"
+							class="ghost"
+							disabled={busy}
+							onclick={() => removeFile(file.id, file.filename)}
+							aria-label="Remove {file.filename}"
+						>
+							Remove
+						</button>
+					</li>
+				{/each}
+			</ul>
+		{/if}
 	</Card>
 </div>
 
@@ -400,6 +640,138 @@
 {/if}
 
 <style>
+
+	.two-up {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr);
+		gap: var(--space-4);
+		margin-top: var(--space-4);
+		align-items: start;
+	}
+
+	@media (min-width: 900px) {
+		.two-up {
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+		}
+	}
+
+	.plan,
+	.files {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+	}
+
+	.plan li,
+	.files li {
+		display: flex;
+		align-items: center;
+		gap: var(--space-2);
+		min-height: 44px;
+		padding: var(--space-2) 0;
+	}
+
+	.plan li + li,
+	.files li + li {
+		border-top: 1px solid var(--border-hairline);
+	}
+
+	.tick {
+		display: flex;
+		align-items: center;
+		gap: var(--space-2);
+		flex: 1;
+		min-width: 0;
+		cursor: pointer;
+	}
+
+	.tick input {
+		width: 18px;
+		height: 18px;
+		accent-color: var(--navy-600);
+		flex: none;
+	}
+
+	.plan-title {
+		font-size: var(--text-sm);
+		overflow-wrap: anywhere;
+	}
+
+	.plan li.done .plan-title {
+		color: var(--text-muted);
+		text-decoration: line-through;
+	}
+
+	.plan-when,
+	.file-meta {
+		font-size: var(--text-xs);
+		color: var(--text-muted);
+		flex: none;
+	}
+
+	.file-name {
+		flex: 1;
+		min-width: 0;
+		font-size: var(--text-sm);
+		overflow-wrap: anywhere;
+	}
+
+	.add-row {
+		display: flex;
+		gap: var(--space-2);
+		align-items: center;
+		flex-wrap: wrap;
+		margin-top: var(--space-3);
+	}
+
+	.add-row :global(input) {
+		flex: 1;
+		min-width: 120px;
+	}
+
+	.hidden-input {
+		display: none;
+	}
+
+	.drop {
+		margin: var(--space-3) 0;
+		padding: var(--space-4);
+		border: 1px dashed var(--border-thin);
+		border-radius: var(--radius-md);
+		text-align: center;
+		font-size: var(--text-sm);
+		color: var(--text-muted);
+		cursor: pointer;
+		min-height: 44px;
+	}
+
+	.drop:hover,
+	.drop:focus-visible,
+	.drop.over {
+		border-color: var(--navy-600);
+		color: var(--text-body);
+	}
+
+	.ghost {
+		display: inline-flex;
+		align-items: center;
+		/* 44px, D22. */
+		min-height: 44px;
+		padding: 0 var(--space-2);
+		border: 1px solid var(--border-thin);
+		border-radius: var(--radius-sm);
+		background: transparent;
+		color: var(--text-muted);
+		font: inherit;
+		font-size: var(--text-xs);
+		cursor: pointer;
+		flex: none;
+	}
+
+	.ghost:hover:not(:disabled) {
+		color: var(--text-body);
+		border-color: var(--navy-600);
+	}
 	.ticket-form {
 		padding: var(--space-4);
 		border-bottom: 1px solid var(--border-thin);

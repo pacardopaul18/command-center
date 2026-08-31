@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { invalidateAll } from '$app/navigation';
 	import { apiWrite } from '$lib/http';
-	import { formatDay, formatMoment } from '$lib/format';
+	import { formatDay, formatDayShort, formatMoment } from '$lib/format';
 	import {
 		TICKET_PRIORITIES,
 		TICKET_PRIORITY_LABELS,
@@ -84,6 +84,101 @@
 		const value = (current ?? '').trim();
 		if (value && !list.some((o) => o.toLowerCase() === value.toLowerCase())) list.unshift(value);
 		return list;
+	}
+
+	/* ---------------------------------------------------------------------
+	 * Activity, effort and links
+	 * ------------------------------------------------------------------ */
+
+	let commentDraft = $state('');
+	let effortDraft = $state({ hours: '', note: '' });
+	let linkDraft = $state({ kind: 'relates', to: '' });
+
+	/** Hours, from minutes, with no trailing zeroes on a whole number. */
+	const hoursOf = (minutes: number) =>
+		`${(minutes / 60).toFixed(2).replace(/\.?0+$/, '')}h`;
+
+	const effortLabel = $derived(
+		data.effort.total_minutes > 0 ? `${hoursOf(data.effort.total_minutes)} in total` : 'None yet'
+	);
+
+	/** Tickets already linked cannot be linked again, so they leave the picker. */
+	const linkable = $derived(
+		data.siblings.filter((s) => !data.links.some((l) => l.other_id === s.id))
+	);
+
+	async function addComment(event: SubmitEvent) {
+		event.preventDefault();
+		if (!commentDraft.trim()) return;
+		busy = true;
+		errorMessage = '';
+		const res = await apiWrite(`/api/tickets/${ticket.id}/events`, 'POST', {
+			detail: commentDraft,
+			author: ticket.assignee ?? null
+		});
+		busy = false;
+		if (res.ok) {
+			commentDraft = '';
+			await invalidateAll();
+		} else {
+			errorMessage = res.error ?? 'Could not add that comment.';
+		}
+	}
+
+	async function logEffort(event: SubmitEvent) {
+		event.preventDefault();
+		if (!effortDraft.hours.trim()) {
+			errorMessage = 'How many hours?';
+			return;
+		}
+		busy = true;
+		errorMessage = '';
+		const res = await apiWrite(`/api/tickets/${ticket.id}/time`, 'POST', {
+			hours: effortDraft.hours,
+			note: effortDraft.note || null,
+			who: ticket.assignee ?? null
+		});
+		busy = false;
+		if (res.ok) {
+			effortDraft = { hours: '', note: '' };
+			await invalidateAll();
+		} else {
+			errorMessage = res.error ?? 'Could not log that time.';
+		}
+	}
+
+	async function removeEffort(id: string) {
+		busy = true;
+		const res = await apiWrite(`/api/tickets/${ticket.id}/time/${id}`, 'DELETE', null);
+		busy = false;
+		if (res.ok) await invalidateAll();
+		else errorMessage = res.error ?? 'Could not remove that entry.';
+	}
+
+	async function addLink(event: SubmitEvent) {
+		event.preventDefault();
+		if (!linkDraft.to) return;
+		busy = true;
+		errorMessage = '';
+		const res = await apiWrite(`/api/tickets/${ticket.id}/links`, 'POST', {
+			to_ticket_id: linkDraft.to,
+			kind: linkDraft.kind
+		});
+		busy = false;
+		if (res.ok) {
+			linkDraft = { kind: 'relates', to: '' };
+			await invalidateAll();
+		} else {
+			errorMessage = res.error ?? 'Could not link those tickets.';
+		}
+	}
+
+	async function removeLink(id: string) {
+		busy = true;
+		const res = await apiWrite(`/api/tickets/${ticket.id}/links/${id}`, 'DELETE', null);
+		busy = false;
+		if (res.ok) await invalidateAll();
+		else errorMessage = res.error ?? 'Could not remove that link.';
 	}
 </script>
 
@@ -236,6 +331,133 @@
 	</Card>
 {/if}
 
+<div class="two-up">
+	<!--
+		The history: a person's comment and the app's own note about a change, in
+		one list because on screen it is one list read in one order. Two tables
+		would mean merging by timestamp in the Worker to rebuild what the reader
+		was always going to see.
+
+		Append only. Nothing edits or deletes a line, because a history that can
+		be edited is not a history.
+	-->
+	<Card title="Activity" subtitle="{data.events.length} recorded">
+		{#if data.events.length === 0}
+			<p class="empty">Nothing recorded yet.</p>
+		{:else}
+			<ul class="feed">
+				{#each data.events as event (event.id)}
+					<li class:system={event.kind !== 'comment'}>
+						<span class="feed-when mono">{formatMoment(event.created_at)}</span>
+						<span class="feed-body">
+							{#if event.author}<span class="feed-who">{event.author}</span>{/if}
+							{event.detail}
+						</span>
+					</li>
+				{/each}
+			</ul>
+		{/if}
+
+		<form class="add-row" onsubmit={addComment}>
+			<Input bind:value={commentDraft} placeholder="Add a comment" maxlength={4000} />
+			<Button type="submit" variant="secondary" disabled={busy || !commentDraft.trim()}>
+				Comment
+			</Button>
+		</form>
+	</Card>
+
+	<div class="stack">
+		<!--
+			Effort, which is not the billable time below it. This answers what the
+			work actually took; that answers what gets invoiced. Merging them would
+			mean every logged hour needing a client and a rate before anyone could
+			record that a bug took an afternoon.
+		-->
+		<Card title="Effort logged" subtitle={effortLabel}>
+			{#if data.effort.entries.length === 0}
+				<p class="empty">No effort logged against this ticket.</p>
+			{:else}
+				<ul class="effort">
+					{#each data.effort.entries as entry (entry.id)}
+						<li>
+							<span class="effort-when mono">{formatDayShort(entry.logged_on)}</span>
+							<span class="effort-what">
+								{hoursOf(entry.minutes)}
+								{#if entry.who}· {entry.who}{/if}
+								{#if entry.note}· {entry.note}{/if}
+							</span>
+							<button
+								type="button"
+								class="ghost"
+								disabled={busy}
+								onclick={() => removeEffort(entry.id)}
+								aria-label="Remove this entry"
+							>
+								Remove
+							</button>
+						</li>
+					{/each}
+				</ul>
+			{/if}
+
+			<form class="add-row" onsubmit={logEffort}>
+				<Input
+					bind:value={effortDraft.hours}
+					placeholder="1.5"
+					inputmode="decimal"
+					aria-label="Hours"
+				/>
+				<Input bind:value={effortDraft.note} placeholder="What on" aria-label="Note" />
+				<Button type="submit" variant="secondary" disabled={busy}>Log</Button>
+			</form>
+		</Card>
+
+		<!--
+			Links are stored once per pair and read in both directions, so the
+			relation shown here is already the right way round for this ticket: the
+			other end reads "is blocked by" without a second row existing.
+		-->
+		<Card title="Linked tickets" subtitle="{data.links.length} linked">
+			{#if data.links.length === 0}
+				<p class="empty">Nothing linked.</p>
+			{:else}
+				<ul class="links">
+					{#each data.links as link (link.id)}
+						<li>
+							<span class="link-kind mono">{link.relation}</span>
+							<a class="link-title" href="/tickets/{link.other_id}">{link.title}</a>
+							<button
+								type="button"
+								class="ghost"
+								disabled={busy}
+								onclick={() => removeLink(link.id)}
+								aria-label="Unlink {link.title}"
+							>
+								Unlink
+							</button>
+						</li>
+					{/each}
+				</ul>
+			{/if}
+
+			<form class="add-row" onsubmit={addLink}>
+				<Select bind:value={linkDraft.kind} aria-label="Relationship">
+					<option value="relates">relates to</option>
+					<option value="blocks">blocks</option>
+					<option value="duplicates">duplicates</option>
+				</Select>
+				<Select bind:value={linkDraft.to} aria-label="Ticket to link">
+					<option value="">Choose a ticket</option>
+					{#each linkable as option (option.id)}
+						<option value={option.id}>{option.title}</option>
+					{/each}
+				</Select>
+				<Button type="submit" variant="secondary" disabled={busy || !linkDraft.to}>Link</Button>
+			</form>
+		</Card>
+	</div>
+</div>
+
 <Card
 	title="Time booked"
 	subtitle={ticket.entry_count
@@ -295,6 +517,127 @@
 {/if}
 
 <style>
+
+	.two-up {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr);
+		gap: var(--space-4);
+		margin: var(--space-4) 0;
+		align-items: start;
+	}
+
+	@media (min-width: 1000px) {
+		.two-up {
+			grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+		}
+	}
+
+	.stack {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-4);
+		min-width: 0;
+	}
+
+	.feed,
+	.effort,
+	.links {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+	}
+
+	.feed li {
+		display: flex;
+		gap: var(--space-3);
+		align-items: baseline;
+		padding: var(--space-2) 0;
+	}
+
+	.feed li + li,
+	.effort li + li,
+	.links li + li {
+		border-top: 1px solid var(--border-hairline);
+	}
+
+	.feed-when,
+	.effort-when {
+		flex: none;
+		font-size: var(--text-xs);
+		color: var(--text-muted);
+	}
+
+	.feed-body {
+		font-size: var(--text-sm);
+		overflow-wrap: anywhere;
+	}
+
+	.feed-who {
+		font-weight: 600;
+	}
+
+	/* A line the app wrote about itself reads quieter than a person's comment. */
+	.feed li.system .feed-body {
+		color: var(--text-muted);
+	}
+
+	.effort li,
+	.links li {
+		display: flex;
+		align-items: center;
+		gap: var(--space-2);
+		min-height: 44px;
+		padding: var(--space-2) 0;
+	}
+
+	.effort-what,
+	.link-title {
+		flex: 1;
+		min-width: 0;
+		font-size: var(--text-sm);
+		overflow-wrap: anywhere;
+	}
+
+	.link-kind {
+		flex: none;
+		font-size: var(--text-xs);
+		color: var(--text-muted);
+	}
+
+	.add-row {
+		display: flex;
+		gap: var(--space-2);
+		align-items: center;
+		flex-wrap: wrap;
+		margin-top: var(--space-3);
+	}
+
+	.add-row :global(input),
+	.add-row :global(select) {
+		flex: 1;
+		min-width: 110px;
+	}
+
+	.ghost {
+		display: inline-flex;
+		align-items: center;
+		/* 44px, D22. */
+		min-height: 44px;
+		padding: 0 var(--space-2);
+		border: 1px solid var(--border-thin);
+		border-radius: var(--radius-sm);
+		background: transparent;
+		color: var(--text-muted);
+		font: inherit;
+		font-size: var(--text-xs);
+		cursor: pointer;
+		flex: none;
+	}
+
+	.ghost:hover:not(:disabled) {
+		color: var(--text-body);
+		border-color: var(--navy-600);
+	}
 	.head {
 		display: flex;
 		flex-direction: column;

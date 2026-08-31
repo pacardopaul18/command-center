@@ -339,14 +339,27 @@ describe('layer 1: referential integrity', () => {
 	});
 
 	it('no test tickets are left behind', () => {
-		// Tickets have no seeded rows at all, so any row here is a leak from a
-		// test or a probe. The suite has caught stray action items three times;
-		// this is the same guard on the newest table.
-		const { c } = one<{ c: number }>('SELECT COUNT(*) AS c FROM tickets');
-		expect(
-			Number(c),
-			'Tickets exist that the seed did not create. A test or a probe left them behind.'
-		).toBe(0);
+		/**
+		 * The seed grew tickets, so this can no longer be "the count is zero".
+		 *
+		 * The property that mattered was never the zero: it was that no row
+		 * exists which the seed did not write. That survives as a prefix check,
+		 * and the count itself is asserted against the generator above. A test
+		 * that created a ticket and failed to clean it up still fails here.
+		 *
+		 * The same applies to what hangs off a ticket. All three cascade from
+		 * tickets, so a stray row in any of them is a stray ticket that was
+		 * deleted badly or a probe that wrote straight to the table.
+		 */
+		for (const table of ['tickets', 'ticket_events', 'ticket_links', 'ticket_time']) {
+			const { c } = one<{ c: number }>(
+				`SELECT COUNT(*) AS c FROM "${table}" WHERE id NOT LIKE 'v-%'`
+			);
+			expect(
+				Number(c),
+				`${table} rows exist that the seed did not create. A test or a probe left them behind.`
+			).toBe(0);
+		}
 	});
 
 	it('no seeded action item carries an Asana gid', () => {

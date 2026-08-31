@@ -4374,3 +4374,60 @@ column on `templates` and no ALTER may touch an existing table before Thursday,
 so the tabs are the two output types that exist. Seven tabs that all filter on
 nothing would be worse than three that work, D27, and the categories land on
 Thursday with the other queued columns.
+
+### D159: a link between two tickets is one row read from both ends
+
+A row saying A blocks B is the same fact as B is blocked by A. Writing both
+would mean two rows that can be deleted separately and disagree, and there is no
+way to tell from either screen which one is stale.
+
+So it is stored once per ordered pair and the read looks the other way as well,
+inverting the kind. The ticket at the other end shows "is blocked by" without a
+second row existing, and unlinking works from either end because the reader has
+no idea which row is the stored one.
+
+The property is worth a test of its own because getting it backwards produces
+two screens that both look right: the blocked ticket reads as the one doing the
+blocking, and nothing on either page contradicts it.
+
+A second link between the same two tickets is refused in both directions, by
+name. The unique index covers one ordered pair; the check covers the other. Two
+tickets that both block and relate to each other is a contradiction, not extra
+information.
+
+### D160: effort against a ticket is minutes, and is not billable time
+
+`time_entries` already exists and answers "what do we bill": time against a
+client and a billing period, feeding an invoice. `ticket_time` answers a
+different question for a different reader: what did this actually take.
+
+They are not merged, and the reason is the friction merging would add. Every
+logged hour would need a client and a rate before anybody could record that a
+bug took an afternoon, and the effect of that friction is that nobody records
+it. The ticket page shows both, labelled, so the difference is on screen rather
+than in a comment.
+
+Stored in minutes. Hours as a float means 0.1 + 0.2 + 0.3 totalling
+0.6000000000000001, and rounding for display hides the drift rather than
+removing it. The same argument money makes for cents, and the test logs exactly
+those three values.
+
+### D161: progress is counted, and nothing to count is not nought per cent
+
+A percentage column on a project is a number maintained by hand that drifts the
+first time somebody closes a milestone without remembering to update it. It is
+counted on every read instead, so it is wrong only if the underlying rows are
+wrong, which is the same thing as the project being wrong.
+
+Milestones win over action items when a project has them: a plan somebody wrote
+is a better measure than a count of tasks that includes everything anyone ever
+jotted down. Items are the fallback.
+
+A project with neither reports null, and the table says "Not tracked". Drawing
+an empty bar would say the work has not started, which is a different and
+usually false claim. D27 in a small place, and the kind of small place where a
+dashboard quietly starts lying.
+
+The same reasoning applies to `next_milestone`: the typed column stays because
+every existing project has one, but a real milestone row beats it, so the fact
+has one answer even though two places hold it.

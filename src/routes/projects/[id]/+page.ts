@@ -2,12 +2,35 @@ import { error } from '@sveltejs/kit';
 import type { PageLoad } from './$types';
 import type { ActionItem, Client, Project, Ticket } from '$lib/types';
 
+/** One step in the plan. Migration 0029. */
+export interface Milestone {
+	id: string;
+	project_id: string;
+	title: string;
+	due_date: string | null;
+	/** Null means outstanding. A date rather than a flag, so a slipped plan reads. */
+	done_at: string | null;
+	position: number;
+}
+
+/** A file attached to the project. Bytes in R2, row here. */
+export interface ProjectFile {
+	id: string;
+	project_id: string;
+	filename: string;
+	mime_type: string | null;
+	size_bytes: number;
+	uploaded_at: string;
+}
+
 export const load: PageLoad = async ({ fetch, params }) => {
-	const [res, clientsRes, ticketsRes, ownersRes] = await Promise.all([
+	const [res, clientsRes, ticketsRes, ownersRes, milestonesRes, filesRes] = await Promise.all([
 		fetch(`/api/projects/${params.id}`),
 		fetch('/api/clients'),
 		fetch(`/api/tickets?project_id=${params.id}&status=all`),
-		fetch('/api/people/owners')
+		fetch('/api/people/owners'),
+		fetch(`/api/projects/${params.id}/milestones`),
+		fetch(`/api/projects/${params.id}/files`)
 	]);
 
 	if (res.status === 404) error(404, 'Project not found.');
@@ -30,5 +53,14 @@ export const load: PageLoad = async ({ fetch, params }) => {
 		? ((await ownersRes.json()) as { owners: string[] }).owners
 		: [];
 
-	return { ...data, clients, tickets, owners };
+	// Milestones and files are supporting detail on the same footing as tickets:
+	// a failure in either must not stop the project loading.
+	const milestones = milestonesRes.ok
+		? ((await milestonesRes.json()) as { milestones: Milestone[] }).milestones
+		: [];
+	const files = filesRes.ok
+		? ((await filesRes.json()) as { files: ProjectFile[] }).files
+		: [];
+
+	return { ...data, clients, tickets, owners, milestones, files };
 };

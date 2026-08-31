@@ -26,6 +26,25 @@ function asClientError(err: unknown): unknown {
 	return err;
 }
 
+/**
+ * The next milestone, and where it comes from.
+ *
+ * `projects.next_milestone` is a free-text column somebody types, and it stays
+ * because it is what every existing project has. Once a project has real
+ * milestone rows, the earliest undone one is the honest answer and the column
+ * is a second place the same fact lives. Rows win, the column is the fallback,
+ * and a project with neither says nothing rather than something invented.
+ */
+const NEXT_MILESTONE = `
+  COALESCE(
+    (SELECT m.title FROM project_milestones m
+     WHERE m.project_id = p.id AND m.done_at IS NULL
+     ORDER BY CASE WHEN m.due_date IS NULL THEN 1 ELSE 0 END, m.due_date, m.position
+     LIMIT 1),
+    p.next_milestone
+  )
+`;
+
 // Rolls the linked action items up onto every project row, so the list can show
 // what is actually outstanding without a second request per project.
 const LIST_SELECT = `
@@ -33,7 +52,27 @@ const LIST_SELECT = `
     cl.name AS client_name,
     SUM(CASE WHEN a.id IS NOT NULL AND a.status != 'done' THEN 1 ELSE 0 END) AS open_action_items,
     SUM(CASE WHEN a.id IS NOT NULL AND a.status != 'done'
-             AND a.deadline IS NOT NULL AND a.deadline < ?1 THEN 1 ELSE 0 END) AS overdue_action_items
+             AND a.deadline IS NOT NULL AND a.deadline < ?1 THEN 1 ELSE 0 END) AS overdue_action_items,
+    SUM(CASE WHEN a.id IS NOT NULL THEN 1 ELSE 0 END) AS all_action_items,
+    SUM(CASE WHEN a.id IS NOT NULL AND a.status = 'done' THEN 1 ELSE 0 END) AS done_action_items,
+    /*
+     * Progress is counted from the items, never stored.
+     *
+     * A percentage column is a number maintained by hand that drifts the first
+     * time somebody closes an item without remembering to update it. Counting
+     * makes it wrong only if the items are wrong, which is the same thing as
+     * the project being wrong. D144's argument in a third place.
+     *
+     * Milestones are the better measure once a project has them, so they win
+     * and items are the fallback. A project with neither reports nothing rather
+     * than 0%, which would read as "nothing done" instead of "not tracked".
+     */
+    (SELECT COUNT(*) FROM project_milestones m WHERE m.project_id = p.id) AS milestone_count,
+    (SELECT COUNT(*) FROM project_milestones m
+     WHERE m.project_id = p.id AND m.done_at IS NOT NULL) AS milestones_done,
+    (SELECT COUNT(*) FROM tickets t
+     WHERE t.project_id = p.id AND t.status NOT IN ('done', 'cancelled')) AS open_tickets,
+    ${NEXT_MILESTONE} AS next_milestone_shown
   FROM projects p
   LEFT JOIN clients cl ON cl.id = p.client_id
   LEFT JOIN action_items a ON a.project_id = p.id
@@ -213,5 +252,238 @@ projects.delete('/:id', async (c) => {
 		.bind(c.req.param('id'))
 		.run();
 	if (!result.meta.changes) throw new ApiError(404, 'Project not found.');
+	return c.json({ ok: true });
+});
+
+projects.get('/:id/milestones', async (c) => {
+	const { results } = await c.env.DB.prepare(
+		`SELECT * FROM project_milestones WHERE project_id = ?
+     ORDER BY position, CASE WHEN due_date IS NULL THEN 1 ELSE 0 END, due_date`
+	)
+		.bind(c.req.param('id'))
+		.all();
+	return c.json({ milestones: results ?? [] });
+});
+
+projects.post('/:id/milestones', async (c) => {
+	const db = c.env.DB;
+	const projectId = c.req.param('id');
+	const project = await db.prepare('SELECT id FROM projects WHERE id = ?').bind(projectId).first();
+	if (!project) throw new ApiError(404, 'Project not found.');
+
+	const body = await readJsonObject(c.req.raw);
+	const now = nowUtc();
+	const id = crypto.randomUUID();
+
+	// Appended, so a new milestone lands at the end of the sequence rather than
+	// at an arbitrary place decided by a date it may not have.
+	const last = await db
+		.prepare('SELECT MAX(position) AS n FROM project_milestones WHERE project_id = ?')
+		.bind(projectId)
+		.first<{ n: number | null }>();
+
+	await db
+		.prepare(
+			`INSERT INTO project_milestones
+       (id, project_id, title, due_date, done_at, position, created_at, updated_at)
+       VALUES (?, ?, ?, ?, NULL, ?, ?, ?)`
+		)
+		.bind(
+			id,
+			projectId,
+			requiredText(body.title, 'Title', 300),
+			optionalDate(body.due_date, 'Due date'),
+			Number(last?.n ?? 0) + 1,
+			now,
+			now
+		)
+		.run();
+
+	const created = await db
+		.prepare('SELECT * FROM project_milestones WHERE id = ?')
+		.bind(id)
+		.first();
+	return c.json({ milestone: created }, 201);
+});
+
+projects.patch('/:id/milestones/:milestoneId', async (c) => {
+	const db = c.env.DB;
+	// Asserted against the project in the path, not looked up by id alone: a
+	// real milestone id reached through the wrong project must not be editable.
+	// D108.
+	const existing = await db
+		.prepare('SELECT id, done_at FROM project_milestones WHERE id = ? AND project_id = ?')
+		.bind(c.req.param('milestoneId'), c.req.param('id'))
+		.first<{ id: string; done_at: string | null }>();
+	if (!existing) throw new ApiError(404, 'No milestone with that id on this project.');
+
+	const body = await readJsonObject(c.req.raw);
+	const sets: string[] = [];
+	const binds: unknown[] = [];
+
+	if (body.title !== undefined) {
+		sets.push('title = ?');
+		binds.push(requiredText(body.title, 'Title', 300));
+	}
+	if (body.due_date !== undefined) {
+		sets.push('due_date = ?');
+		binds.push(optionalDate(body.due_date, 'Due date'));
+	}
+	if (body.done !== undefined) {
+		/**
+		 * Marking one done records when, and marking it undone clears the date
+		 * rather than keeping a stale one. Toggling twice must leave no trace of
+		 * a completion that was withdrawn.
+		 */
+		sets.push('done_at = ?');
+		binds.push(body.done ? (existing.done_at ?? nowUtc()) : null);
+	}
+
+	if (sets.length === 0) throw new ApiError(400, 'Nothing to change.');
+	sets.push('updated_at = ?');
+	binds.push(nowUtc());
+
+	await db
+		.prepare(`UPDATE project_milestones SET ${sets.join(', ')} WHERE id = ?`)
+		.bind(...binds, existing.id)
+		.run();
+
+	const updated = await db
+		.prepare('SELECT * FROM project_milestones WHERE id = ?')
+		.bind(existing.id)
+		.first();
+	return c.json({ milestone: updated });
+});
+
+projects.delete('/:id/milestones/:milestoneId', async (c) => {
+	const result = await c.env.DB.prepare(
+		'DELETE FROM project_milestones WHERE id = ? AND project_id = ?'
+	)
+		.bind(c.req.param('milestoneId'), c.req.param('id'))
+		.run();
+	if (!result.meta.changes) throw new ApiError(404, 'No milestone with that id on this project.');
+	return c.json({ ok: true });
+});
+
+/* -------------------------------------------------------------------------
+ * Files
+ * ---------------------------------------------------------------------- */
+
+/**
+ * Twenty-five megabytes, and no type allowlist.
+ *
+ * Deliberately unlike the contract and receipt routes, which take only what a
+ * signed agreement or a receipt can be. A project file is whatever the work
+ * produced: a spreadsheet, an export, an archive, a design somebody sent. An
+ * allowlist here would refuse the next legitimate format and teach people to
+ * put files somewhere else, which is worse than accepting them.
+ *
+ * Nothing is ever executed or rendered: the read route serves the bytes with
+ * the stored content type and a download disposition, so a file is a file.
+ */
+const MAX_PROJECT_FILE_BYTES = 25 * 1024 * 1024;
+
+projects.get('/:id/files', async (c) => {
+	const { results } = await c.env.DB.prepare(
+		`SELECT id, project_id, filename, mime_type, size_bytes, uploaded_at
+     FROM project_files WHERE project_id = ? ORDER BY uploaded_at DESC`
+	)
+		.bind(c.req.param('id'))
+		.all();
+	return c.json({ files: results ?? [] });
+});
+
+projects.post('/:id/files', async (c) => {
+	const projectId = c.req.param('id');
+	const project = await c.env.DB.prepare('SELECT id FROM projects WHERE id = ?')
+		.bind(projectId)
+		.first();
+	if (!project) throw new ApiError(404, 'Project not found.');
+
+	const form = await c.req.formData().catch(() => null);
+	const file = form?.get('file');
+	if (!(file instanceof File)) throw new ApiError(400, 'Attach a file as the "file" field.');
+	if (file.size === 0) throw new ApiError(400, 'That file is empty.');
+	if (file.size > MAX_PROJECT_FILE_BYTES) {
+		throw new ApiError(413, 'That file is larger than 25 MB.');
+	}
+
+	const id = crypto.randomUUID();
+	const key = `projects/${projectId}/${id}`;
+	const now = nowUtc();
+	const mime = file.type || 'application/octet-stream';
+
+	await c.env.FILES.put(key, await file.arrayBuffer(), { httpMetadata: { contentType: mime } });
+
+	try {
+		await c.env.DB.prepare(
+			`INSERT INTO project_files
+       (id, project_id, filename, mime_type, size_bytes, r2_key, uploaded_at, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+		)
+			.bind(id, projectId, file.name || 'file', mime, file.size, key, now, now)
+			.run();
+	} catch (err) {
+		// The row is the record. If it did not land, the object is unreachable
+		// and is removed rather than left as a file nothing points at.
+		await c.env.FILES.delete(key).catch(() => {});
+		throw err;
+	}
+
+	const created = await c.env.DB.prepare(
+		`SELECT id, project_id, filename, mime_type, size_bytes, uploaded_at
+     FROM project_files WHERE id = ?`
+	)
+		.bind(id)
+		.first();
+	return c.json({ file: created }, 201);
+});
+
+projects.get('/:id/files/:fileId', async (c) => {
+	const row = await c.env.DB.prepare(
+		'SELECT r2_key, filename, mime_type FROM project_files WHERE id = ? AND project_id = ?'
+	)
+		.bind(c.req.param('fileId'), c.req.param('id'))
+		.first<{ r2_key: string; filename: string; mime_type: string | null }>();
+	if (!row) throw new ApiError(404, 'No file with that id on this project.');
+
+	const object = await c.env.FILES.get(row.r2_key);
+	if (!object) throw new ApiError(404, 'That file is recorded but its contents are missing.');
+
+	const bytes = new Uint8Array(await object.arrayBuffer());
+	const safe = row.filename.replace(new RegExp('["' + String.fromCharCode(13, 10) + ']', 'g'), '');
+
+	return new Response(bytes.buffer as ArrayBuffer, {
+		headers: {
+			/**
+			 * Always a download, never rendered inline.
+			 *
+			 * A project file is arbitrary content this app did not produce, and an
+			 * HTML or SVG file served inline would run in the app's own origin.
+			 * The contract route can afford `inline` because it takes only PDFs,
+			 * Word files and images; this one takes anything.
+			 */
+			'content-type': row.mime_type ?? 'application/octet-stream',
+			'content-disposition': `attachment; filename="${safe}"`,
+			'x-content-type-options': 'nosniff',
+			'cache-control': 'private, no-store'
+		}
+	});
+});
+
+projects.delete('/:id/files/:fileId', async (c) => {
+	const row = await c.env.DB.prepare(
+		'SELECT r2_key FROM project_files WHERE id = ? AND project_id = ?'
+	)
+		.bind(c.req.param('fileId'), c.req.param('id'))
+		.first<{ r2_key: string }>();
+	if (!row) throw new ApiError(404, 'No file with that id on this project.');
+
+	// The row goes first. An object deleted while its row survived would leave a
+	// file on screen that cannot be opened.
+	await c.env.DB.prepare('DELETE FROM project_files WHERE id = ?')
+		.bind(c.req.param('fileId'))
+		.run();
+	await c.env.FILES.delete(row.r2_key).catch(() => {});
 	return c.json({ ok: true });
 });
