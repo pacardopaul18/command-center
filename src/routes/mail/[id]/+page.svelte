@@ -440,7 +440,7 @@
 				{/each}
 			</ul>
 			{#if data.attachments.length > 1}
-				<div class="pad">
+				<div class="pad downloads">
 					<button type="button" class="ghost" onclick={downloadAll}>Download all</button>
 				</div>
 			{/if}
@@ -514,21 +514,6 @@
 			</article>
 		{/each}
 
-		<div class="thread-actions">
-			<button type="button" class="primary" onclick={() => openReply()}>
-				<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-					<path d="M9 17l-5-5 5-5" /><path d="M20 18v-2a4 4 0 0 0-4-4H4" />
-				</svg>
-				Reply
-			</button>
-			<button type="button" class="secondary" onclick={openForward}>
-				<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-					<path d="M15 17l5-5-5-5" /><path d="M4 18v-2a4 4 0 0 1 4-4h12" />
-				</svg>
-				Forward
-			</button>
-			<span class="fine self">You write it. Gmail sends it. This app cannot.</span>
-		</div>
 	</div>
 
 	<div class="rail">
@@ -744,11 +729,6 @@
 		padding: 0 16px 12px;
 	}
 
-	.fine.self {
-		align-self: center;
-		margin: 0;
-	}
-
 	.fixes-label {
 		font-size: var(--text-xs);
 		letter-spacing: var(--tracking-label);
@@ -858,6 +838,12 @@
 
 	.dl:hover {
 		background: var(--navy-50);
+	}
+
+	/* Right aligned, as the design has it: a footer action, not a list item. */
+	.downloads {
+		display: flex;
+		justify-content: flex-end;
 	}
 
 	.tools-foot {
@@ -1024,13 +1010,6 @@
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
-	}
-
-	.thread-actions {
-		display: flex;
-		gap: var(--space-2);
-		margin-top: var(--space-2);
-		flex-wrap: wrap;
 	}
 
 	.primary,
