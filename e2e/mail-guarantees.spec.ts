@@ -303,6 +303,79 @@ test.describe('mail views: account segregation survives the redesign', () => {
 	});
 
 	/**
+	 * The composer is a composer, and Send is still not a send.
+	 *
+	 * CR1-F2 and F3 replaced a steering box and a clipboard button with a real
+	 * reply and forward. That adds a button labelled Send, so what it actually
+	 * does is pinned here: it opens Gmail with the message in it, and the
+	 * message is built in the browser from what the page already holds.
+	 */
+	test('the composer writes a real message and hands it to Gmail', async ({ page, context }) => {
+		await page.goto(`/mail/${A}-thread?account=${A}`);
+		await page.waitForLoadState('networkidle');
+
+		await page.getByRole('button', { name: 'Reply', exact: true }).first().click();
+
+		// Reply-all-minus-me: the correspondent is addressed, Paul is not.
+		const to = page.getByRole('textbox', { name: 'To' });
+		await expect(to).toHaveValue(/sender-alpha@viewtest\.invalid/);
+
+		// Compared as whole addresses. A substring check passes on the correct
+		// value here, because the account is alpha@ and the sender is
+		// sender-alpha@, and the first version of this test did exactly that.
+		const addresses = (await to.inputValue()).split(',').map((a) => a.trim().toLowerCase());
+		expect(addresses, 'the reply addressed the account holder').not.toContain(
+			'alpha@viewtest.invalid'
+		);
+		const ccField = page.getByRole('textbox', { name: 'Cc' });
+		const ccAddresses = (await ccField.inputValue())
+			.split(',')
+			.map((a) => a.trim().toLowerCase())
+			.filter(Boolean);
+		expect(ccAddresses, 'the account holder was copied on their own reply').not.toContain(
+			'alpha@viewtest.invalid'
+		);
+		await expect(page.getByRole('textbox', { name: 'Subject' })).toHaveValue(/^Re:/);
+
+		// The person is the author. Typing is the default act, not a fallback.
+		const body = page.getByRole('textbox', { name: 'Message' });
+		await body.fill('A reply written by hand.');
+
+		/**
+		 * No request may carry the message anywhere. If the URL were built on
+		 * the server the body would land in a log, which is the one way this
+		 * could become a place mail content is recorded. D89.
+		 */
+		const leaked: string[] = [];
+		page.on('request', (r) => {
+			if (r.url().includes('/api/') && (r.postData() ?? '').includes('written by hand')) {
+				leaked.push(r.url());
+			}
+		});
+
+		const link = page.getByRole('link', { name: /Send via Gmail/i });
+		const href = await link.getAttribute('href');
+		expect(href, 'Send via Gmail does not point at Gmail').toContain(
+			'https://mail.google.com/mail/'
+		);
+		expect(href).toContain('view=cm');
+		expect(href, 'the compose link does not pin the mailbox').toContain('authuser=');
+		expect(decodeURIComponent(href ?? '')).toContain('A reply written by hand.');
+		expect(leaked, 'the message body was sent to the server').toEqual([]);
+	});
+
+	test('a forward says that attachments do not travel', async ({ page }) => {
+		await page.goto(`/mail/${A}-thread?account=${A}`);
+		await page.waitForLoadState('networkidle');
+		await page.getByRole('button', { name: 'Forward', exact: true }).first().click();
+
+		// To is empty, because a forward goes somewhere new.
+		await expect(page.getByRole('textbox', { name: 'To' })).toHaveValue('');
+		await expect(page.getByRole('textbox', { name: 'Subject' })).toHaveValue(/^Fwd:/);
+		await expect(page.getByText('A forward needs somebody to forward to.')).toBeVisible();
+	});
+
+	/**
 	 * Opening mail must not tell the sender it was opened.
 	 *
 	 * A remote image in an email is a tracking pixel as often as a picture, so

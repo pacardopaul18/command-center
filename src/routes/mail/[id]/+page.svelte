@@ -5,6 +5,8 @@
 	import { SEVERITIES, SEVERITY_HELP, SEVERITY_LABELS, CATEGORY_LABELS } from '$lib/types-mail';
 	import type { Severity } from '$lib/types-mail';
 	import EmailBody from '$lib/components/EmailBody.svelte';
+	import MailComposer from '$lib/components/MailComposer.svelte';
+	import { forwardHeader, replyRecipients } from '$lib/reply-recipients';
 	import type { PageData } from './$types';
 	import type { ThreadMessage } from './+page';
 
@@ -33,11 +35,21 @@
 	let loading = $state<string | null>(null);
 	let busy = $state(false);
 	let errorMessage = $state('');
-	let guidance = $state('');
+	/**
+	 * The composer, when one is open.
+	 *
+	 * Session local by ruling: an AI draft persists because it cost money, but
+	 * what Paul types is his version of it and belongs to this visit. Editing a
+	 * draft here never writes back over the model's output.
+	 */
+	let composer = $state<'reply' | 'forward' | null>(null);
+	let cTo = $state('');
+	let cCc = $state('');
+	let cSubject = $state('');
+	let cBody = $state('');
+	let composerBox: { focusBody: () => void } | null = $state(null);
 	let copied = $state('');
 	let attachmentsOpen = $state(true);
-
-	let guidanceBox: HTMLTextAreaElement | null = $state(null);
 
 	const bodies = $derived({ ...data.bodies, ...fetched });
 
@@ -102,9 +114,53 @@
 		apiWrite(`/api/email/threads/${data.thread.id}/read${acct}`, 'POST', {});
 	});
 
-	function focusGuidance() {
-		guidanceBox?.focus();
-		guidanceBox?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+	/** The subject a reply or forward carries, without stacking prefixes. */
+	function prefixed(prefix: 'Re:' | 'Fwd:'): string {
+		const subject = data.thread.subject ?? '';
+		return new RegExp(`^${prefix}`, 'i').test(subject.trim())
+			? subject
+			: `${prefix} ${subject}`.trim();
+	}
+
+	/**
+	 * Opens the reply composer.
+	 *
+	 * `sender` is the per-message icon: that message's author goes in To and the
+	 * rest of the thread still lands in Cc, so replying to one person does not
+	 * quietly drop everybody else.
+	 */
+	function openReply(sender?: string | null) {
+		const { to, cc } = replyRecipients(data.messages, data.account_email, sender ?? null);
+		cTo = to.join(', ');
+		cCc = cc.join(', ');
+		cSubject = prefixed('Re:');
+		cBody = '';
+		composer = 'reply';
+		queueMicrotask(() => composerBox?.focusBody());
+	}
+
+	/**
+	 * Opens the forward composer.
+	 *
+	 * To is deliberately empty: a forward goes somewhere new, and prefilling it
+	 * with anyone from the thread would be a guess with a stranger's mail in it.
+	 */
+	function openForward() {
+		const newest = ordered[0];
+		cTo = '';
+		cCc = '';
+		cSubject = prefixed('Fwd:');
+		cBody =
+			forwardHeader(
+				newest?.from_name
+					? `${newest.from_name} <${newest.from_email ?? ''}>`
+					: (newest?.from_email ?? null),
+				newest ? formatMoment(newest.sent_at) : '',
+				newest?.subject ?? data.thread.subject,
+				newest?.to_emails ?? null
+			) + (newest ? (bodies[newest.id]?.body ?? newest.snippet ?? '') : '');
+		composer = 'forward';
+		queueMicrotask(() => composerBox?.focusBody());
 	}
 
 	async function toggle(message: ThreadMessage) {
@@ -160,16 +216,29 @@
 		busy = false;
 	}
 
+	/**
+	 * The two assist buttons, one route.
+	 *
+	 * "Draft it for me" writes from the thread. "Rephrase mine" sends what Paul
+	 * typed as the guidance, which is the same path the drafting pass already
+	 * had. The result fills the composer, where he edits it as his own; the
+	 * stored draft stays the model's output and is not written back over.
+	 */
 	async function draft(useMyWords: boolean) {
 		busy = true;
 		errorMessage = '';
 		const result = await apiWrite(`/api/email/threads/${data.thread.id}/draft${acct}`, 'POST', {
-			guidance: useMyWords ? guidance : null
+			guidance: useMyWords ? cBody : null
 		});
-		if (!result.ok) errorMessage = result.error ?? 'Could not write a draft.';
-		else {
-			const mode = (result.data as { mode?: string } | undefined)?.mode;
+		if (!result.ok) {
+			errorMessage = result.error ?? 'Could not write a draft.';
+		} else {
+			const payload = result.data as
+				| { mode?: string; draft?: { body?: string } | null }
+				| undefined;
+			const mode = payload?.mode;
 			draftMode = mode === 'from_your_words' || mode === 'from_thread' ? mode : null;
+			if (payload?.draft?.body) cBody = payload.draft.body;
 			await invalidateAll();
 		}
 		busy = false;
@@ -404,6 +473,7 @@
 		{#each ordered as message (message.id)}
 			{@const isOpen = openIds.includes(message.id)}
 			<article class="msg">
+				<div class="msg-head-row">
 				<button class="msg-head" type="button" aria-expanded={isOpen} onclick={() => toggle(message)}>
 					<span class="avatar" aria-hidden="true">{initials(message)}</span>
 					<span class="from">{who(message)}</span>
@@ -414,6 +484,18 @@
 						<path d="M6 9l6 6 6-6" />
 					</svg>
 				</button>
+				<button
+					class="msg-reply"
+					type="button"
+					aria-label="Reply to {who(message)}"
+					title="Reply to {who(message)}"
+					onclick={() => openReply(message.from_email)}
+				>
+					<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+						<path d="M9 17l-5-5 5-5" /><path d="M20 18v-2a4 4 0 0 0-4-4H4" />
+					</svg>
+				</button>
+				</div>
 
 				{#if isOpen}
 					<div class="msg-body">
@@ -433,30 +515,31 @@
 		{/each}
 
 		<div class="thread-actions">
-			<button type="button" class="primary" onclick={focusGuidance}>
+			<button type="button" class="primary" onclick={() => openReply()}>
 				<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 					<path d="M9 17l-5-5 5-5" /><path d="M20 18v-2a4 4 0 0 0-4-4H4" />
 				</svg>
 				Reply
 			</button>
-			<button
-				type="button"
-				class="secondary"
-				onclick={() => copy(forwardBlock(), 'forward')}
-			>
+			<button type="button" class="secondary" onclick={openForward}>
 				<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 					<path d="M15 17l5-5-5-5" /><path d="M4 18v-2a4 4 0 0 1 4-4h12" />
 				</svg>
-				{copied === 'forward' ? 'Copied' : 'Forward'}
+				Forward
 			</button>
-			<span class="fine self">Both put text on your clipboard. Neither sends anything.</span>
+			<span class="fine self">You write it. Gmail sends it. This app cannot.</span>
 		</div>
 	</div>
 
 	<div class="rail">
-		{#if data.thread.summary}
-			<section class="card">
-				<h2>Summary</h2>
+		<!--
+			The card always renders. It used to disappear when there was no
+			summary, which is most threads until triage has run, and a card that
+			vanishes tells the reader nothing about why. D113 again.
+		-->
+		<section class="card">
+			<h2>Summary</h2>
+			{#if data.thread.summary}
 				{#if data.thread.gist}<p class="gist">{data.thread.gist}</p>{/if}
 				<p class="prose">{data.thread.summary}</p>
 				{#if data.thread.summary_at}
@@ -468,66 +551,89 @@
 						{/if}
 					</p>
 				{/if}
+			{:else if data.thread.gist}
+				<!--
+					A gist means triage has already run, so saying triage is still to
+					come would contradict the line above it. What is missing here is
+					the longer summary, which is a separate pass.
+				-->
+				<p class="gist">{data.thread.gist}</p>
+				<p class="fine">
+					That is the one line from triage. No full summary yet, which is a
+					separate pass and runs from Settings.
+				</p>
+			{:else}
+				<p class="fine">
+					No summary yet. Triage runs at the next firing, or from Settings.
+				</p>
+			{/if}
+		</section>
+
+		{#if composer}
+			<MailComposer
+				bind:this={composerBox}
+				mode={composer}
+				bind:to={cTo}
+				bind:cc={cCc}
+				bind:subject={cSubject}
+				bind:body={cBody}
+				authuser={data.account_email}
+				{busy}
+				attachmentCount={composer === 'forward' ? data.attachments.length : 0}
+				onDraft={() => draft(false)}
+				onRephrase={() => draft(true)}
+				onClose={() => (composer = null)}
+			/>
+		{:else}
+			<section class="card">
+				<h2>Reply</h2>
+				<p class="fine">
+					Reply or Forward opens a composer here. You write the message, Gmail sends it, and
+					this app never can.
+				</p>
+				<div class="draft-buttons">
+					<button type="button" class="primary sm" onclick={() => openReply()}>Reply</button>
+					<button type="button" class="secondary sm" onclick={openForward}>Forward</button>
+				</div>
 			</section>
 		{/if}
 
-		<section class="card">
-			<h2>Reply</h2>
-			<p class="fine">
-				This app cannot send email and never will. A reply leaves here by being copied out and
-				sent by you. The draft reads the whole thread, anything known about the client, and how
-				you write in your own sent messages.
-			</p>
-
-			<textarea
-				bind:this={guidanceBox}
-				bind:value={guidance}
-				rows="3"
-				aria-label="Steer the draft"
-				placeholder="Optional. Add a few words to steer the draft, or paste your full reply to rephrase."
-			></textarea>
-
-			<div class="draft-buttons">
-				<button type="button" class="primary sm" disabled={busy} onclick={() => draft(false)}>
-					{busy ? 'Working...' : 'Draft automatically'}
-				</button>
-				<button
-					type="button"
-					class="secondary sm"
-					disabled={busy || !guidance.trim()}
-					title={guidance.trim() ? undefined : 'Write a few words above first'}
-					onclick={() => draft(true)}
-				>
-					Draft from my words
-				</button>
-			</div>
-
-			{#if data.draft}
-				<div class="draft">
-					<p class="fine mono label">
-						{#if data.draft.edited_at}
-							Draft, edited by you
-						{:else if draftMode === 'from_your_words'}
-							Draft, built on your words
-						{:else if draftMode === 'from_thread'}
-							Draft, written from the thread
-						{:else}
-							Draft
-						{/if}
-					</p>
-					{#if draftStale}
-						<p class="warn">The thread has had a message since this was written.</p>
+		{#if data.draft}
+			<section class="card">
+				<p class="fine mono label">
+					{#if draftMode === 'from_your_words'}
+						Draft, built on your words
+					{:else if draftMode === 'from_thread'}
+						Draft, written from the thread
+					{:else}
+						Saved draft
 					{/if}
-					<p class="prose pre">{draftText}</p>
-					<div class="draft-buttons">
-						<button type="button" class="secondary sm" onclick={() => copy(draftText, 'draft')}>
-							{copied === 'draft' ? 'Copied' : 'Copy draft'}
-						</button>
-					</div>
-					<p class="fine">Copy it out and send from Gmail.</p>
+				</p>
+				{#if draftStale}
+					<p class="warn">The thread has had a message since this was written.</p>
+				{/if}
+				<p class="prose pre">{draftText}</p>
+				<div class="draft-buttons">
+					<button
+						type="button"
+						class="secondary sm"
+						onclick={() => {
+							if (!composer) openReply();
+							cBody = draftText;
+							composerBox?.focusBody();
+						}}
+					>
+						Use it in the composer
+					</button>
+					<button type="button" class="secondary sm" onclick={() => copy(draftText, 'draft')}>
+						{copied === 'draft' ? 'Copied' : 'Copy draft'}
+					</button>
 				</div>
-			{/if}
-		</section>
+				<p class="fine">
+					The model's version, kept as written. Editing in the composer does not change it.
+				</p>
+			</section>
+		{/if}
 	</div>
 </div>
 
@@ -825,6 +931,32 @@
 		overflow: hidden;
 	}
 
+	.msg-head-row {
+		display: flex;
+		align-items: stretch;
+	}
+
+	.msg-head-row .msg-head {
+		flex: 1;
+		min-width: 0;
+	}
+
+	/* Its own control, beside the expander rather than inside it. */
+	.msg-reply {
+		display: inline-flex;
+		align-items: center;
+		padding: 0 12px;
+		background: none;
+		border: 0;
+		border-left: 1px solid var(--border-thin);
+		color: var(--navy-700);
+		cursor: pointer;
+	}
+
+	.msg-reply:hover {
+		background: var(--surface-hover);
+	}
+
 	.msg-head {
 		display: flex;
 		align-items: center;
@@ -985,20 +1117,6 @@
 		white-space: pre-line;
 	}
 
-	textarea {
-		width: 100%;
-		box-sizing: border-box;
-		margin-top: var(--space-3);
-		padding: 12px;
-		font-family: var(--font-sans);
-		font-size: var(--text-base);
-		color: var(--ink);
-		background: var(--surface-card);
-		border: 1px solid var(--border-strong);
-		border-radius: var(--radius-sm);
-		resize: vertical;
-	}
-
 	.draft-buttons {
 		display: flex;
 		gap: var(--space-2);
@@ -1012,13 +1130,6 @@
 		background: var(--surface-callout);
 		border: 1px solid var(--border-thin);
 		border-radius: var(--radius-sm);
-	}
-
-	.draft .label {
-		margin: 0 0 8px;
-		font-size: var(--text-xs);
-		letter-spacing: var(--tracking-label);
-		text-transform: uppercase;
 	}
 
 	.warn {
