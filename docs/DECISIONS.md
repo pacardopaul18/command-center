@@ -3953,3 +3953,43 @@ production. That is luck, not method.
 The rule: the suite result gates the push, and the gate is `&&` or a read of the
 exit code, never a chain that runs the next thing anyway. A green suite reported
 after a push is not evidence, it is a coincidence that has not failed yet.
+
+### D142: the gate is a hook, not a habit
+
+D141 said the suite result gates the push. This is that rule made structural,
+because a rule that depends on typing `&&` correctly is a rule that gets broken
+again, and I8 is the proof that it does.
+
+A committed `pre-push` hook runs the suite and refuses on non-zero. It is wired
+through `npm prepare`, which sets `core.hooksPath`, so a fresh clone gets it from
+`npm install` rather than from anyone remembering. `npm run ship` is the
+sanctioned path: typecheck, suite, push, gated at every step.
+
+Bypass is git's own `--no-verify`. Deliberately not a project flag or an
+environment variable: those get set once and left set, which is how a gate
+becomes decoration. `--no-verify` has to be typed each time and is visible in
+what was typed, which is the difference between an exception and an accident.
+
+Proved by breaking a test on purpose and attempting a push. Refused. The refusal
+names the most likely cause, an overnight seed expiry, and the command that fixes
+it, because a gate that blocks without saying why teaches people to bypass it.
+
+### D143: a load that cannot fail loudly will fail quietly
+
+The seed reload's failure mode was silence. A UNIQUE violation aborted it, the
+old rows stayed, and the terminal printed a log file path. It read as success,
+and every date-relative figure was a day stale.
+
+So the load verifies itself and says which of the three it is: the rows are
+right, the rows are wrong, or the rows are yesterday's. It compares the database
+against the expectations the generator wrote at the same moment it wrote the SQL,
+including the anchor date and the overdue count that actually caught this.
+
+That is layer 1's argument applied to the loader: two sources that were never
+derived from each other cannot make the same mistake by accident. The counts
+alone would not have caught it, because the counts were right. Only the anchor
+was wrong.
+
+This is the same family as D138. A step that reports nothing when it did nothing
+is indistinguishable from a step that succeeded, and the person reading the
+terminal is the one who pays for the difference.
