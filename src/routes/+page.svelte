@@ -1,14 +1,14 @@
 <script lang="ts">
 	import { invalidateAll } from '$app/navigation';
-	import { STATUS_LABELS, formatMoney } from '$lib/types';
+	import { STATUS_LABELS, formatUsd } from '$lib/types';
 	import type { ActionItem } from '$lib/types';
-	import { deadlineLabel, formatDay } from '$lib/format';
+	import { deadlineLabel, formatDay, formatDayShort } from '$lib/format';
 	import { apiWrite } from '$lib/http';
 	import Button from '$lib/components/Button.svelte';
 	import Card from '$lib/components/Card.svelte';
 	import StatusChip from '$lib/components/StatusChip.svelte';
 	import type { PageData } from './$types';
-	import type { InvoiceAlert, TodayMeeting } from './+page';
+	import type { DashboardProject, DashboardThread, DashboardTicket, InvoiceAlert, TodayMeeting } from './+page';
 
 	/**
 	 * The dashboard.
@@ -24,6 +24,18 @@
 	 * glance; the module behind it owns the full list, and every card links
 	 * there. The API caps its own rows for the same reason: the old cockpit
 	 * returned all 816 overdue items to draw a list of five.
+	 *
+	 * The redesign adds three cards, Projects, Open tickets and Mail needing
+	 * you, and takes the tiles from four to six. Two things it draws are not
+	 * built and are not faked:
+	 *
+	 *   The prototype shows a ticket reference like T-118. Tickets have no human
+	 *   number in this schema, and a truncated uuid dressed up as one is noise
+	 *   with a false promise attached, so the row leads with its title.
+	 *
+	 *   It shows an SLA countdown. There is no SLA clock stored anywhere. A due
+	 *   date that has arrived is what "breaching" means here, and the date is
+	 *   what the row shows. D27.
 	 */
 
 	let { data }: { data: PageData } = $props();
@@ -47,7 +59,7 @@
 	/** The one sentence at the top. It has to be true on an empty day too. */
 	const headline = $derived.by(() => {
 		if (data.counts.overdue > 0) {
-			return `${data.counts.overdue} overdue. Start there.`;
+			return `${data.counts.overdue} overdue. Start there, then the projects at risk.`;
 		}
 		if (data.counts.due_today > 0) {
 			return `Nothing overdue. ${data.counts.due_today} due today.`;
@@ -57,6 +69,62 @@
 		}
 		return 'Nothing overdue and nothing due. A clear board.';
 	});
+
+	/**
+	 * The six numbers that answer "is anything on fire".
+	 *
+	 * Each carries a subline, because a number on its own says how much and the
+	 * subline says how bad. Each is a link: a number you cannot act on is
+	 * decoration.
+	 */
+	const tiles = $derived([
+		{
+			label: 'Overdue items',
+			value: String(data.counts.overdue),
+			sub: data.oldest_overdue ? `oldest ${formatDayShort(data.oldest_overdue)}` : 'nothing late',
+			href: '/actions?view=overdue',
+			alarm: data.counts.overdue > 0
+		},
+		{
+			label: 'Due today',
+			value: String(data.counts.due_today),
+			sub: `${data.counts.done_due_today} done already`,
+			href: '/actions?view=today',
+			alarm: false
+		},
+		{
+			label: 'Awaiting a decision',
+			value: String(data.counts.awaiting_decision),
+			sub: `${data.counts.stalled} stalled`,
+			href: '/reports/slipping',
+			alarm: false
+		},
+		{
+			label: 'Projects at risk',
+			value: String(data.counts.projects_at_risk),
+			sub: `of ${data.counts.projects_active} active`,
+			href: '/projects',
+			alarm: data.counts.projects_at_risk > 0
+		},
+		{
+			label: 'Tickets breaching',
+			value: String(data.counts.tickets_breaching),
+			sub: `of ${data.counts.tickets_open} open`,
+			href: '/projects',
+			alarm: data.counts.tickets_breaching > 0
+		},
+		{
+			label: 'Past due',
+			// "None" rather than 0.00. A zero formatted as money reads as an
+			// amount at a glance, and on the one screen meant to be read at a
+			// glance the difference between "no money is late" and "0.00 is late"
+			// matters.
+			value: data.counts.past_due_cents > 0 ? formatUsd(data.counts.past_due_cents) : 'None',
+			sub: `${data.counts.invoice_alerts} invoices`,
+			href: '/invoices',
+			alarm: data.counts.past_due_cents > 0
+		}
+	]);
 
 	async function markDone(item: ActionItem) {
 		busy = true;
@@ -81,7 +149,51 @@
 	}
 
 	function invoiceMeta(inv: InvoiceAlert): string {
-		return `${formatMoney(inv.outstanding_cents)}, ${inv.days_overdue} day${inv.days_overdue === 1 ? '' : 's'} past due`;
+		return `${formatUsd(inv.outstanding_cents)}, ${inv.days_overdue} day${inv.days_overdue === 1 ? '' : 's'} past due`;
+	}
+
+	/**
+	 * Progress, counted from the items and never stored.
+	 *
+	 * A project with no items reports no progress rather than zero per cent.
+	 * Those are different facts, and a bar sitting at zero says the work has not
+	 * started when the truth is that nothing has been written down.
+	 */
+	function progress(p: DashboardProject): { pct: number | null; label: string } {
+		if (p.all_items === 0) return { pct: null, label: 'no items yet' };
+		const pct = Math.round((p.done_items / p.all_items) * 100);
+		return { pct, label: `${pct}%` };
+	}
+
+	function projectTone(status: string) {
+		if (status === 'blocked') return 'blocked' as const;
+		if (status === 'at_risk') return 'atrisk' as const;
+		if (status === 'done') return 'done' as const;
+		return 'ontrack' as const;
+	}
+
+	function ticketTone(priority: string) {
+		if (priority === 'urgent' || priority === 'high') return 'overdue' as const;
+		if (priority === 'normal') return 'open' as const;
+		return 'waiting' as const;
+	}
+
+	function ticketMeta(t: DashboardTicket): string {
+		const bits = [t.project_name];
+		if (t.assignee) bits.push(t.assignee);
+		bits.push(t.due_date ? `due ${formatDayShort(t.due_date)}` : 'no due date');
+		return bits.join(', ');
+	}
+
+	/** Paul's own correction wins over the model's, the same as on the mail screen. */
+	function threadSeverity(t: DashboardThread): string {
+		return t.severity_override ?? t.severity ?? 'untriaged';
+	}
+
+	function threadTone(severity: string) {
+		if (severity === 'urgent') return 'overdue' as const;
+		if (severity === 'important') return 'atrisk' as const;
+		return 'open' as const;
 	}
 </script>
 
@@ -98,38 +210,99 @@
 {#if notice}<p class="status-line" role="status" aria-live="polite">{notice}</p>{/if}
 {#if errorMessage}<p class="error-banner" role="alert">{errorMessage}</p>{/if}
 
-<!--
-	Four numbers that answer "is anything on fire". Each is a link, because a
-	number you cannot act on is decoration.
--->
 <div class="tiles">
-	<a class="tile" class:alarm={data.counts.overdue > 0} href="/actions?view=overdue">
-		<span class="tile-value">{data.counts.overdue}</span>
-		<span class="tile-label">Overdue</span>
-	</a>
-	<a class="tile" href="/actions?view=today">
-		<span class="tile-value">{data.counts.due_today}</span>
-		<span class="tile-label">Due today</span>
-	</a>
-	<a class="tile" href="/reports/slipping">
-		<span class="tile-value">{data.counts.awaiting_decision}</span>
-		<span class="tile-label">Awaiting a decision</span>
-	</a>
-	<a class="tile" class:alarm={data.counts.past_due_cents > 0} href="/invoices">
-		<!--
-			"None" rather than 0.00. A zero formatted as money reads as an amount
-			at a glance, and on the one screen meant to be read at a glance the
-			difference between "no money is late" and "0.00 is late" matters.
-		-->
-		<span class="tile-value" class:mono={data.counts.past_due_cents > 0}>
-			{data.counts.past_due_cents > 0 ? formatMoney(data.counts.past_due_cents) : 'None'}
-		</span>
-		<span class="tile-label">Past due</span>
-	</a>
+	{#each tiles as tile (tile.label)}
+		<a class="tile" class:alarm={tile.alarm} href={tile.href}>
+			<span class="tile-value" class:mono={tile.value !== 'None'}>{tile.value}</span>
+			<span class="tile-label">{tile.label}</span>
+			<span class="tile-sub mono">{tile.sub}</span>
+		</a>
+	{/each}
 </div>
 
 <div class="bands">
-	<Card title="Needs you now" subtitle={attentionCount > attention.length ? `Showing ${attention.length} of ${attentionCount}` : undefined} padded={false}>
+	<!-- Projects spans the grid: it is a table, and a table in half a column is
+	     a list with extra steps. -->
+	<div class="wide">
+		<Card
+			title="Projects"
+			subtitle={`${data.counts.projects_active} active, sorted by risk`}
+			padded={false}
+		>
+			{#snippet actions()}
+				<Button href="/projects" variant="ghost" size="sm">Open projects</Button>
+			{/snippet}
+
+			{#if data.projects.length === 0}
+				<p class="empty">No project is open.</p>
+			{:else}
+				<div class="scroll-x">
+					<table class="projects">
+						<thead>
+							<tr>
+								<th scope="col" class="label-mono">Project</th>
+								<th scope="col" class="label-mono">Client</th>
+								<th scope="col" class="label-mono">Target</th>
+								<th scope="col" class="label-mono">Progress</th>
+								<th scope="col" class="label-mono num">Open</th>
+								<th scope="col" class="label-mono num">Tickets</th>
+								<th scope="col" class="label-mono">Status</th>
+							</tr>
+						</thead>
+						<tbody>
+							{#each data.projects as p (p.id)}
+								{@const prog = progress(p)}
+								<tr>
+									<td>
+										<a class="pname" href="/projects/{p.id}">{p.name}</a>
+										{#if p.next_milestone}
+											<span class="meta mono">Next: {p.next_milestone}</span>
+										{/if}
+									</td>
+									<td class="muted">{p.client_name ?? 'No client'}</td>
+									<td class="mono nowrap" class:late={p.late === 1}>
+										{p.target_close ? formatDayShort(p.target_close) : 'None'}
+									</td>
+									<td>
+										{#if prog.pct === null}
+											<span class="meta mono">{prog.label}</span>
+										{:else}
+											<span class="bar" aria-hidden="true">
+												<span
+													class="bar-fill tone-{projectTone(p.status)}"
+													style="width: {prog.pct}%"
+												></span>
+											</span>
+											<span class="meta mono">{prog.label}</span>
+										{/if}
+									</td>
+									<td class="mono num">{p.open_items}</td>
+									<td class="mono num" class:muted={p.open_tickets === 0}>{p.open_tickets}</td>
+									<td>
+										<StatusChip
+											tone={projectTone(p.status)}
+											label={p.status === 'at_risk'
+												? 'At risk'
+												: p.status.charAt(0).toUpperCase() + p.status.slice(1)}
+											size="sm"
+										/>
+									</td>
+								</tr>
+							{/each}
+						</tbody>
+					</table>
+				</div>
+			{/if}
+		</Card>
+	</div>
+
+	<Card
+		title="Needs you now"
+		subtitle={attentionCount > attention.length
+			? `${attention.length} of ${attentionCount}`
+			: undefined}
+		padded={false}
+	>
 		{#snippet actions()}
 			<Button href="/actions?view=overdue" variant="ghost" size="sm">Open tracker</Button>
 		{/snippet}
@@ -170,6 +343,67 @@
 		{/if}
 	</Card>
 
+	<Card
+		title="Open tickets"
+		subtitle={data.counts.tickets_open > 0
+			? `${data.counts.tickets_open} open, ${data.counts.tickets_breaching} breaching`
+			: undefined}
+		padded={false}
+	>
+		{#snippet actions()}
+			<Button href="/projects" variant="ghost" size="sm">Open projects</Button>
+		{/snippet}
+
+		{#if data.tickets.length === 0}
+			<p class="empty">No ticket is open.</p>
+		{:else}
+			<ul class="rows">
+				{#each data.tickets as t (t.id)}
+					<li class="row" class:flag={t.breaching === 1}>
+						<a class="body indent" href="/tickets/{t.id}">
+							<span class="title">{t.title}</span>
+							<span class="meta mono">{ticketMeta(t)}</span>
+						</a>
+						{#if t.breaching === 1}
+							<StatusChip tone="overdue" label="Breaching" size="sm" />
+						{:else}
+							<StatusChip tone={ticketTone(t.priority)} label={t.priority} size="sm" />
+						{/if}
+					</li>
+				{/each}
+			</ul>
+		{/if}
+	</Card>
+
+	<Card
+		title="The week ahead"
+		subtitle={data.counts.week > data.week.length
+			? `${data.week.length} of ${data.counts.week}`
+			: undefined}
+		padded={false}
+	>
+		{#snippet actions()}
+			<Button href="/calendar" variant="ghost" size="sm">Calendar</Button>
+		{/snippet}
+
+		{#if data.week.length === 0}
+			<p class="empty">Nothing falls due in the next {data.soon_days} days.</p>
+		{:else}
+			<ul class="rows">
+				{#each data.week as item (item.id)}
+					<li class="row">
+						<a class="body indent" href="/actions?view=open&q={encodeURIComponent(item.title)}">
+							<span class="title">{item.title}</span>
+							<span class="meta mono">
+								{formatDay(item.deadline!)}{item.owner ? `, ${item.owner}` : ''}
+							</span>
+						</a>
+					</li>
+				{/each}
+			</ul>
+		{/if}
+	</Card>
+
 	<Card title="Today's meetings" padded={false}>
 		{#snippet actions()}
 			<Button href="/meetings" variant="ghost" size="sm">Meetings log</Button>
@@ -199,39 +433,10 @@
 	</Card>
 
 	<Card
-		title="The week ahead"
-		subtitle={data.counts.week > data.week.length
-			? `Showing ${data.week.length} of ${data.counts.week}`
-			: undefined}
-		padded={false}
-	>
-		{#snippet actions()}
-			<Button href="/actions?view=open" variant="ghost" size="sm">Open tracker</Button>
-		{/snippet}
-
-		{#if data.week.length === 0}
-			<p class="empty">Nothing falls due in the next {data.soon_days} days.</p>
-		{:else}
-			<ul class="rows">
-				{#each data.week as item (item.id)}
-					<li class="row">
-						<a class="body indent" href="/actions?view=open&q={encodeURIComponent(item.title)}">
-							<span class="title">{item.title}</span>
-							<span class="meta mono">
-								{formatDay(item.deadline!)}{item.owner ? `, ${item.owner}` : ''}
-							</span>
-						</a>
-					</li>
-				{/each}
-			</ul>
-		{/if}
-	</Card>
-
-	<Card
-		title="Money past due"
-		subtitle={data.counts.invoice_alerts > data.invoice_alerts.length
-			? `Showing ${data.invoice_alerts.length} of ${data.counts.invoice_alerts}`
-			: undefined}
+		title="Money"
+		subtitle={data.counts.invoice_alerts > 0
+			? `${formatUsd(data.counts.past_due_cents)} past due, USD`
+			: 'USD'}
 		padded={false}
 	>
 		{#snippet actions()}
@@ -254,32 +459,60 @@
 		{/if}
 	</Card>
 
-	<Card title="Finished today" padded={false}>
-		{#if data.finished.length === 0}
-			<p class="empty">Nothing closed yet today.</p>
+	<!--
+		Mail needing you.
+
+		Scoped to one account and labelled with it. A card of somebody's mail
+		with nothing saying whose is worse than no card, because two clients'
+		correspondence looks identical. D111.
+	-->
+	<Card
+		title="Mail needing you"
+		subtitle={data.mail.connected && data.mail.inbox_total > 0
+			? `${data.mail.needs_you} of ${data.mail.inbox_total} in the inbox`
+			: undefined}
+		padded={false}
+	>
+		{#snippet actions()}
+			<Button href="/mail" variant="ghost" size="sm">Open mail</Button>
+		{/snippet}
+
+		{#if !data.mail.connected}
+			<p class="empty">No mailbox is connected. Connect one in Settings.</p>
+		{:else if data.mail.failed}
+			<p class="empty">
+				That mailbox did not answer. Everything else on this screen is your own data and is
+				unaffected.
+			</p>
+		{:else if data.mail.threads.length === 0}
+			<p class="empty">Nothing is waiting on a reply.</p>
 		{:else}
 			<ul class="rows">
-				{#each data.finished as item (item.title)}
-					<li class="row done">
-						<span class="body indent">
-							<span class="title">{item.title}</span>
-							{#if item.project_name}<span class="meta mono">{item.project_name}</span>{/if}
-						</span>
+				{#each data.mail.threads as t (t.id)}
+					{@const severity = threadSeverity(t)}
+					<li class="row" class:flag={severity === 'urgent'}>
+						<a class="body indent" href="/mail/{t.id}?account={data.mail.account}">
+							<span class="title">{t.subject ?? 'No subject'}</span>
+							<span class="meta mono">{formatDayShort(t.last_at.slice(0, 10))}</span>
+						</a>
+						<StatusChip tone={threadTone(severity)} label={severity} size="sm" />
 					</li>
 				{/each}
 			</ul>
 		{/if}
+
+		{#if data.mail.connected && data.mail.account_email}
+			<p class="attribution mono">{data.mail.account_email}</p>
+		{/if}
 	</Card>
 
-	<Card title="What will slip" padded={false}>
+	<Card title="What will slip" subtitle="unassigned or stalled" padded={false}>
 		{#snippet actions()}
 			<Button href="/reports/slipping" variant="ghost" size="sm">Full report</Button>
 		{/snippet}
 
 		{#if data.slipping.length === 0}
-			<p class="empty">
-				Nothing is stalled, blocked or waiting on a decision.
-			</p>
+			<p class="empty">Nothing is stalled, blocked or waiting on a decision.</p>
 		{:else}
 			<ul class="rows">
 				{#each data.slipping as item (item.id)}
@@ -372,17 +605,24 @@
 
 	@media (min-width: 720px) {
 		.tiles {
-			grid-template-columns: repeat(4, 1fr);
+			grid-template-columns: repeat(3, 1fr);
+		}
+	}
+
+	@media (min-width: 1100px) {
+		.tiles {
+			grid-template-columns: repeat(6, 1fr);
 		}
 	}
 
 	.tile {
 		display: flex;
 		flex-direction: column;
-		gap: var(--space-1);
+		gap: 2px;
 		min-width: 0;
 		padding: var(--space-4);
 		border: 1px solid var(--border-thin);
+		border-left: 3px solid var(--border-strong);
 		border-radius: var(--radius-md);
 		background: var(--surface-card);
 		color: inherit;
@@ -400,18 +640,29 @@
 	}
 
 	.tile.alarm {
-		border-color: var(--red-200);
-		background: var(--red-100);
+		border-left-color: var(--gold);
 	}
 
+	/**
+	 * The value, sized so the widest one fits.
+	 *
+	 * Six columns at 1440 leaves about 150px a tile, and the past due figure is
+	 * thirteen mono characters. At the larger step it broke inside its own
+	 * number, which reads as two numbers. Found by rendering it, D128.
+	 */
 	.tile-value {
-		font-size: var(--text-xl);
+		font-size: var(--text-md);
 		font-weight: var(--weight-semibold);
 		line-height: 1.15;
 		overflow-wrap: anywhere;
 	}
 
 	.tile-label {
+		font-size: var(--text-xs);
+		color: var(--text-secondary);
+	}
+
+	.tile-sub {
 		font-size: var(--text-xs);
 		color: var(--text-secondary);
 	}
@@ -434,6 +685,10 @@
 			grid-template-columns: 1fr 1fr;
 			align-items: start;
 		}
+
+		.wide {
+			grid-column: 1 / -1;
+		}
 	}
 
 	.rows {
@@ -454,10 +709,6 @@
 	.row.flag {
 		border-left-color: var(--gold);
 		background: var(--gold-50);
-	}
-
-	.row.done .title {
-		color: var(--text-secondary);
 	}
 
 	.check {
@@ -523,10 +774,98 @@
 		}
 	}
 
+	/* The projects table. Wide on a phone, so it scrolls in its own box rather
+	   than the page. D22. */
+	.scroll-x {
+		overflow-x: auto;
+		padding: 0 var(--space-2) var(--space-2);
+	}
+
+	.projects {
+		width: 100%;
+		border-collapse: collapse;
+		font-size: var(--text-sm);
+	}
+
+	.projects th {
+		padding: var(--space-2);
+		text-align: left;
+		white-space: nowrap;
+	}
+
+	.projects td {
+		padding: var(--space-2);
+		border-top: 1px solid var(--border-thin);
+		vertical-align: top;
+	}
+
+	.projects th.num,
+	.projects td.num {
+		text-align: right;
+	}
+
+	.pname {
+		color: var(--text-link);
+		text-decoration: none;
+	}
+
+	.pname:hover {
+		text-decoration: underline;
+	}
+
+	.late {
+		color: var(--text-warn);
+	}
+
+	.bar {
+		display: block;
+		width: 90px;
+		height: 6px;
+		border-radius: var(--radius-pill);
+		background: var(--surface-row-alt);
+		overflow: hidden;
+	}
+
+	.bar-fill {
+		display: block;
+		height: 100%;
+	}
+
+	.bar-fill.tone-ontrack {
+		background: var(--green);
+	}
+
+	.bar-fill.tone-atrisk {
+		background: var(--gold-600);
+	}
+
+	.bar-fill.tone-blocked {
+		background: var(--red);
+	}
+
+	.bar-fill.tone-done {
+		background: var(--green);
+	}
+
+	.muted {
+		color: var(--text-secondary);
+	}
+
+	.nowrap {
+		white-space: nowrap;
+	}
+
 	.empty {
 		margin: 0;
 		padding: var(--space-4);
 		font-size: var(--text-sm);
+		color: var(--text-secondary);
+	}
+
+	.attribution {
+		margin: 0;
+		padding: 0 var(--space-4) var(--space-3);
+		font-size: var(--text-xs);
 		color: var(--text-secondary);
 	}
 
