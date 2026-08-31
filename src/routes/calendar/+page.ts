@@ -21,6 +21,15 @@ export interface CalendarEventRow {
 	own_response: string | null;
 	cancelled_at: string | null;
 	meeting_title: string | null;
+	meeting_id: string | null;
+}
+
+/** The first of the month containing a day. */
+function monthStart(day: Date): Date {
+	const d = new Date(day);
+	d.setUTCDate(1);
+	d.setUTCHours(0, 0, 0, 0);
+	return d;
 }
 
 /** Monday of the week containing a day, since a work week starts there. */
@@ -41,7 +50,9 @@ export const load: PageLoad = async ({ fetch, url }) => {
 	 */
 	const scope = await resolveAccountScope(fetch, url, true);
 
-	const view = url.searchParams.get('view') === 'week' ? 'week' : 'agenda';
+	const requested = url.searchParams.get('view');
+	const view: 'agenda' | 'day' | 'week' | 'month' =
+		requested === 'week' || requested === 'day' || requested === 'month' ? requested : 'agenda';
 	const anchorParam = url.searchParams.get('day');
 	const anchor = anchorParam ? new Date(`${anchorParam}T00:00:00Z`) : new Date();
 
@@ -50,10 +61,41 @@ export const load: PageLoad = async ({ fetch, url }) => {
 	 * The endpoint used to have no lower bound, so it returned every past event
 	 * ever stored while the writer never refreshed them.
 	 */
-	const from = view === 'week' ? weekStart(anchor) : new Date(anchor);
-	if (view === 'agenda') from.setUTCHours(0, 0, 0, 0);
+	const from =
+		view === 'week'
+			? weekStart(anchor)
+			: view === 'month'
+				? monthStart(anchor)
+				: new Date(anchor);
+	from.setUTCHours(0, 0, 0, 0);
+
 	const to = new Date(from);
-	to.setUTCDate(to.getUTCDate() + (view === 'week' ? 7 : 21));
+	if (view === 'week') to.setUTCDate(to.getUTCDate() + 7);
+	else if (view === 'day') to.setUTCDate(to.getUTCDate() + 1);
+	else if (view === 'month') to.setUTCMonth(to.getUTCMonth() + 1);
+	else to.setUTCDate(to.getUTCDate() + 21);
+
+	/**
+	 * A month grid is drawn from the Monday before the first, so the leading and
+	 * trailing days of neighbouring months are on screen and fetched with it.
+	 * Without the padding those cells would be empty by construction rather than
+	 * because nothing is happening.
+	 */
+	if (view === 'month') {
+		const gridFrom = weekStart(from);
+
+		// The grid ends at the start of the week after the one holding the last
+		// day of the month. Adding a flat seven days overshoots whenever the
+		// month does not end on a Sunday, and the grid came out 43 cells: not a
+		// whole number of weeks, so the last row was ragged.
+		const lastDay = new Date(to);
+		lastDay.setUTCDate(lastDay.getUTCDate() - 1);
+		const gridTo = weekStart(lastDay);
+		gridTo.setUTCDate(gridTo.getUTCDate() + 7);
+
+		from.setTime(gridFrom.getTime());
+		to.setTime(gridTo.getTime());
+	}
 
 	const params = new URLSearchParams({ from: from.toISOString(), to: to.toISOString() });
 	const acct = accountQuery(scope.account, '&');
@@ -96,7 +138,7 @@ export const load: PageLoad = async ({ fetch, url }) => {
 		view,
 		from: from.toISOString(),
 		to: to.toISOString(),
-		day: from.toISOString().slice(0, 10),
+		day: (anchorParam ?? anchor.toISOString().slice(0, 10)).slice(0, 10),
 		error,
 		noAccount: false
 	};

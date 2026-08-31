@@ -39,3 +39,31 @@ test.describe('calendar times', () => {
 		expect(after[0], 'the toggle did not change the times').not.toBe(before[0]);
 	});
 });
+
+/**
+ * The month grid is whole weeks.
+ *
+ * It came out at 43 cells first: the padding added a flat seven days to the end
+ * of the month, which overshoots whenever a month does not end on a Sunday. The
+ * last row was ragged and a day went missing off the end. Three months with
+ * different shapes, including a February, because one month proves nothing.
+ */
+test.describe('month view', () => {
+	for (const day of ['2026-08-31', '2026-02-15', '2026-11-01']) {
+		test(`draws whole weeks for the month containing ${day}`, async ({ page }) => {
+			await page.goto(`/calendar?account=preview-personal&day=${day}&view=month`);
+			await page.waitForLoadState('networkidle');
+
+			const cells = await page.locator('.cell').count();
+			expect(cells, 'the grid is not a whole number of weeks').toBeGreaterThan(27);
+			expect(cells % 7, `${cells} cells is a ragged grid`).toBe(0);
+		});
+	}
+
+	test('a day in the grid opens that day', async ({ page }) => {
+		await page.goto('/calendar?account=preview-personal&day=2026-08-31&view=month');
+		await page.waitForLoadState('networkidle');
+		await page.locator('.cell:not(.outside) .cell-day').first().click();
+		await page.waitForURL(/view=day/, { timeout: 8000 });
+	});
+});

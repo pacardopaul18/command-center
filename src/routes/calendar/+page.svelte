@@ -83,6 +83,11 @@
 		return `/calendar?${params}`;
 	}
 
+	/** A step is whatever the view shows, so Later means the next one of those. */
+	const step = $derived(
+		data.view === 'day' ? 1 : data.view === 'week' ? 7 : data.view === 'month' ? 30 : 21
+	);
+
 	function shift(days: number) {
 		const d = new Date(`${data.day}T00:00:00Z`);
 		d.setUTCDate(d.getUTCDate() + days);
@@ -138,7 +143,13 @@
 	const days = $derived.by(() => {
 		const out: { key: string; label: string; events: CalendarEventRow[] }[] = [];
 		const start = new Date(data.from);
-		const count = data.view === 'week' ? 7 : 21;
+		/**
+		 * The number of days is the window the loader asked for, not a constant
+		 * per view. Hardcoding it meant the month grid drew 21 cells: a ragged
+		 * three weeks that dropped most of the month and every event in it.
+		 */
+		const span = new Date(data.to).getTime() - start.getTime();
+		const count = Math.max(1, Math.round(span / 86_400_000));
 		for (let i = 0; i < count; i++) {
 			const d = new Date(start);
 			d.setUTCDate(d.getUTCDate() + i);
@@ -161,6 +172,10 @@
 	const agendaDays = $derived(days.filter((d) => d.events.length > 0));
 
 	const today = $derived(dayKeyIn(new Date().toISOString(), zone));
+
+	/** The month the grid is about, so neighbouring days can be dimmed. */
+	const anchorMonth = $derived(data.day.slice(0, 7));
+	const inMonth = (key: string) => key.slice(0, 7) === anchorMonth;
 
 	function timeLabel(event: CalendarEventRow): string {
 		if (event.all_day === 1) return 'All day';
@@ -222,15 +237,17 @@
 	<div class="sticky">
 		<nav class="views" aria-label="Calendar view">
 			<a href={urlFor({ view: 'agenda' })} class="tab" class:on={data.view === 'agenda'}>Agenda</a>
+			<a href={urlFor({ view: 'day' })} class="tab" class:on={data.view === 'day'}>Day</a>
 			<a href={urlFor({ view: 'week' })} class="tab" class:on={data.view === 'week'}>Week</a>
+			<a href={urlFor({ view: 'month' })} class="tab" class:on={data.view === 'month'}>Month</a>
 		</nav>
 
 		<div class="nav">
-			<button type="button" class="ghost" onclick={() => shift(data.view === 'week' ? -7 : -21)}>
+			<button type="button" class="ghost" onclick={() => shift(-step)} aria-label="Earlier">
 				Earlier
 			</button>
 			<a class="ghost" href={urlFor({ day: today })}>Today</a>
-			<button type="button" class="ghost" onclick={() => shift(data.view === 'week' ? 7 : 21)}>
+			<button type="button" class="ghost" onclick={() => shift(step)} aria-label="Later">
 				Later
 			</button>
 			<span class="range mono">
@@ -241,7 +258,147 @@
 		</div>
 	</div>
 
-	{#if data.view === 'week'}
+{#snippet eventRow(event: CalendarEventRow)}
+		<div class="row-wrap">
+			<button
+				type="button"
+				class="row"
+				aria-expanded={openEventId === event.id}
+				style="border-left-color: {event.calendar_color ?? 'var(--navy-500)'}"
+				onclick={() => openEvent(event)}
+			>
+				<span class="when mono">{timeLabel(event)}</span>
+				<span class="what">{event.summary ?? '(no title)'}</span>
+				{#if event.location}<span class="where">{event.location}</span>{/if}
+				{#if event.own_response && event.own_response !== 'accepted'}
+					<span class="resp">{RESPONSE_LABEL[event.own_response] ?? event.own_response}</span>
+				{/if}
+				{#if (event.attendee_count ?? 0) > 0}
+					<span class="n mono">{event.attendee_count}</span>
+				{/if}
+				{#if data.scope === 'all'}
+					<span class="acct mono">{event.account_email}</span>
+				{/if}
+			</button>
+
+			{#if openEventId === event.id}
+				<div class="detail">
+					{#if event.description}<p class="prose">{event.description}</p>{/if}
+					<dl class="facts">
+						{#if event.calendar_name}
+							<div><dt>Calendar</dt><dd>{event.calendar_name}</dd></div>
+						{/if}
+						{#if event.organizer}
+							<div><dt>Organiser</dt><dd>{event.organizer}</dd></div>
+						{/if}
+						{#if event.own_response}
+							<div>
+								<dt>You</dt>
+								<dd>{RESPONSE_LABEL[event.own_response] ?? event.own_response}</dd>
+							</div>
+						{/if}
+						{#if event.meeting_title && event.meeting_id}
+							<div>
+								<dt>Meeting record</dt>
+								<dd><a href="/meetings/{event.meeting_id}">{event.meeting_title}</a></dd>
+							</div>
+						{:else if event.meeting_title}
+							<div><dt>Meeting record</dt><dd>{event.meeting_title}</dd></div>
+						{/if}
+					</dl>
+
+					{#if attendees.length > 0}
+						<h3>Who is coming</h3>
+						<ul class="people">
+							{#each attendees as person (person.email ?? person.display_name)}
+								<li>
+									{person.display_name ?? person.email}
+									{#if person.is_organizer}<span class="tag">Organiser</span>{/if}
+									{#if person.response_status}
+										<span class="tag">
+											{RESPONSE_LABEL[person.response_status] ?? person.response_status}
+										</span>
+									{/if}
+								</li>
+							{/each}
+						</ul>
+					{:else if (event.attendee_count ?? 0) > 0}
+						<p class="fine">
+							{event.attendee_count} people are on this, and their names have not been
+							read yet. Refresh the calendar in Settings to fetch them.
+						</p>
+					{/if}
+
+					{#if event.html_link}
+						<a
+							class="ghost"
+							href={event.html_link}
+							target="_blank"
+							rel="noopener noreferrer"
+						>
+							Open in Google Calendar
+						</a>
+					{/if}
+				</div>
+			{/if}
+		</div>
+{/snippet}
+
+	{#if data.view === 'day'}
+		<!--
+			One day, in full. The same rows as the agenda, without the day
+			headings, because a heading above a single day repeats the control
+			that chose it.
+		-->
+		<div class="agenda">
+			{#each days as day (day.key)}
+				<section class="day today">
+					<h2>{day.label}</h2>
+					{#if day.events.length === 0}
+						<p class="none">Nothing on this day.</p>
+					{/if}
+					{#each day.events as event (event.id)}
+						{@render eventRow(event)}
+					{/each}
+				</section>
+			{/each}
+		</div>
+	{:else if data.view === 'month'}
+		<div class="month-wrap">
+		<div class="month" role="grid" aria-label="Month">
+			{#each ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as name (name)}
+				<div class="month-head">{name}</div>
+			{/each}
+			{#each days as day (day.key)}
+				<!--
+					A month cell shows what fits and says how many more there are.
+					Truncating silently would make a busy day look like a quiet one.
+				-->
+				<div class="cell" class:today={day.key === today} class:outside={!inMonth(day.key)}>
+					<a class="cell-day" href={urlFor({ view: 'day', day: day.key })}>
+						{Number(day.key.slice(8, 10))}
+					</a>
+					{#each day.events.slice(0, 3) as event (event.id)}
+						<button
+							type="button"
+							class="pip"
+							style="border-left-color: {event.calendar_color ?? 'var(--navy-500)'}"
+							onclick={() => openEvent(event)}
+							title={event.summary ?? '(no title)'}
+						>
+							{event.summary ?? '(no title)'}
+						</button>
+					{/each}
+					{#if day.events.length > 3}
+						<a class="more" href={urlFor({ view: 'day', day: day.key })}>
+							{day.events.length - 3} more
+						</a>
+					{/if}
+				</div>
+			{/each}
+		</div>
+		</div>
+	{:else if data.view === 'week'}
 		<div class="week">
 			{#each days as day (day.key)}
 				<section class="col" class:today={day.key === today}>
@@ -272,84 +429,7 @@
 				<section class="day" class:today={day.key === today}>
 					<h2>{day.label}</h2>
 					{#each day.events as event (event.id)}
-						<div class="row-wrap">
-							<button
-								type="button"
-								class="row"
-								aria-expanded={openEventId === event.id}
-								style="border-left-color: {event.calendar_color ?? 'var(--navy-500)'}"
-								onclick={() => openEvent(event)}
-							>
-								<span class="when mono">{timeLabel(event)}</span>
-								<span class="what">{event.summary ?? '(no title)'}</span>
-								{#if event.location}<span class="where">{event.location}</span>{/if}
-								{#if event.own_response && event.own_response !== 'accepted'}
-									<span class="resp">{RESPONSE_LABEL[event.own_response] ?? event.own_response}</span>
-								{/if}
-								{#if (event.attendee_count ?? 0) > 0}
-									<span class="n mono">{event.attendee_count}</span>
-								{/if}
-								{#if data.scope === 'all'}
-									<span class="acct mono">{event.account_email}</span>
-								{/if}
-							</button>
-
-							{#if openEventId === event.id}
-								<div class="detail">
-									{#if event.description}<p class="prose">{event.description}</p>{/if}
-									<dl class="facts">
-										{#if event.calendar_name}
-											<div><dt>Calendar</dt><dd>{event.calendar_name}</dd></div>
-										{/if}
-										{#if event.organizer}
-											<div><dt>Organiser</dt><dd>{event.organizer}</dd></div>
-										{/if}
-										{#if event.own_response}
-											<div>
-												<dt>You</dt>
-												<dd>{RESPONSE_LABEL[event.own_response] ?? event.own_response}</dd>
-											</div>
-										{/if}
-										{#if event.meeting_title}
-											<div><dt>Meeting record</dt><dd>{event.meeting_title}</dd></div>
-										{/if}
-									</dl>
-
-									{#if attendees.length > 0}
-										<h3>Who is coming</h3>
-										<ul class="people">
-											{#each attendees as person (person.email ?? person.display_name)}
-												<li>
-													{person.display_name ?? person.email}
-													{#if person.is_organizer}<span class="tag">Organiser</span>{/if}
-													{#if person.response_status}
-														<span class="tag">
-															{RESPONSE_LABEL[person.response_status] ?? person.response_status}
-														</span>
-													{/if}
-												</li>
-											{/each}
-										</ul>
-									{:else if (event.attendee_count ?? 0) > 0}
-										<p class="fine">
-											{event.attendee_count} people are on this, and their names have not been
-											read yet. Refresh the calendar in Settings to fetch them.
-										</p>
-									{/if}
-
-									{#if event.html_link}
-										<a
-											class="ghost"
-											href={event.html_link}
-											target="_blank"
-											rel="noopener noreferrer"
-										>
-											Open in Google Calendar
-										</a>
-									{/if}
-								</div>
-							{/if}
-						</div>
+						{@render eventRow(event)}
 					{/each}
 				</section>
 			{/each}
@@ -574,6 +654,83 @@
 		overflow-wrap: anywhere;
 	}
 
+	.month {
+		display: grid;
+		grid-template-columns: repeat(7, minmax(0, 1fr));
+		gap: 2px;
+		background: var(--border-thin);
+		border: 1px solid var(--border-thin);
+		border-radius: var(--radius-md);
+		overflow: hidden;
+	}
+
+	.month-head {
+		padding: 6px 8px;
+		background: var(--surface-card);
+		font-size: var(--text-xs);
+		letter-spacing: var(--tracking-label);
+		text-transform: uppercase;
+		color: var(--text-secondary);
+	}
+
+	.cell {
+		min-height: 5.5rem;
+		padding: 4px;
+		background: var(--surface-card);
+	}
+
+	/* Neighbouring months are present so the grid is a grid, and dimmed so they
+	   do not read as part of this month. */
+	.cell.outside {
+		background: var(--surface-page);
+	}
+
+	.cell.outside .cell-day {
+		opacity: 0.45;
+	}
+
+	.cell.today {
+		box-shadow: inset 0 0 0 2px var(--navy);
+	}
+
+	.cell-day {
+		display: inline-block;
+		margin-bottom: 2px;
+		font-size: var(--text-xs);
+		font-weight: 600;
+		color: var(--ink);
+		text-decoration: none;
+	}
+
+	.pip {
+		display: block;
+		width: 100%;
+		text-align: left;
+		margin-bottom: 2px;
+		padding: 2px 5px;
+		background: var(--surface-page);
+		border: 0;
+		border-left: 3px solid var(--navy-500);
+		border-radius: 3px;
+		font: inherit;
+		font-size: var(--text-xs);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		cursor: pointer;
+	}
+
+	.pip:hover {
+		background: var(--surface-hover);
+	}
+
+	.more {
+		display: block;
+		padding: 0 5px;
+		font-size: var(--text-xs);
+		color: var(--text-secondary);
+	}
+
 	.agenda {
 		display: flex;
 		flex-direction: column;
@@ -688,5 +845,15 @@
 		.week {
 			grid-template-columns: 1fr;
 		}
+
+		/* A month grid squeezed to 412px is unreadable rather than compact, so
+		   it scrolls in its own box and keeps its shape. */
+		.month {
+			min-width: 46rem;
+		}
+	}
+
+	.month-wrap {
+		overflow-x: auto;
 	}
 </style>
