@@ -5,6 +5,7 @@
 		composeFits,
 		MAX_COMPOSE_URL
 	} from '$lib/gmail-compose';
+	import { invalidAddresses } from '$lib/reply-recipients';
 
 	/**
 	 * A reply or a forward, written by Paul.
@@ -34,7 +35,9 @@
 		attachmentCount = 0,
 		onDraft,
 		onRephrase,
-		onClose
+		onClose,
+		replyAll = true,
+		onReplyAllChange
 	}: {
 		mode: 'reply' | 'forward';
 		to?: string;
@@ -47,10 +50,17 @@
 		onDraft: () => void;
 		onRephrase: () => void;
 		onClose: () => void;
+		/** Reply-all is the default; this switches to the sender only. */
+		replyAll?: boolean;
+		onReplyAllChange?: (all: boolean) => void;
 	} = $props();
 
 	let copied = $state(false);
 	let bodyBox: HTMLTextAreaElement | null = $state(null);
+
+	const badTo = $derived(invalidAddresses(to));
+	const badCc = $derived(invalidAddresses(cc));
+	const hasBadAddress = $derived(badTo.length > 0 || badCc.length > 0);
 
 	const fields = $derived({ authuser, to, cc, subject, body });
 	const fits = $derived(composeFits(fields));
@@ -59,6 +69,9 @@
 
 	/** A forward with nobody to forward to is the one field that must be filled. */
 	const missingTo = $derived(mode === 'forward' && to.trim() === '');
+
+	/** Everything that must be right before this can be handed to Gmail. */
+	const blocked = $derived(missingTo || hasBadAddress);
 
 	export function focusBody() {
 		bodyBox?.focus();
@@ -95,18 +108,73 @@
 		</p>
 	{/if}
 
+	{#if mode === 'reply' && onReplyAllChange}
+		<!--
+			Reply-all is the default because dropping someone from a thread is
+			invisible to the person dropped. Switching to sender-only is offered,
+			and it moves the others out of Cc rather than hiding them.
+		-->
+		<fieldset class="who">
+			<legend>Reply to</legend>
+			<label>
+				<input
+					type="radio"
+					name="replyscope"
+					checked={replyAll}
+					onchange={() => onReplyAllChange(true)}
+				/>
+				Everyone on the thread
+			</label>
+			<label>
+				<input
+					type="radio"
+					name="replyscope"
+					checked={!replyAll}
+					onchange={() => onReplyAllChange(false)}
+				/>
+				Just the sender
+			</label>
+		</fieldset>
+	{/if}
+
 	<label class="field">
 		<span>To</span>
-		<input type="text" bind:value={to} spellcheck="false" autocomplete="off" />
+		<input
+			type="text"
+			bind:value={to}
+			spellcheck="false"
+			autocomplete="off"
+			aria-invalid={badTo.length > 0}
+			aria-describedby={badTo.length > 0 ? 'to-error' : undefined}
+		/>
 	</label>
 	{#if missingTo}
 		<p class="warn" role="alert">A forward needs somebody to forward to.</p>
 	{/if}
+	{#if badTo.length > 0}
+		<p class="warn" id="to-error" role="alert">
+			{badTo.length === 1 ? 'This address does not look right' : 'These addresses do not look right'}:
+			{badTo.join(', ')}. Gmail would drop it without saying so.
+		</p>
+	{/if}
 
 	<label class="field">
 		<span>Cc</span>
-		<input type="text" bind:value={cc} spellcheck="false" autocomplete="off" />
+		<input
+			type="text"
+			bind:value={cc}
+			spellcheck="false"
+			autocomplete="off"
+			aria-invalid={badCc.length > 0}
+			aria-describedby={badCc.length > 0 ? 'cc-error' : undefined}
+		/>
 	</label>
+	{#if badCc.length > 0}
+		<p class="warn" id="cc-error" role="alert">
+			{badCc.length === 1 ? 'This copied address does not look right' : 'These copied addresses do not look right'}:
+			{badCc.join(', ')}.
+		</p>
+	{/if}
 
 	<label class="field">
 		<span>Subject</span>
@@ -134,17 +202,20 @@
 	</div>
 
 	<div class="actions">
-		{#if fits}
-			<a
-				class="primary"
-				class:disabled={missingTo}
-				href={missingTo ? undefined : url}
-				target="_blank"
-				rel="noopener noreferrer"
-				aria-disabled={missingTo}
-			>
+		{#if fits && !blocked}
+			<a class="primary" href={url} target="_blank" rel="noopener noreferrer">
 				Send via Gmail
 			</a>
+		{:else if fits}
+			<!--
+				An anchor with no href is not a link: it leaves the accessibility
+				tree and stops being focusable, so a blocked action would simply
+				vanish for anyone not using a mouse. A disabled button is the
+				honest element for "this exists and cannot be used yet".
+			-->
+			<button type="button" class="primary" disabled title="Fix the addresses above first">
+				Send via Gmail
+			</button>
 		{:else}
 			<button type="button" class="primary" onclick={copyOut}>
 				{copied ? 'Copied' : 'Copy the message'}
@@ -164,6 +235,32 @@
 </section>
 
 <style>
+	.who {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: var(--space-3);
+		margin: 0;
+		padding: var(--space-2) var(--space-3);
+		border: 1px solid var(--border-thin);
+		border-radius: var(--radius-sm);
+	}
+
+	.who legend {
+		padding: 0 4px;
+		font-size: var(--text-xs);
+		letter-spacing: var(--tracking-label);
+		text-transform: uppercase;
+		color: var(--text-secondary);
+	}
+
+	.who label {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		font-size: var(--text-sm);
+	}
+
 	.composer {
 		display: flex;
 		flex-direction: column;
@@ -271,9 +368,9 @@
 		color: #fff;
 	}
 
-	.primary.disabled {
+	.primary:disabled {
 		opacity: 0.5;
-		pointer-events: none;
+		cursor: not-allowed;
 	}
 
 	.secondary {
@@ -293,5 +390,31 @@
 		border: 1px solid var(--gold);
 		border-radius: var(--radius-md);
 		font-size: var(--text-sm);
+	}
+
+	/* Paul reads on a 412px phone. At that width the actions stack and every
+	   control is full width, so nothing is a 30px target beside another one. */
+	@media (max-width: 520px) {
+		.composer {
+			padding: var(--space-3);
+		}
+
+		.actions,
+		.assist {
+			flex-direction: column;
+			align-items: stretch;
+		}
+
+		.actions .primary,
+		.actions .secondary,
+		.assist .secondary {
+			width: 100%;
+			min-height: 44px;
+		}
+
+		.who {
+			flex-direction: column;
+			align-items: flex-start;
+		}
 	}
 </style>

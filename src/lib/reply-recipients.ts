@@ -102,3 +102,34 @@ export function forwardHeader(
 	lines.push('');
 	return lines.join('\n');
 }
+
+/**
+ * Whether an address could be delivered to.
+ *
+ * Deliberately permissive. The real test is whether a mail server accepts it,
+ * which cannot be known here, so this catches the mistakes a person actually
+ * makes typing into a field: a missing @, a missing domain, a stray comma
+ * leaving an empty slot, a space in the middle.
+ *
+ * Being strict would be worse than being loose. A valid-but-unusual address
+ * refused here cannot be sent to at all, while a bad one that slips through is
+ * caught by Gmail a moment later with a clear message.
+ */
+export function looksLikeAddress(value: string): boolean {
+	const trimmed = value.trim();
+	if (trimmed === '' || /\s/.test(bareAddress(trimmed))) return false;
+	const bare = bareAddress(trimmed);
+	const at = bare.indexOf('@');
+	if (at <= 0 || at !== bare.lastIndexOf('@')) return false;
+	const domain = bare.slice(at + 1);
+	return domain.includes('.') && !domain.startsWith('.') && !domain.endsWith('.');
+}
+
+/** The addresses in a field that do not look deliverable. Empty when all do. */
+export function invalidAddresses(field: string): string[] {
+	return field
+		.split(',')
+		.map((a) => a.trim())
+		.filter(Boolean)
+		.filter((a) => !looksLikeAddress(a));
+}

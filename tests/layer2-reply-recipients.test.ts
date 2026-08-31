@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { bareAddress, replyRecipients } from '../src/lib/reply-recipients';
+import {
+	bareAddress,
+	invalidAddresses,
+	looksLikeAddress,
+	replyRecipients
+} from '../src/lib/reply-recipients';
 
 /**
  * Who a reply addresses, which is the part that fails without telling anyone.
@@ -94,5 +99,30 @@ describe('reply recipients', () => {
 	it('reads the address out of a display form', () => {
 		expect(bareAddress('Rina <rina@client.invalid>')).toBe('rina@client.invalid');
 		expect(bareAddress('  RINA@client.invalid ')).toBe('rina@client.invalid');
+	});
+});
+
+describe('address validation', () => {
+	it('accepts the ordinary shapes, including a display name', () => {
+		for (const a of [
+			'rina@client.invalid',
+			'Rina Dela Cruz <rina@client.invalid>',
+			'first.last+tag@sub.domain.example'
+		]) {
+			expect(looksLikeAddress(a), `${a} was refused`).toBe(true);
+		}
+	});
+
+	it('refuses what a person actually mistypes', () => {
+		for (const a of ['rina', 'rina@', '@client.invalid', 'rina@client', 'ri na@client.invalid']) {
+			expect(looksLikeAddress(a), `${a} was accepted`).toBe(false);
+		}
+	});
+
+	it('names which addresses in a field are wrong, and stays quiet when none are', () => {
+		expect(invalidAddresses('a@x.invalid, b@y.invalid')).toEqual([]);
+		expect(invalidAddresses('a@x.invalid, oops, c@z.invalid')).toEqual(['oops']);
+		// A trailing comma leaves an empty slot, which is not an error.
+		expect(invalidAddresses('a@x.invalid, ')).toEqual([]);
 	});
 });

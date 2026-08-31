@@ -48,6 +48,11 @@
 	let cSubject = $state('');
 	let cBody = $state('');
 	let composerBox: { focusBody: () => void } | null = $state(null);
+
+	/** Reply-all by default. Dropping a Cc is invisible to the person dropped. */
+	let replyAll = $state(true);
+	/** The sender named by a per-message reply, kept so the toggle can rebuild. */
+	let replyTo = $state<string | null>(null);
 	let copied = $state('');
 	let attachmentsOpen = $state(true);
 
@@ -130,13 +135,50 @@
 	 * quietly drop everybody else.
 	 */
 	function openReply(sender?: string | null) {
-		const { to, cc } = replyRecipients(data.messages, data.account_email, sender ?? null);
-		cTo = to.join(', ');
-		cCc = cc.join(', ');
+		replyTo = sender ?? null;
+		replyAll = true;
+		applyRecipients();
 		cSubject = prefixed('Re:');
 		cBody = '';
 		composer = 'reply';
 		queueMicrotask(() => composerBox?.focusBody());
+	}
+
+	/**
+	 * Rebuilds To and Cc from the current choice.
+	 *
+	 * Switching to sender-only empties Cc rather than hiding it, so what is on
+	 * screen is what Gmail will receive. Anything typed by hand into either
+	 * field is replaced, which is why the toggle sits above them: it is a
+	 * decision about who, made before the writing starts.
+	 */
+	function applyRecipients() {
+		const { to, cc } = replyRecipients(data.messages, data.account_email, replyTo);
+		cTo = to.join(', ');
+		cCc = replyAll ? cc.join(', ') : '';
+	}
+
+	function setReplyAll(all: boolean) {
+		replyAll = all;
+		applyRecipients();
+	}
+
+	/**
+	 * Closing with unsaved words in the box.
+	 *
+	 * The composer is session local by ruling, so closing it loses what is
+	 * there. That is fine when the box is empty and rude when it is not, so the
+	 * second case asks first. The stored draft is untouched either way: it is
+	 * the model's version and this was Paul's.
+	 */
+	function closeComposer() {
+		const typed = cBody.trim();
+		const fromDraft = (data.draft?.edited_body ?? data.draft?.body ?? '').trim();
+		if (typed !== '' && typed !== fromDraft) {
+			const ok = confirm('Close this and lose what you have written? The saved draft is kept.');
+			if (!ok) return;
+		}
+		composer = null;
 	}
 
 	/**
@@ -567,7 +609,9 @@
 				attachmentCount={composer === 'forward' ? data.attachments.length : 0}
 				onDraft={() => draft(false)}
 				onRephrase={() => draft(true)}
-				onClose={() => (composer = null)}
+				onClose={closeComposer}
+				{replyAll}
+				onReplyAllChange={setReplyAll}
 			/>
 		{:else}
 			<section class="card">

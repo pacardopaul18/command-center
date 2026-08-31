@@ -399,6 +399,44 @@ test.describe('mail views: account segregation survives the redesign', () => {
 	});
 
 	/**
+	 * A bad address must not reach Gmail, and must not vanish either.
+	 *
+	 * Gmail drops a malformed recipient without saying so, which is the silent
+	 * failure this guards. The disabled state is a button rather than an anchor
+	 * without an href: an anchor with no href leaves the accessibility tree
+	 * entirely, so a blocked action would disappear for anyone not using a
+	 * mouse rather than being visibly unavailable.
+	 */
+	test('a malformed address blocks the hand-off, visibly', async ({ page }) => {
+		await page.goto(`/mail/${A}-thread?account=${A}`);
+		await page.waitForLoadState('networkidle');
+		await page.getByRole('button', { name: 'Reply', exact: true }).first().click();
+
+		const to = page.getByRole('textbox', { name: 'To' });
+		await to.fill('not-an-address');
+
+		await expect(page.getByText(/does not look right/)).toBeVisible();
+		await expect(to).toHaveAttribute('aria-invalid', 'true');
+		// Still present and still named, just unusable.
+		await expect(page.getByRole('button', { name: /Send via Gmail/ })).toBeDisabled();
+
+		await to.fill('someone@example.invalid');
+		await expect(page.getByRole('link', { name: /Send via Gmail/ })).toBeVisible();
+	});
+
+	/** Replying to one person must empty Cc, not hide it. */
+	test('sender-only reply clears the copies rather than concealing them', async ({ page }) => {
+		await page.goto(`/mail/${A}-thread?account=${A}`);
+		await page.waitForLoadState('networkidle');
+		await page.getByRole('button', { name: 'Reply', exact: true }).first().click();
+
+		const cc = page.getByRole('textbox', { name: 'Cc' });
+		await cc.fill('third@example.invalid');
+		await page.getByRole('radio', { name: /Just the sender/ }).check();
+		await expect(cc).toHaveValue('');
+	});
+
+	/**
 	 * Opening mail must not tell the sender it was opened.
 	 *
 	 * A remote image in an email is a tracking pixel as often as a picture, so
