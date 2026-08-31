@@ -17,6 +17,23 @@ interface Overview {
 	projects: (Project & { open_items: number; open_tickets: number })[];
 	invoices: Invoice[];
 	meetings: { id: string; title: string; meeting_date: string }[];
+	/** Signed contract documents, bytes in R2 and a row here. Migration 0027. */
+	files: {
+		id: string;
+		contract_id: string | null;
+		contract_title: string | null;
+		filename: string;
+		mime_type: string | null;
+		size_bytes: number;
+		uploaded_at: string;
+	}[];
+	/**
+	 * What has happened on this client lately, merged from the records
+	 * themselves rather than from a log. Nothing writes these; they are read
+	 * back out of invoices, payments, meetings, projects and filed contracts, so
+	 * the feed cannot be stale or missing an entry somebody forgot to write.
+	 */
+	activity: { at: string; kind: string; ref: string; detail: string }[];
 	tickets: Ticket[];
 	money: {
 		invoiced_cents: number;

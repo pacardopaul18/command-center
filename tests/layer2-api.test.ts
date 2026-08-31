@@ -521,8 +521,20 @@ describe('layer 2: contacts', () => {
 	});
 
 	it('allows a client only one primary contact, and says so', async () => {
-		const first = await make({ is_primary: true });
-		expect(first.res.status).toBe(201);
+		/**
+		 * The seed now gives every client a primary contact, so this no longer
+		 * creates the first one itself. The premise is asserted rather than
+		 * assumed: without the check, a client that happened to have no primary
+		 * would make the refusal below silently untestable and this would pass on
+		 * a 201 that never happened.
+		 */
+		const existing = (await api(`/api/contacts?client_id=${clientId}`)).json.contacts as {
+			is_primary: number;
+		}[];
+		expect(
+			existing.filter((p) => p.is_primary === 1).length,
+			'the fixture client has no primary contact to conflict with'
+		).toBe(1);
 
 		const second = await make({ name: 'SUITE second', is_primary: true });
 		// 409, not 500. SQLite reports a partial unique index violation by column

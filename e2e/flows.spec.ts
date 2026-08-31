@@ -723,13 +723,20 @@ test.describe('the client page', () => {
 		await page.goto(`/clients/${await clientId(request)}`);
 		await ready(page);
 
+		/**
+		 * Added as an ordinary contact, not as the primary.
+		 *
+		 * The seed now gives every client a primary, so ticking the box here
+		 * would be the refusal rather than the success and the test would be
+		 * asserting the same thing twice. Adding a second ordinary contact is
+		 * what the card is mostly used for anyway.
+		 */
 		await page.getByRole('button', { name: 'Add contact' }).click();
 		const form = page
 			.locator('form')
 			.filter({ has: page.getByRole('button', { name: 'Add contact', exact: true }) });
 		await form.getByLabel('Name').fill(CONTACT);
 		await form.getByLabel('Email').fill('probe@example.test');
-		await form.getByRole('checkbox', { name: 'Primary contact' }).check();
 		await form.getByRole('button', { name: 'Add contact', exact: true }).click();
 
 		await expect(page.getByText(CONTACT).first()).toBeVisible();

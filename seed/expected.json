@@ -17,6 +17,7 @@
   "action_items": 3000,
   "billing_periods": 320,
   "clients": 60,
+  "contacts": 124,
   "invoice_events": 2264,
   "invoice_line_items": 1316,
   "invoice_payments": 542,
@@ -30,7 +31,7 @@
   "time_entries": 3200,
   "users": 7
  },
- "fingerprint": "e024f7275d331c94",
+ "fingerprint": "860a85d49ff01f23",
  "invoice_bands": {
   "b0_30": 114,
   "b0_30_cents": 137129589,

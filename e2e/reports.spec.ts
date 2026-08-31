@@ -212,7 +212,7 @@ test.describe('accessibility basics survive volume', () => {
 		expect(await th.evaluate((e) => getComputedStyle(e).borderBottomWidth)).toBe('2px');
 	});
 
-	for (const path of ['/', '/actions?view=all', '/invoices', '/reports/slipping']) {
+	for (const path of ['/', '/actions?view=all', '/invoices', '/clients', '/meetings', '/calendar', '/reports/slipping']) {
 		test(`${path} never scrolls sideways at 412px`, async ({ page }) => {
 			await page.setViewportSize({ width: 412, height: 900 });
 			await page.goto(path);
