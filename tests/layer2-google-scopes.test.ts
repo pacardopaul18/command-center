@@ -71,13 +71,52 @@ describe('layer 2: Google scopes are read only', () => {
 			expect(sources.includes(forbidden), `A write endpoint is referenced: ${forbidden}`).toBe(false);
 		}
 
-		// Every Google call goes through apiGet, which is GET only. A POST to a
-		// Google endpoint would have to be written by hand and would stand out.
+		/**
+		 * Every Google call goes through `apiGet`, which is GET only, so a POST
+		 * has to be written by hand and stands out. Each one is named here with
+		 * the endpoint it targets, rather than counted.
+		 *
+		 * Counting was the earlier form of this check and it was the wrong
+		 * shape. It failed the moment a legitimate second POST arrived, and the
+		 * only way to make it pass is to raise the number, which is a change
+		 * that reviews as a typo and removes the guarantee entirely. Naming them
+		 * means a new POST fails the test with the endpoint in the message, and
+		 * making it pass means writing down what that endpoint does.
+		 */
 		const googleSource = readFileSync('src/lib/server/google.ts', 'utf8');
-		const posts = googleSource.match(/method: 'POST'/g) ?? [];
-		// Exactly one: the OAuth token exchange, which is how OAuth works and
-		// writes nothing to the user's account.
-		expect(posts).toHaveLength(1);
+
+		const ALLOWED_POSTS = [
+			// OAuth token exchange and refresh. How OAuth works, and it writes
+			// nothing to the user's account.
+			'TOKEN_ENDPOINT',
+			// Free and busy. A read whose request body is the question: it
+			// returns busy blocks and changes no calendar. Permitted by
+			// calendar.readonly. D151.
+			'/freeBusy'
+		];
+
+		// The URL argument of every hand-written POST, taken from the fetch call
+		// it sits in.
+		const posts = [
+			...googleSource.matchAll(/fetch\(([^,]+),[\s\S]{0,80}?method: 'POST'/g)
+		].map((m) => m[1]);
+		/**
+		 * Both known POSTs must be found. A guard whose pattern stops matching
+		 * passes on an empty list, which is the failure mode of every check
+		 * written as a loop over what was found: the day the regex breaks is
+		 * the day it stops guarding, silently.
+		 */
+		expect(posts.length, `the POST scan found ${posts.length} calls, not the two that exist`).toBe(2);
+
+		for (const target of posts) {
+			expect(
+				ALLOWED_POSTS.some((allowed) => target.includes(allowed)),
+				`google.ts POSTs to ${target}, which is not one of the reads this app is allowed ` +
+					`to make. If it is a read, add it to ALLOWED_POSTS with the reason. If it writes ` +
+					`to the user's account, it must not exist: D70.`
+			).toBe(true);
+		}
+
 		expect(googleSource).toContain('TOKEN_ENDPOINT');
 	});
 
