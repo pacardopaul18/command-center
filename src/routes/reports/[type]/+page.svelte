@@ -19,6 +19,22 @@
 			? `/reports/${data.type}/print?from=${data.from}&to=${data.to}`
 			: `/reports/${data.type}/print`
 	);
+
+	/**
+	 * The CSV of the table this report is fundamentally about.
+	 *
+	 * A report answers with several arrays and a CSV is one table, so the route
+	 * picks the primary section per report and the others are reachable by name.
+	 * A plain link, so the browser does the download and the file is exactly
+	 * what the route returned.
+	 *
+	 * The window is carried even for a snapshot report, which ignores it. The
+	 * filename then still says which range the reader had set, and a file on
+	 * disk that cannot say what it covers is a file nobody trusts in a month.
+	 */
+	const csvHref = $derived(
+		`/api/reports/${data.type}/export.csv?from=${data.from}&to=${data.to}`
+	);
 </script>
 
 <svelte:head><title>{meta.title}</title></svelte:head>
@@ -30,7 +46,10 @@
 			<h1>{meta.title}</h1>
 			<p class="summary">{meta.summary}</p>
 		</div>
-		<a class="print" href={printHref}>Print or save as PDF</a>
+		<div class="head-actions">
+			<a class="print" href={csvHref} download>Export CSV</a>
+			<a class="print" href={printHref}>Print or save as PDF</a>
+		</div>
 	</div>
 	<p class="asof">
 		{#if meta.windowed}
@@ -62,6 +81,13 @@
 <ReportBody type={data.type} data={data.data} today={data.today} />
 
 <style>
+
+	.head-actions {
+		display: flex;
+		gap: var(--space-2);
+		flex-wrap: wrap;
+		align-items: center;
+	}
 	.head {
 		display: flex;
 		flex-direction: column;

@@ -591,6 +591,124 @@ async function profitabilityReport(db: D1Database, day: string, from: string, to
 	};
 }
 
+/**
+ * Runs one report, in one place.
+ *
+ * Shared by the JSON route and the CSV export so the two cannot answer
+ * differently. A second copy of this chain is how an export ends up a version
+ * behind the screen it was taken from.
+ */
+async function runReport(
+	db: D1Database,
+	type: ReportType,
+	day: string,
+	from: string,
+	to: string
+) {
+	if (type === 'billing') return billingReport(db, day, from, to);
+	if (type === 'projects') return projectsReport(db, day);
+	if (type === 'actions') return actionsReport(db, day, from, to);
+	if (type === 'pnl') return pnlReport(db, day, from, to);
+	if (type === 'expenses') return expensesReport(db, day, from, to);
+	if (type === 'profitability') return profitabilityReport(db, day, from, to);
+	return slippingReport(db, day);
+}
+
+/**
+ * Which table a report is fundamentally about.
+ *
+ * Every report answers with several arrays, and a CSV is one table. Picking one
+ * per report is a judgement rather than a technicality: the primary section is
+ * the list a person opened the report to read, and the summaries beside it are
+ * context they can see on screen. The others are still reachable by name, so
+ * nothing is hidden, and asking for one that does not exist is answered with
+ * the list of ones that do rather than an empty file.
+ *
+ * An empty file is the failure worth avoiding. A spreadsheet with headers and
+ * no rows looks like an answer meaning "none", and a reader has no way to tell
+ * it from a section name typed wrong.
+ */
+const PRIMARY_SECTION: Record<ReportType, string> = {
+	slipping: 'overdue_actions',
+	billing: 'outstanding',
+	projects: 'projects',
+	actions: 'completed',
+	pnl: 'currencies',
+	expenses: 'lines',
+	profitability: 'lines'
+};
+
+/**
+ * One CSV field, quoted.
+ *
+ * The same rule the ledger export uses, and for the same reasons: everything is
+ * quoted rather than only the fields that appear to need it, because a note is
+ * exactly where a comma turns up; and a leading =, +, - or @ is prefixed with a
+ * quote so a spreadsheet reads it as text rather than as a formula.
+ */
+function csvField(value: unknown): string {
+	let text: string;
+	if (value === null || value === undefined) text = '';
+	else if (typeof value === 'object') text = JSON.stringify(value);
+	else text = String(value);
+
+	if (/^[=+\-@\t\r]/.test(text)) text = `'${text}`;
+	return `"${text.replace(/"/g, '""')}"`;
+}
+
+reports.get('/:type/export.csv', async (c) => {
+	const type = c.req.param('type') as ReportType;
+	if (!REPORT_TYPES.includes(type)) throw new ApiError(404, 'That report does not exist.');
+
+	const day = todayInWorkingZone();
+	const to = readDate(c.req.query('to'), day, 'The end date');
+	const from = readDate(c.req.query('from'), addDays(to, -29), 'The start date');
+	if (from > to) throw new ApiError(400, 'The start date is after the end date.');
+
+	const db = c.env.DB;
+	const data = (await runReport(db, type, day, from, to)) as Record<string, unknown>;
+
+	const asked = c.req.query('section');
+	const section = asked ?? PRIMARY_SECTION[type];
+	const rows = data[section];
+
+	if (!Array.isArray(rows)) {
+		const available = Object.entries(data)
+			.filter(([, v]) => Array.isArray(v))
+			.map(([k]) => k);
+		throw new ApiError(
+			400,
+			`This report has no section called "${section}". It has: ${available.join(', ')}.`
+		);
+	}
+
+	/**
+	 * Headers from the first row, and every later row read against them.
+	 *
+	 * Taking each row's own keys would let a row with an extra column shift
+	 * every field after it, which is the CSV failure nobody notices until a
+	 * spreadsheet adds up the wrong column.
+	 */
+	const objects = rows as Record<string, unknown>[];
+	const headers = objects.length > 0 ? Object.keys(objects[0]) : [];
+
+	const lines = [headers.map(csvField).join(',')];
+	for (const row of objects) {
+		lines.push(headers.map((h) => csvField(row[h])).join(','));
+	}
+
+	const name = `${type}-${section}-${from}-to-${to}.csv`;
+
+	return new Response(lines.join('\r\n') + '\r\n', {
+		headers: {
+			// UTF-8 said out loud, so a client name with an accent opens correctly.
+			'content-type': 'text/csv; charset=utf-8',
+			'content-disposition': `attachment; filename="${name}"`,
+			'cache-control': 'private, no-store'
+		}
+	});
+});
+
 reports.get('/:type', async (c) => {
 	const type = c.req.param('type') as ReportType;
 	if (!REPORT_TYPES.includes(type)) {
@@ -602,21 +720,7 @@ reports.get('/:type', async (c) => {
 	const from = readDate(c.req.query('from'), addDays(to, -29), 'The start date');
 	if (from > to) throw new ApiError(400, 'The start date is after the end date.');
 
-	const db = c.env.DB;
-	const data =
-		type === 'billing'
-			? await billingReport(db, day, from, to)
-			: type === 'projects'
-				? await projectsReport(db, day)
-				: type === 'actions'
-					? await actionsReport(db, day, from, to)
-					: type === 'pnl'
-						? await pnlReport(db, day, from, to)
-						: type === 'expenses'
-							? await expensesReport(db, day, from, to)
-							: type === 'profitability'
-								? await profitabilityReport(db, day, from, to)
-								: await slippingReport(db, day);
+	const data = await runReport(c.env.DB, type, day, from, to);
 
 	// generated_at stamps the printed page. A PDF with no as-of date is a PDF
 	// somebody misreads three weeks later.
