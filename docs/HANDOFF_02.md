@@ -666,3 +666,28 @@ Rehearsal follows on the redesign preview when Paul calls start. Merge GO on
 `mail/redesign` issues after rehearsal findings, alongside E4 merge GO if the
 supervised pass reports clean.
 
+
+### CR1-F4: the centred layout, raised by Paul
+
+Mail rendered inside the shell's 1200px cap and centred, where the design is
+full width with the rail against the right edge. Opened and closed the same day.
+Fixed by a route-level opt-out, not by moving the cap; other modules measured
+unchanged. The rule is D129.
+
+Missed by the CR-1 fidelity pass because that pass rendered at 1440px, where the
+cap reads as padding. It was obvious at Paul's width and nowhere else.
+
+### CR-1 merge condition, the only one left
+
+Everything on `mail/redesign` is ratified through `6d8af9d`. Merge is gated on a
+single test no automated check can perform: opening a real thread in Paul's own
+mailbox, pressing Send via Gmail, and confirming three things. Whether Gmail
+opened on the right account, whether the body arrived with spaces intact, and
+whether To and Cc landed.
+
+It cannot be run from the build environment. The local preview holds fictional
+accounts and the real connection lives in remote D1, so pressing the button
+there would compose to an address that does not exist. Paul's click is the test.
+
+Pass issues merge GO. Fail opens CR1-F5, fixed on the branch.
+
