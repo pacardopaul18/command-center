@@ -1,8 +1,9 @@
 import { Hono } from 'hono';
+import type { D1Database } from '@cloudflare/workers-types';
 import type { ApiEnv } from './env';
 import { ACTION_SOURCES, ACTION_STATUSES, ACTION_VIEWS } from '$lib/types';
 import type { ActionSource, ActionStatus, ActionView } from '$lib/types';
-import { nowUtc, todayInWorkingZone } from '../dates';
+import { daysAgoUtc, nowUtc, todayInWorkingZone } from '../dates';
 import { createTask, effectiveAssignee, readSettings } from '../asana';
 import { asApiError } from './asana';
 import {
@@ -56,6 +57,37 @@ const ORDER_BY = `
 `;
 
 /**
+ * The orders the tracker offers.
+ *
+ * Written as a closed map rather than accepted from the caller, because a sort
+ * parameter interpolated into SQL is an injection with a friendly name. An
+ * unknown value falls back to the deadline order rather than erroring: a sort
+ * nobody recognises is a cosmetic mistake, and refusing the whole list over it
+ * would be a worse answer than showing it in the default order.
+ *
+ * Every order ends with the same two tie breaks, so a list never reshuffles
+ * between loads on rows the sort cannot separate.
+ */
+const SORTS: Record<string, string> = {
+	deadline: ORDER_BY,
+	owner: `
+  ORDER BY
+    CASE WHEN a.owner IS NULL OR a.owner = '' THEN 1 ELSE 0 END,
+    a.owner COLLATE NOCASE ASC,
+    CASE WHEN a.deadline IS NULL THEN 1 ELSE 0 END,
+    a.deadline ASC,
+    a.created_at DESC
+`,
+	updated: `
+  ORDER BY
+    a.updated_at DESC,
+    a.created_at DESC
+`
+};
+
+export const SORT_KEYS = Object.keys(SORTS);
+
+/**
  * Page sizes the UI offers. Anything else is rejected rather than silently
  * clamped, so a caller asking for 5000 rows learns that it did not happen.
  */
@@ -87,11 +119,72 @@ export function readPaging(c: { req: { query(name: string): string | undefined }
 	return { page, pageSize };
 }
 
+/**
+ * Appends to an item's trail.
+ *
+ * Never throws into the caller's path. A history that failed to write must not
+ * undo the change it was describing, so the failure is returned and the route
+ * reports it beside the result. Same shape as the invoice trail in 0024.
+ */
+async function logEvent(
+	db: D1Database,
+	itemId: string,
+	kind: string,
+	detail: string
+): Promise<string | null> {
+	const now = nowUtc();
+	try {
+		await db
+			.prepare(
+				`INSERT INTO action_item_events (id, action_item_id, occurred_at, kind, detail, created_at)
+         VALUES (?, ?, ?, ?, ?, ?)`
+			)
+			.bind(crypto.randomUUID(), itemId, now, kind, detail, now)
+			.run();
+		return null;
+	} catch {
+		return 'The change was saved but did not reach the item trail.';
+	}
+}
+
+/**
+ * What changed, as a sentence.
+ *
+ * Written from the patch rather than from a diff of the row, because the patch
+ * is what the person asked for and the row is what the database made of it.
+ * When those differ the request is the more useful record.
+ */
+function describeChange(patch: Record<string, unknown>, before: { status?: string }): {
+	kind: string;
+	detail: string;
+} {
+	if ('status' in patch) {
+		const next = String(patch.status);
+		if (next === 'done') return { kind: 'status', detail: 'Marked done.' };
+		if (before.status === 'done') return { kind: 'status', detail: 'Reopened.' };
+		if (next === 'waiting') return { kind: 'status', detail: 'Moved to waiting on somebody else.' };
+		return { kind: 'status', detail: `Status set to ${next}.` };
+	}
+	if ('deadline' in patch) {
+		return patch.deadline
+			? { kind: 'deadline', detail: `Deadline set to ${String(patch.deadline)}.` }
+			: { kind: 'deadline', detail: 'Deadline cleared.' };
+	}
+	if ('owner' in patch) {
+		return patch.owner
+			? { kind: 'owner', detail: `Owner set to ${String(patch.owner)}.` }
+			: { kind: 'owner', detail: 'Owner cleared.' };
+	}
+	return { kind: 'edited', detail: 'Details edited.' };
+}
+
 export const actionItems = new Hono<ApiEnv>();
 
 actionItems.get('/', async (c) => {
 	const db = c.env.DB;
 	const today = todayInWorkingZone();
+
+	const weekAgo = daysAgoUtc(7);
 
 	const rawView = c.req.query('view') ?? 'open';
 	const view: ActionView = (ACTION_VIEWS as readonly string[]).includes(rawView)
@@ -114,6 +207,23 @@ actionItems.get('/', async (c) => {
 	if (projectId) {
 		scoped.push({ list: 'a.project_id = ?', counts: 'project_id = ?' });
 		scopedBinds.push(projectId);
+	}
+
+	/**
+	 * Owner, matched exactly rather than by LIKE.
+	 *
+	 * The picker offers names that exist, so a partial match here would only
+	 * ever fire on a typo, and "Dana" quietly selecting "Dana Okafor" and
+	 * "Dana Whitfield" together is the kind of nearly-right filter nobody
+	 * notices is wrong. Unassigned is its own choice, because an item with no
+	 * owner is the case this screen exists to surface.
+	 */
+	const owner = c.req.query('owner');
+	if (owner === 'unassigned') {
+		scoped.push({ list: "(a.owner IS NULL OR a.owner = '')", counts: "(owner IS NULL OR owner = '')" });
+	} else if (owner) {
+		scoped.push({ list: 'a.owner = ?', counts: 'owner = ?' });
+		scopedBinds.push(owner);
 	}
 
 	const q = c.req.query('q')?.trim();
@@ -147,8 +257,9 @@ actionItems.get('/', async (c) => {
 	// return an empty page, which reads as "no results" and is a different claim.
 	const safePage = Math.min(page, pageCount);
 
+	const order = SORTS[c.req.query('sort') ?? 'deadline'] ?? ORDER_BY;
 	const { results } = await db
-		.prepare(`${SELECT} WHERE ${where.join(' AND ')} ${ORDER_BY} LIMIT ? OFFSET ?`)
+		.prepare(`${SELECT} WHERE ${where.join(' AND ')} ${order} LIMIT ? OFFSET ?`)
 		.bind(...binds, pageSize, (safePage - 1) * pageSize)
 		.all();
 
@@ -165,15 +276,34 @@ actionItems.get('/', async (c) => {
          SUM(CASE WHEN status != 'done' AND deadline IS NOT NULL AND deadline < ?1 THEN 1 ELSE 0 END) AS overdue_count,
          SUM(CASE WHEN status != 'done' AND deadline = ?1 THEN 1 ELSE 0 END) AS today_count,
          SUM(CASE WHEN status = 'waiting' THEN 1 ELSE 0 END) AS waiting_count,
-         SUM(CASE WHEN status = 'done' THEN 1 ELSE 0 END) AS done_count
+         SUM(CASE WHEN status = 'done' THEN 1 ELSE 0 END) AS done_count,
+         -- Done this week, which is the only cheerful number on the screen.
+         -- Counted from completed_at, so an item closed today and an item
+         -- closed in March are not the same fact.
+         SUM(CASE WHEN status = 'done' AND completed_at >= ?2 THEN 1 ELSE 0 END) AS done_week
        FROM action_items ${scopeSql}`
 		)
-		.bind(today, ...scopedBinds)
+		.bind(today, weekAgo, ...scopedBinds)
 		.first<Record<string, number | null>>();
+
+	/**
+	 * Every owner with an item, for the picker.
+	 *
+	 * Read from the items rather than from `users`, because history that names
+	 * somebody who was never a user in this system is still history, and a
+	 * filter that cannot offer their name cannot find their work.
+	 */
+	const owners = await db
+		.prepare(
+			`SELECT DISTINCT owner FROM action_items
+       WHERE owner IS NOT NULL AND owner != '' ORDER BY owner COLLATE NOCASE`
+		)
+		.all<{ owner: string }>();
 
 	return c.json({
 		today,
 		view,
+		owners: (owners.results ?? []).map((r) => r.owner),
 		items: results ?? [],
 		paging: { page: safePage, page_size: pageSize, total, page_count: pageCount, sizes: PAGE_SIZES },
 		counts: {
@@ -182,9 +312,90 @@ actionItems.get('/', async (c) => {
 			overdue: counts?.overdue_count ?? 0,
 			today: counts?.today_count ?? 0,
 			waiting: counts?.waiting_count ?? 0,
-			done: counts?.done_count ?? 0
+			done: counts?.done_count ?? 0,
+			done_week: counts?.done_week ?? 0
 		}
 	});
+});
+
+/** Everything that happened to one item, newest first. */
+actionItems.get('/:id/events', async (c) => {
+	const { results } = await c.env.DB.prepare(
+		`SELECT * FROM action_item_events WHERE action_item_id = ?
+     ORDER BY occurred_at DESC, created_at DESC`
+	)
+		.bind(c.req.param('id'))
+		.all();
+	return c.json({ events: results ?? [] });
+});
+
+/**
+ * One patch, many items.
+ *
+ * The tracker selects rows and acts on all of them, and doing that as N
+ * requests from the browser means a bulk action can half succeed with nothing
+ * saying which half. This applies the same patch to every id, reports what it
+ * touched, and names the ones it could not.
+ *
+ * Deliberately narrow: status, deadline and owner. Those are the three a person
+ * changes across a selection. Editing titles in bulk is not a thing anybody
+ * means to do.
+ */
+actionItems.post('/bulk', async (c) => {
+	const db = c.env.DB;
+	const body = await readJsonObject(c.req.raw);
+
+	const ids = Array.isArray(body.ids) ? body.ids.map((v) => String(v)) : [];
+	if (ids.length === 0) throw new ApiError(400, 'Choose at least one item.');
+	if (ids.length > 500) throw new ApiError(400, 'That is more than 500 items in one go.');
+
+	const patch: Record<string, unknown> = {};
+	if ('status' in body) patch.status = oneOf<ActionStatus>(body.status, ACTION_STATUSES, 'status', 'open');
+	if ('owner' in body) patch.owner = optionalText(body.owner, 'Owner', 200);
+	if ('deadline' in body) patch.deadline = optionalDate(body.deadline, 'Deadline');
+	if (Object.keys(patch).length === 0) throw new ApiError(400, 'Nothing to change.');
+
+	const now = nowUtc();
+	const marks = ids.map(() => '?').join(', ');
+	const existing = await db
+		.prepare(`SELECT id, status FROM action_items WHERE id IN (${marks})`)
+		.bind(...ids)
+		.all<{ id: string; status: ActionStatus }>();
+	const found = existing.results ?? [];
+
+	const sets: string[] = [];
+	const binds: unknown[] = [];
+	for (const [field, value] of Object.entries(patch)) {
+		sets.push(`${field} = ?`);
+		binds.push(value);
+	}
+	sets.push('updated_at = ?');
+	binds.push(now);
+
+	// completed_at follows the status in both directions, the same rule the
+	// single item route applies, so a bulk close and a single close leave the
+	// same row behind.
+	if (patch.status === 'done') {
+		sets.push('completed_at = COALESCE(completed_at, ?)');
+		binds.push(now);
+	} else if ('status' in patch) {
+		sets.push('completed_at = NULL');
+	}
+
+	await db
+		.prepare(`UPDATE action_items SET ${sets.join(', ')} WHERE id IN (${marks})`)
+		.bind(...binds, ...ids)
+		.run();
+
+	const said = describeChange(patch, {});
+	let trailError: string | null = null;
+	for (const row of found) {
+		const err = await logEvent(db, row.id, said.kind, `${said.detail} Applied to ${found.length} items at once.`);
+		if (err) trailError = err;
+	}
+
+	const missing = ids.filter((id) => !found.some((r) => r.id === id));
+	return c.json({ changed: found.length, missing, trail_error: trailError });
 });
 
 actionItems.get('/:id', async (c) => {
@@ -225,8 +436,19 @@ actionItems.post('/', async (c) => {
 		)
 		.run();
 
+	const trailError = await logEvent(
+		c.env.DB,
+		id,
+		'created',
+		source === 'meeting'
+			? 'Captured from a meeting.'
+			: source === 'email'
+				? 'Captured from mail.'
+				: 'Added by you.'
+	);
+
 	const created = await c.env.DB.prepare(`${SELECT} WHERE a.id = ?`).bind(id).first();
-	return c.json({ item: created }, 201);
+	return c.json({ item: created, trail_error: trailError }, 201);
 });
 
 // Only the fields present in the body are written, so the edit form and the
@@ -311,8 +533,11 @@ actionItems.patch('/:id', async (c) => {
 		.bind(...binds)
 		.run();
 
+	const said = describeChange(body, existing);
+	const trailError = await logEvent(c.env.DB, id, said.kind, said.detail);
+
 	const updated = await c.env.DB.prepare(`${SELECT} WHERE a.id = ?`).bind(id).first();
-	return c.json({ item: updated });
+	return c.json({ item: updated, trail_error: trailError });
 });
 
 actionItems.delete('/:id', async (c) => {
