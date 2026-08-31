@@ -13,6 +13,7 @@ import {
 	scopePlaceholders
 } from '../accounts';
 import { draftReply } from '../ai';
+import { recordUsage } from '../ai-usage';
 import { runContextPass, seedContacts } from '../context';
 import { stripHtml } from '../google';
 
@@ -897,6 +898,13 @@ email.post('/threads/:id/draft', async (c) => {
 	} catch (err) {
 		throw asApiError(err);
 	}
+
+	/**
+	 * The draft is the most expensive call the app makes, and it was the one
+	 * call that recorded nothing. The spend view read a table this path never
+	 * wrote to, so drafting was free as far as the meter was concerned.
+	 */
+	await recordUsage(c.env.DB, 'draft', drafted.usage, id, account.id);
 
 	const at = nowUtc();
 	await c.env.DB.prepare(

@@ -10,6 +10,7 @@ import {
 } from './google';
 import { AiError, summariseThread, triageThread } from './ai';
 import { listAccounts } from './accounts';
+import { recordUsage } from './ai-usage';
 import type { Usage } from './ai';
 
 /**
@@ -475,28 +476,6 @@ function trimThread(
  * in Settings reports measured usage. A spend meter built on guesses is a
  * second thing that can be wrong about money.
  */
-async function recordUsage(
-	db: D1Database,
-	kind: 'triage' | 'summary' | 'draft',
-	usage: Usage,
-	threadId: string | null
-): Promise<void> {
-	await db
-		.prepare(
-			`INSERT INTO ai_usage (id, kind, model, input_tokens, output_tokens, thread_id, at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`
-		)
-		.bind(
-			crypto.randomUUID(),
-			kind,
-			usage.model,
-			usage.input_tokens,
-			usage.output_tokens,
-			threadId,
-			nowUtc()
-		)
-		.run();
-}
 
 export interface TriageOutcome {
 	summarised: number;
@@ -647,7 +626,7 @@ export async function triageBatch(
 						thread.id
 					)
 					.run();
-				await recordUsage(env.DB, 'triage', triaged.usage, thread.id);
+				await recordUsage(env.DB, 'triage', triaged.usage, thread.id, accountId);
 				budget.spend(2);
 
 				// A thread only just judged urgent should get its summary in the same
@@ -669,7 +648,7 @@ export async function triageBatch(
 							thread.id
 						)
 						.run();
-					await recordUsage(env.DB, 'summary', summarised.usage, thread.id);
+					await recordUsage(env.DB, 'summary', summarised.usage, thread.id, accountId);
 					budget.spend(COST_PER_THREAD);
 				}
 			} else if (needsSummary) {
@@ -682,7 +661,7 @@ export async function triageBatch(
 				)
 					.bind(summarised.summary, summarised.model, at, thread.newest_message_id, at, thread.id)
 					.run();
-				await recordUsage(env.DB, 'summary', summarised.usage, thread.id);
+				await recordUsage(env.DB, 'summary', summarised.usage, thread.id, accountId);
 				budget.spend(COST_PER_THREAD);
 			}
 
