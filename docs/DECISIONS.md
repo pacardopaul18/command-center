@@ -4332,3 +4332,45 @@ the category the posting route uses, with `provenance = 'invoice'`. The books
 and the invoices therefore agree by construction, so a guard comparing them is
 testing the application rather than two independently generated lists that
 happen to match.
+
+### D158: a template's fields come out of the template, and a use is recorded without its output
+
+Two decisions on the Templates redesign, and both are about not storing things.
+
+The per-template input fields are read out of the placeholders already in the
+body. Storing a field list would mean a schema, a form to maintain it, and a
+second copy of the truth that drifts the first time somebody edits the body and
+forgets the list. Reading them costs no schema and cannot drift, because there
+is nothing to drift from.
+
+The syntax was not chosen, it was found. Every template already written uses
+`[like this]`, and the AI drafting prompt already promises that anything it does
+not know comes back "as a bracketed placeholder". A second spelling would have
+meant every existing template asking for nothing and every generated draft
+producing placeholders the form could not see. The one rule that keeps prose out
+is that a placeholder starts with a letter, so `[1]` stays a footnote and
+`[2026-08-31]` stays a date.
+
+An unanswered placeholder is left visible rather than blanked. A half-filled
+template still showing `[number]` is obviously unfinished; one with a gap where
+the number should be looks finished and goes out that way.
+
+`template_uses`, migration 0028, records that a template was used and what for.
+It does not record what was produced. A generated draft is client-facing writing
+nobody has read yet, and keeping every one would make this table a silent
+archive of unreviewed text in Paul's voice. The length of the result is kept,
+because it says whether generation worked; the text is not. The test asserts the
+absence by column name, so adding one is a deliberate act.
+
+Copying counts as a use. Without it the Most used tile answers a narrower
+question than it appears to, "most drafted by the model", on a library whose
+common action is to copy the text and edit it by hand.
+
+The count is a subquery on every read rather than a column. A counter maintained
+by hand eventually disagrees with reality and cannot be recomputed to check.
+
+The seven category tabs the prototype draws are not built. A category is a
+column on `templates` and no ALTER may touch an existing table before Thursday,
+so the tabs are the two output types that exist. Seven tabs that all filter on
+nothing would be worse than three that work, D27, and the categories land on
+Thursday with the other queued columns.

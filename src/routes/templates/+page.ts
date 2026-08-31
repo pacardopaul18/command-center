@@ -16,7 +16,11 @@ export const load: PageLoad = async ({ fetch, url }) => {
 
 	const data = (await res.json()) as {
 		templates: Template[];
-		counts: { active: number; archived: number };
+		counts: { active: number; archived: number; email: number; doc: number };
+		/** Every use this month, across the whole library rather than the filter. */
+		drafted_this_month: number;
+		/** The template carrying the library, or null before anything is used. */
+		most_used: { id: string; name: string; uses: number } | null;
 	};
 
 	return { ...data, status, q };
