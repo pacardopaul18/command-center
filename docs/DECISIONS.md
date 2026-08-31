@@ -3577,3 +3577,43 @@ is the same reservation entered against the MVP gate and for the same reason.
 - That the digest lands in an inbox. See R7.
 - That daily use has happened. See above.
 
+### D130: the ledger books in USD, and says so per row
+
+The firm is US-based and books in USD. Paul works from the Philippines, which is
+where the temptation to default to PHP comes from, and it is the wrong reason: a
+location is not a ledger. USD is the default on the entry form.
+
+Recorded because it was chosen rather than assumed, and because a default that
+nobody wrote down reads later as an accident. Per-client currency override is
+E2/E3 scope and deliberately not now.
+
+The currency is still carried on every row and required by the API, which is the
+part that matters. A default decides what is convenient; the column decides what
+is possible. Nothing else in the schema has a currency column, so the first row
+in a second currency is the moment every total that ignored it silently became
+wrong, and the ledger is built so that cannot happen: totals group by currency
+and the response has no combined figure to misread.
+
+### D131: four guards on the ledger, each against a plausible number
+
+Recorded together because they share a shape. None of these prevent a crash.
+Each prevents a number that looks finished and is wrong.
+
+Amounts are positive and the category's kind carries the sign. A stored -40
+expense would subtract twice once the kind is applied, and the result is money
+with a minus in front of it, which reads as correct.
+
+A transaction naming a client and a project must name the project's own client,
+refused by a trigger rather than by the route. The route is not the only writer:
+an import, the E2 posting job, or a hand-fix all bypass it, and a row whose
+client and project disagree cannot be explained by any report that groups by
+either one.
+
+`source_invoice_id` carries a unique partial index before anything posts to it,
+so a retried payment post cannot double count. Built ahead of the code that
+needs it, because the failure it prevents is silent revenue.
+
+Neither table carries a `connection_id`. Every table added since multi-account
+has carried one and the habit is the risk: these are Paul's books, not
+per-mailbox records. A test asserts the absence, because a habit is not stopped
+by intending to stop it.
