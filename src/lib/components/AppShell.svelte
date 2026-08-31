@@ -34,6 +34,7 @@
 		{ href: '/actions', label: 'Action items', exact: false },
 		{ href: '/projects', label: 'Projects', exact: false },
 		{ href: '/meetings', label: 'Meetings', exact: false },
+		{ href: '/calendar', label: 'Calendar', exact: false },
 		{ href: '/sops', label: 'SOPs', exact: false },
 		{ href: '/templates', label: 'Templates', exact: false },
 		{ href: '/clients', label: 'Clients', exact: false },

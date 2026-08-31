@@ -378,6 +378,17 @@ export interface CalendarEvent {
 	organizer: string | null;
 	attendee_count: number | null;
 	html_link: string | null;
+	/** Google still reports the occurrence; the app marks it rather than dropping it. */
+	cancelled: boolean;
+	/** Paul's own answer, when he is on the invitation. */
+	own_response: string | null;
+	attendees: {
+		email: string | null;
+		display_name: string | null;
+		response_status: string | null;
+		is_organizer: boolean;
+		is_self: boolean;
+	}[];
 }
 
 interface RawEvent {
@@ -387,10 +398,16 @@ interface RawEvent {
 	location?: string;
 	htmlLink?: string;
 	status?: string;
+	attendees?: {
+		email?: string;
+		displayName?: string;
+		responseStatus?: string;
+		organizer?: boolean;
+		self?: boolean;
+	}[];
 	start?: { date?: string; dateTime?: string };
 	end?: { date?: string; dateTime?: string };
 	organizer?: { email?: string; displayName?: string };
-	attendees?: unknown[];
 }
 
 /**
@@ -425,10 +442,30 @@ export async function listEvents(
 	);
 
 	return (body.items ?? [])
-		// A cancelled occurrence still comes back. Showing it as a meeting would
-		// put something on Paul's day that is not happening.
-		.filter((e) => e.status !== 'cancelled' && e.id && (e.start?.date || e.start?.dateTime))
+		/**
+		 * Cancelled events are kept and marked, not dropped.
+		 *
+		 * Filtering them here was the reason a cancelled meeting stayed on the
+		 * screen forever: Google stopped mentioning it, the upsert only ever
+		 * inserted or updated, and nothing removed the row. Carrying the status
+		 * through lets the writer mark it, and the view exclude it, while the
+		 * record still says the meeting existed and was called off.
+		 */
+		.filter((e) => e.id && (e.start?.date || e.start?.dateTime))
 		.map((e) => ({
+			cancelled: e.status === 'cancelled',
+			attendees: Array.isArray(e.attendees)
+				? e.attendees.map((a) => ({
+						email: a.email ?? null,
+						display_name: a.displayName ?? null,
+						response_status: a.responseStatus ?? null,
+						is_organizer: a.organizer === true,
+						is_self: a.self === true
+					}))
+				: [],
+			own_response:
+				(Array.isArray(e.attendees) ? e.attendees.find((a) => a.self === true) : undefined)
+					?.responseStatus ?? null,
 			provider_event_id: String(e.id),
 			summary: e.summary ?? null,
 			description: e.description ?? null,

@@ -271,18 +271,54 @@ connections.post('/google/calendar/refresh', async (c) => {
 		? (chosen.results ?? [])
 		: [{ id: null as string | null, provider_calendar_id: 'primary', summary: 'Primary' }];
 
+	/**
+	 * How far back to reach.
+	 *
+	 * Sync used to start at now, so the past was never fetched and a week view
+	 * could not show Monday if today was Wednesday. The first sync of a calendar
+	 * reaches back 90 days; after that the recorded floor means later syncs do
+	 * not refetch a quarter of history every time.
+	 */
+	const BACKFILL_DAYS = 90;
+
 	let fetched = 0;
+	const syncedAt = nowUtc();
 
 	try {
 		const tokens = await accessToken(c.env.SESSIONS, connectionId, clientId, clientSecret);
 
 		for (const target of targets) {
+			const state = target.id
+				? await c.env.DB.prepare(
+						'SELECT backfilled_from FROM calendar_sync_state WHERE calendar_id = ?'
+					)
+						.bind(target.id)
+						.first<{ backfilled_from: string | null }>()
+				: null;
+
+			const floor = state?.backfilled_from
+				? new Date(state.backfilled_from)
+				: new Date(Date.now() - BACKFILL_DAYS * 86_400_000);
+
 			const events = await listEvents(
 				tokens.access_token,
-				from.toISOString(),
+				floor.toISOString(),
 				to.toISOString(),
 				target.provider_calendar_id
 			);
+
+			if (target.id) {
+				await c.env.DB.prepare(
+					`INSERT INTO calendar_sync_state (calendar_id, backfilled_from, last_synced_at, updated_at)
+           VALUES (?1, ?2, ?3, ?3)
+           ON CONFLICT(calendar_id) DO UPDATE SET
+             backfilled_from = COALESCE(calendar_sync_state.backfilled_from, excluded.backfilled_from),
+             last_synced_at = excluded.last_synced_at,
+             updated_at = excluded.updated_at`
+				)
+					.bind(target.id, floor.toISOString(), syncedAt)
+					.run();
+			}
 
 			for (const e of events) {
 				await c.env.DB.prepare(
@@ -320,6 +356,59 @@ connections.post('/google/calendar/refresh', async (c) => {
 						at
 					)
 					.run();
+				/**
+				 * The cancellation and the answer, in the side table.
+				 *
+				 * `calendar_events` is on the rehearsal freeze list, so these two
+				 * facts live beside it rather than on it. Written every time, so an
+				 * event that is un-cancelled in Google clears here too.
+				 */
+				const eventRow = await c.env.DB.prepare(
+					'SELECT id FROM calendar_events WHERE connection_id = ? AND provider_event_id = ?'
+				)
+					.bind(connectionId, e.provider_event_id)
+					.first<{ id: string }>();
+
+				if (eventRow) {
+					await c.env.DB.prepare(
+						`INSERT INTO calendar_event_state (event_id, cancelled_at, own_response, updated_at)
+             VALUES (?1, ?2, ?3, ?4)
+             ON CONFLICT(event_id) DO UPDATE SET
+               cancelled_at = excluded.cancelled_at,
+               own_response = excluded.own_response,
+               updated_at = excluded.updated_at`
+					)
+						.bind(eventRow.id, e.cancelled ? nowUtc() : null, e.own_response, nowUtc())
+						.run();
+
+					// Replaced rather than merged: an attendee removed from the
+					// invitation must leave, and a diff would keep them.
+					await c.env.DB.prepare('DELETE FROM calendar_event_attendees WHERE event_id = ?')
+						.bind(eventRow.id)
+						.run();
+
+					for (const a of e.attendees) {
+						if (!a.email && !a.display_name) continue;
+						await c.env.DB.prepare(
+							`INSERT INTO calendar_event_attendees
+               (id, event_id, email, display_name, response_status, is_organizer, is_self, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT DO NOTHING`
+						)
+							.bind(
+								crypto.randomUUID(),
+								eventRow.id,
+								a.email,
+								a.display_name,
+								a.response_status,
+								a.is_organizer ? 1 : 0,
+								a.is_self ? 1 : 0,
+								nowUtc()
+							)
+							.run();
+					}
+				}
+
 				fetched += 1;
 			}
 
@@ -359,10 +448,28 @@ connections.get('/google/calendar', async (c) => {
 	// D110 was wrong, and here it would be wrong on the screen Paul plans from.
 	const scope = await resolveScope(c.env.DB, c.req.query('account'));
 	const days = Math.min(Math.max(Number(c.req.query('days') ?? 7), 1), 60);
-	const until = new Date(Date.now() + days * 86_400_000).toISOString();
+
+	/**
+	 * The window, bounded at both ends.
+	 *
+	 * The read had no lower bound, so it returned every past event ever stored
+	 * while the writer never refreshed them: the further back you looked, the
+	 * staler it got, silently. A view asks for the range it means to draw.
+	 */
+	const fromParam = c.req.query('from');
+	const toParam = c.req.query('to');
+	const since = fromParam ?? new Date(Date.now() - 86_400_000).toISOString();
+	const until = toParam ?? new Date(Date.now() + days * 86_400_000).toISOString();
+
+	// A cancelled meeting is kept as a record and excluded from the view, unless
+	// the caller asks to see what was called off.
+	const includeCancelled = c.req.query('include_cancelled') === 'true';
 
 	const { results } = await c.env.DB.prepare(
 		`SELECT e.*, m.title AS meeting_title,
+        st.cancelled_at, st.own_response,
+        cal.summary AS calendar_name, cal.background_color AS calendar_color,
+        (SELECT COUNT(*) FROM calendar_event_attendees a WHERE a.event_id = e.id) AS attendees_known,
         cal.summary AS calendar_name,
         conn.account_email AS account_email,
         e.connection_id AS account_id
@@ -370,10 +477,14 @@ connections.get('/google/calendar', async (c) => {
      LEFT JOIN meetings m ON m.id = e.meeting_id
      LEFT JOIN calendars cal ON cal.id = e.calendar_id
      LEFT JOIN connections conn ON conn.id = e.connection_id
-     WHERE e.connection_id IN (${scopePlaceholders(scope)}) AND e.starts_at <= ?
+     LEFT JOIN calendar_event_state st ON st.event_id = e.id
+     WHERE e.connection_id IN (${scopePlaceholders(scope)})
+       AND e.starts_at <= ?
+       AND (e.ends_at IS NULL OR e.ends_at >= ? OR e.starts_at >= ?)
+       ${includeCancelled ? '' : 'AND st.cancelled_at IS NULL'}
      ORDER BY e.starts_at ASC`
 	)
-		.bind(...scope.ids, until)
+		.bind(...scope.ids, until, since, since)
 		.all();
 
 	const record =
@@ -397,6 +508,47 @@ connections.get('/google/calendar', async (c) => {
  * off, because a list that switches itself on would quietly start reading
  * somebody else's diary.
  */
+
+/**
+ * One event, with the people on it.
+ *
+ * Ownership is asserted rather than filtered: asking for an event belonging to
+ * another account is refused, not answered with nothing. Two different
+ * promises, and the second is the one segregation needs. D108.
+ */
+connections.get('/google/calendar/events/:id', async (c) => {
+	const account = await resolveAccount(c.env.DB, c.req.query('account'));
+
+	const event = await c.env.DB.prepare(
+		`SELECT e.*, st.cancelled_at, st.own_response,
+        cal.summary AS calendar_name, cal.background_color AS calendar_color,
+        conn.account_email AS account_email,
+        m.title AS meeting_title
+     FROM calendar_events e
+     LEFT JOIN calendar_event_state st ON st.event_id = e.id
+     LEFT JOIN calendars cal ON cal.id = e.calendar_id
+     LEFT JOIN connections conn ON conn.id = e.connection_id
+     LEFT JOIN meetings m ON m.id = e.meeting_id
+     WHERE e.id = ?`
+	)
+		.bind(c.req.param('id'))
+		.first<{ connection_id: string }>();
+
+	if (!event || event.connection_id !== account.id) {
+		throw new ApiError(404, 'No event with that id in this calendar.');
+	}
+
+	const { results } = await c.env.DB.prepare(
+		`SELECT email, display_name, response_status, is_organizer, is_self
+     FROM calendar_event_attendees WHERE event_id = ?
+     ORDER BY is_organizer DESC, is_self DESC, COALESCE(display_name, email)`
+	)
+		.bind(c.req.param('id'))
+		.all();
+
+	return c.json({ event, attendees: results ?? [] });
+});
+
 connections.post('/google/calendars/refresh', async (c) => {
 	const { clientId, clientSecret } = requireConfig(c.env);
 	const account = await resolveAccount(c.env.DB, c.req.query('account'));
