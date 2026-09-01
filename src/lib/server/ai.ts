@@ -125,7 +125,7 @@ export async function summariseTranscript(
 	apiKey: string,
 	transcript: string,
 	meetingTitle: string
-): Promise<{ summary: string; model: string }> {
+): Promise<{ summary: string; model: string; usage: Usage }> {
 	try {
 		const message = await client(apiKey).messages.create({
 			model: MODEL,
@@ -143,7 +143,7 @@ export async function summariseTranscript(
 		// Enforced, not requested. See house-style.ts and F2.
 		const summary = enforceHouseStyle(textOf(message));
 		if (!summary) throw new AiError(502, 'Claude returned an empty summary.');
-		return { summary, model: message.model };
+		return { summary, model: message.model, usage: usageOf(message) };
 	} catch (err) {
 		if (err instanceof AiError) throw err;
 		throw toAiError(err);
@@ -240,7 +240,7 @@ export async function extractActionItems(
 	transcript: string,
 	meetingTitle: string,
 	meetingDate: string
-): Promise<{ items: ExtractedItem[]; model: string }> {
+): Promise<{ items: ExtractedItem[]; model: string; usage: Usage }> {
 	try {
 		const message = await client(apiKey).messages.create({
 			model: MODEL,
@@ -327,7 +327,7 @@ export async function extractActionItems(
 			});
 		}
 
-		return { items, model: message.model };
+		return { items, model: message.model, usage: usageOf(message) };
 	} catch (err) {
 		if (err instanceof AiError) throw err;
 		throw toAiError(err);
@@ -376,7 +376,7 @@ export async function draftFromTemplate(
 		situation: string;
 		recipient?: string;
 	}
-): Promise<{ draft: string; model: string }> {
+): Promise<{ draft: string; model: string; usage: Usage }> {
 	try {
 		const message = await client(apiKey).messages.create({
 			model: MODEL,
@@ -410,7 +410,7 @@ ${input.situation}`
 		assertUsable(message);
 		const draft = enforceHouseStyle(textOf(message));
 		if (!draft) throw new AiError(502, 'Claude returned an empty draft.');
-		return { draft, model: message.model };
+		return { draft, model: message.model, usage: usageOf(message) };
 	} catch (err) {
 		if (err instanceof AiError) throw err;
 		throw toAiError(err);

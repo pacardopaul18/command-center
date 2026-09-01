@@ -10,6 +10,8 @@ import {
 	extractCommitments
 } from './ai';
 import type { Usage } from './ai';
+import { checkAiBudget } from './ai-budget';
+import { recordUsage, type UsageKind } from './ai-usage';
 
 /**
  * The context engine's rule-derived half.
@@ -360,7 +362,15 @@ export async function runContextPass(
 	env: ContextEnv,
 	connectionId: string,
 	accountEmail: string | null,
-	maxCalls = 60
+	maxCalls = 60,
+	/**
+	 * The named backfill run this pass belongs to, when it belongs to one.
+	 *
+	 * A corpus pass over existing mail is exactly what a backfill allowance is
+	 * for, so the E4 pass names its run and draws on that rather than on the
+	 * month.
+	 */
+	runName: string | null = null
 ): Promise<PassOutcome> {
 	const apiKey = env.ANTHROPIC_API_KEY;
 	if (!apiKey) throw new Error('No AI key is configured.');
@@ -378,11 +388,36 @@ export async function runContextPass(
 		stopped_early: null
 	};
 
-	const spend = (usage: Usage) => {
+	/**
+	 * Counts the call, and records it on the meter.
+	 *
+	 * This pass counted its own tokens into the outcome and wrote nothing to
+	 * `ai_usage`, which meant the most expensive pass in the app was invisible
+	 * to the spend meter and therefore to the ceiling that reads it. A stop that
+	 * cannot see a cost cannot stop it.
+	 *
+	 * Not fatal on a meter failure, the same rule the recorder already keeps: a
+	 * failed write must not lose the answer that was already paid for.
+	 */
+	const spend = async (kind: UsageKind, usage: Usage, threadId: string | null) => {
 		out.calls += 1;
 		out.input_tokens += usage.input_tokens;
 		out.output_tokens += usage.output_tokens;
+		await recordUsage(env.DB, kind, usage, threadId, connectionId, runName);
 	};
+
+	/**
+	 * The spend stop, before any call is made.
+	 *
+	 * Returned through `stopped_early`, which is what that field is for: a pass
+	 * refused on budget and a pass with nothing eligible both return zeros, and
+	 * only the reason separates them. D138.
+	 */
+	const verdict = await checkAiBudget(env.DB, { run: runName });
+	if (!verdict.ok) {
+		out.stopped_early = verdict.reason;
+		return out;
+	}
 
 	const transient = (err: unknown) =>
 		err instanceof AiError && (err.status === 429 || err.status >= 500);
@@ -423,7 +458,7 @@ export async function runContextPass(
 		} else {
 			try {
 				const built = await buildVoiceProfile(apiKey, samples);
-				spend(built.usage);
+				await spend('summary', built.usage, null);
 				const at = nowUtc();
 				await env.DB.prepare(
 					`INSERT INTO voice_profiles
@@ -495,7 +530,7 @@ export async function runContextPass(
 
 		try {
 			const digest = await buildThreadDigest(apiKey, subject, bodies);
-			spend(digest.usage);
+			await spend('summary', digest.usage, thread.id);
 			await env.DB.prepare(
 				`INSERT INTO thread_digests
            (id, connection_id, thread_id, summary, decisions, open_asks,
@@ -531,7 +566,7 @@ export async function runContextPass(
 			}
 
 			const found = await extractCommitments(apiKey, subject, bodies);
-			spend(found.usage);
+			await spend('summary', found.usage, thread.id);
 			await record(env.DB, connectionId, 'summary', found.usage, thread.id);
 
 			// Replaced rather than appended: a re-read of the same thread should
@@ -635,7 +670,7 @@ export async function runContextPass(
 
 		try {
 			const built = await buildContactProfile(apiKey, contact.email, bodies.slice(0, 12));
-			spend(built.usage);
+			await spend('summary', built.usage, null);
 			await env.DB.prepare(
 				`INSERT INTO contact_profiles
            (id, connection_id, mail_contact_id, relationship, usual_topics,

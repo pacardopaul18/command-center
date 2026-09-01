@@ -16,6 +16,9 @@ import { draftReply } from '../ai';
 import { recordUsage } from '../ai-usage';
 import { runContextPass, seedContacts } from '../context';
 import { stripHtml } from '../google';
+import { checkAiBudget } from '../ai-budget';
+import { monthToDateCents } from '../ai-budget';
+import { AI_CEILINGS_USD } from '../../ai-budget';
 
 /**
  * Gmail ingestion, browsing, and the state of the ingestion itself.
@@ -808,6 +811,18 @@ async function clientContext(db: D1Database, clientId: string | null): Promise<s
  * make the app a thing to review rather than a thing that helps.
  */
 email.post('/threads/:id/draft', async (c) => {
+	/**
+	 * The spend stop, first, before anything else this route does.
+	 *
+	 * First on purpose. It is a gate on the whole operation, it costs one query,
+	 * and putting it after a lookup means a reader hits a downstream detail,
+	 * fixes it, and only then meets the ceiling that was always going to refuse
+	 * them. A refusal is a 402 carrying both numbers, never a 500 and never a
+	 * silent success. D138.
+	 */
+	const verdict = await checkAiBudget(c.env.DB);
+	if (!verdict.ok) throw new ApiError(402, verdict.reason);
+
 	const account = await resolveAccount(c.env.DB, c.req.query('account'));
 	await assertThreadOwned(c.env.DB, c.req.param('id'), account.id);
 
@@ -1096,6 +1111,19 @@ email.get('/context/spend', async (c) => {
 		.bind(new Date(Date.now() - 30 * 86_400_000).toISOString())
 		.first<Record<string, number | null>>();
 
+	/**
+	 * Read through the same function the stop calls, not a second query that
+	 * happens to look similar.
+	 */
+	const monthCents = await monthToDateCents(c.env.DB);
+
+	const { results: runRows } = await c.env.DB.prepare(
+		`SELECT r.name, r.allowance_cents, r.started_at, r.closed_at,
+        COALESCE((SELECT SUM(u.cost_cents) FROM ai_run_usage u WHERE u.run_id = r.id), 0)
+          AS spent_cents
+     FROM ai_budget_runs r ORDER BY r.started_at DESC`
+	).all();
+
 	return c.json({
 		by_account: results ?? [],
 		last_30_days: {
@@ -1103,13 +1131,29 @@ email.get('/context/spend', async (c) => {
 			input_tokens: Number(month?.input_tokens ?? 0),
 			output_tokens: Number(month?.output_tokens ?? 0)
 		},
-		// The default ceiling, until Paul names his own. Stated so the number on
-		// screen is the number being kept to.
-		ceiling_usd_per_month: 30,
+		/**
+		 * The ceilings, read from the same constant the stop reads.
+		 *
+		 * This used to be a literal 30 that nothing enforced, beside a check that
+		 * did not exist. A number on a screen and a number in a control that come
+		 * from different places are two numbers, and they disagree the first time
+		 * one is edited.
+		 */
+		ceiling_usd_per_month: AI_CEILINGS_USD.monthly,
+		backfill_allowance_usd: AI_CEILINGS_USD.backfill,
+
+		/**
+		 * What has actually been spent this month, against that ceiling, from the
+		 * same function the stop calls. Usage attributed to a backfill run is
+		 * excluded here exactly as it is excluded there.
+		 */
+		month_to_date_usd: Number((monthCents / 100).toFixed(4)),
+		runs: runRows ?? [],
+
 		note:
-			'Token counts are what the API reported. No price is stored here, because a ' +
-			'hardcoded rate goes stale quietly and a meter that is confidently wrong about ' +
-			'money is worse than one that reports tokens.'
+			'Token counts are what the API reported. The month-to-date figure and the ' +
+			'ceilings come from the same code the spend stop uses, so the meter and the ' +
+			'control cannot disagree.'
 	});
 });
 

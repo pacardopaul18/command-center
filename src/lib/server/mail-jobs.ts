@@ -12,6 +12,7 @@ import { AiError, summariseThread, triageThread } from './ai';
 import { listAccounts } from './accounts';
 import { recordUsage } from './ai-usage';
 import type { Usage } from './ai';
+import { checkAiBudget } from './ai-budget';
 
 /**
  * Mail work, as jobs that can be run by anything.
@@ -506,7 +507,15 @@ export interface TriageOutcome {
 export async function triageBatch(
 	env: MailEnv,
 	accountId: string,
-	budgetUnits: number
+	budgetUnits: number,
+	/**
+	 * The named backfill run this batch belongs to, when it belongs to one.
+	 *
+	 * Ordinary cron triage passes nothing and draws on the monthly ceiling. A
+	 * corpus pass names its run and draws on that run's allowance instead, so
+	 * one cannot eat the other.
+	 */
+	runName: string | null = null
 ): Promise<TriageOutcome> {
 	const budget = new Budget(budgetUnits);
 	const apiKey = env.ANTHROPIC_API_KEY;
@@ -514,6 +523,30 @@ export async function triageBatch(
 
 	const conn = await connectionRow(env.DB, accountId);
 	if (!conn) throw new Error('That account is not connected.');
+
+	/**
+	 * The spend stop, checked before any thread is read.
+	 *
+	 * Before, not after: a check that runs once the call has returned has
+	 * already spent the money. Checked once per batch rather than per thread,
+	 * because a batch is at most fourteen calls and re-reading the month for
+	 * each would cost more queries than it could ever save in cents.
+	 *
+	 * The refusal comes back as `stopped`, carrying the reason, which is what
+	 * that field exists for. A run that was refused and a run with nothing to do
+	 * both return zeros, and only the reason tells them apart. D138.
+	 */
+	const budgetVerdict = await checkAiBudget(env.DB, { run: runName });
+	if (!budgetVerdict.ok) {
+		return {
+			summarised: 0,
+			skipped: 0,
+			failed: 0,
+			remaining: 0,
+			spent: 0,
+			stopped: budgetVerdict.reason
+		};
+	}
 
 	/**
 	 * Threads whose newest message has not been triaged.
@@ -637,7 +670,7 @@ export async function triageBatch(
 						thread.id
 					)
 					.run();
-				await recordUsage(env.DB, 'triage', triaged.usage, thread.id, accountId);
+				await recordUsage(env.DB, 'triage', triaged.usage, thread.id, accountId, runName);
 				budget.spend(2);
 
 				// A thread only just judged urgent should get its summary in the same
@@ -659,7 +692,7 @@ export async function triageBatch(
 							thread.id
 						)
 						.run();
-					await recordUsage(env.DB, 'summary', summarised.usage, thread.id, accountId);
+					await recordUsage(env.DB, 'summary', summarised.usage, thread.id, accountId, runName);
 					budget.spend(COST_PER_THREAD);
 				}
 			} else if (needsSummary) {
@@ -672,7 +705,7 @@ export async function triageBatch(
 				)
 					.bind(summarised.summary, summarised.model, at, thread.newest_message_id, at, thread.id)
 					.run();
-				await recordUsage(env.DB, 'summary', summarised.usage, thread.id, accountId);
+				await recordUsage(env.DB, 'summary', summarised.usage, thread.id, accountId, runName);
 				budget.spend(COST_PER_THREAD);
 			}
 
