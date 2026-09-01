@@ -2,6 +2,7 @@ import type { D1Database } from '@cloudflare/workers-types';
 import { nowUtc } from './dates';
 import { depthOf, extensionOf, nameOf, normalisePath, parentOf } from '../dropbox-paths';
 import { normaliseName } from '../csv';
+import { readOverrides } from './crosswalk';
 
 /**
  * The Dropbox mirror: a metadata copy of the client folders.
@@ -205,6 +206,7 @@ export async function rollUpFolders(db: D1Database): Promise<RollUp> {
 
 export interface FolderMatch {
 	candidates: number;
+	by_manual: number;
 	by_dropbox_name: number;
 	by_normalised_name: number;
 	unassigned: number;
@@ -219,8 +221,10 @@ export interface FolderMatch {
  * unassigned bucket exists to prevent.
  *
  * The gid rule does not apply here, because a folder has no Asana gid. So the
- * precedence starts at rule two: exact dropbox_name, then normalised name, then
- * unassigned.
+ * precedence starts at the manual override, then exact dropbox_name, then
+ * normalised name, then unassigned. An override outranks both name rules, for
+ * the same reason it does on the Asana side: a name match is a guess that
+ * happened to be good, and Paul's answer is not a guess.
  */
 export async function matchFoldersToClients(
 	db: D1Database,
@@ -254,23 +258,29 @@ export async function matchFoldersToClients(
 		}
 	}
 
+	const overrides = await readOverrides(db, 'dropbox_folder');
+
 	const report: FolderMatch = {
 		candidates: folders?.length ?? 0,
+		by_manual: 0,
 		by_dropbox_name: 0,
 		by_normalised_name: 0,
 		unassigned: 0
 	};
 
 	for (const folder of folders ?? []) {
-		if (folder.client_match === 'manual') continue;
-
-		const exact = byDropbox.get(folder.name);
-		const loose = exact ? undefined : byNormalised.get(normaliseName(folder.name));
+		const manual = overrides.get(folder.path);
+		const exact = manual ? undefined : byDropbox.get(folder.name);
+		const loose = manual || exact ? undefined : byNormalised.get(normaliseName(folder.name));
 
 		let clientId: string | null = null;
-		let how: 'crosswalk' | 'exact_name' | null = null;
+		let how: 'crosswalk' | 'exact_name' | 'manual' | null = null;
 
-		if (exact) {
+		if (manual) {
+			clientId = manual;
+			how = 'manual';
+			report.by_manual += 1;
+		} else if (exact) {
 			clientId = exact;
 			how = 'crosswalk';
 			report.by_dropbox_name += 1;

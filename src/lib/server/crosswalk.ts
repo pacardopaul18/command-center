@@ -37,12 +37,18 @@ async function rowKey(...parts: (string | null)[]): Promise<string> {
  *
  * PRECEDENCE, in order, stopping at the first that fires:
  *
- *   1. asana_gid exact       authoritative, never overridden by a name
- *   2. dropbox_name exact    for folders
- *   3. normalised name       case, punctuation and legal suffix ignored
- *   4. unassigned            visible, resolvable by Paul, never guessed
+ *   1. asana_gid exact       authoritative, never overridden by anything
+ *   2. manual override       Paul's answer to an unassigned row
+ *   3. dropbox_name exact    for folders
+ *   4. normalised name       case, punctuation and legal suffix ignored
+ *   5. unassigned            visible, resolvable by Paul, never guessed
  *
- * The fourth is a real answer and not a failure. A project filed under the
+ * A manual override outranks name matching and does not outrank a gid. The gid
+ * is the authoritative identity of a project; a person choosing from a list is
+ * answering a harder question with less information, and where the two disagree
+ * the gid is right and the override was made against a stale screen.
+ *
+ * The fifth is a real answer and not a failure. A project filed under the
  * wrong client is worse than one filed under none: the wrong filing is
  * invisible and gets believed, while an unassigned project is a question on a
  * screen that somebody answers once.
@@ -306,9 +312,22 @@ export async function loadCrosswalk(
 export interface MatchReport {
 	projects: number;
 	by_gid: number;
+	by_manual: number;
 	by_dropbox_name: number;
 	by_normalised_name: number;
 	unassigned: number;
+}
+
+/** Paul's answers, by the gid or path they answer about. */
+export async function readOverrides(
+	db: D1Database,
+	kind: 'asana_project' | 'dropbox_folder'
+): Promise<Map<string, string>> {
+	const { results } = await db
+		.prepare('SELECT subject_key, client_id FROM client_overrides WHERE kind = ?')
+		.bind(kind)
+		.all<{ subject_key: string; client_id: string }>();
+	return new Map((results ?? []).map((row) => [row.subject_key, row.client_id]));
 }
 
 /**
@@ -316,8 +335,10 @@ export interface MatchReport {
  *
  * Rewrites the answer every time rather than only filling blanks, because the
  * crosswalk is the source: a row Paul corrected in the file must win over what
- * a previous run decided. A `manual` match is the one exception, since that is
- * already Paul's answer and re-deriving it would throw away the correction.
+ * a previous run decided. Manual answers are not an exception to that and are
+ * not skipped: they are read from `client_overrides` and applied in their place
+ * in the order, so the precedence is decided in one place rather than half here
+ * and half by whichever rows happened to be left alone.
  */
 export async function matchProjectsToClients(
 	db: D1Database,
@@ -358,29 +379,37 @@ export async function matchProjectsToClients(
 		}
 	}
 
+	const overrides = await readOverrides(db, 'asana_project');
+
 	const report: MatchReport = {
 		projects: results?.length ?? 0,
 		by_gid: 0,
+		by_manual: 0,
 		by_dropbox_name: 0,
 		by_normalised_name: 0,
 		unassigned: 0
 	};
 
 	for (const project of results ?? []) {
-		if (project.client_match === 'manual') continue;
-
 		let clientId: string | null = null;
-		let how: 'crosswalk' | 'exact_name' | null = null;
+		let how: 'crosswalk' | 'exact_name' | 'manual' | null = null;
 
 		const gidHit = byGid.get(project.gid);
-		const dropboxHit = gidHit ? undefined : byDropbox.get(project.name);
+		const manualHit = gidHit ? undefined : overrides.get(project.gid);
+		const dropboxHit = gidHit || manualHit ? undefined : byDropbox.get(project.name);
 		const normalisedHit =
-			gidHit || dropboxHit ? undefined : byNormalised.get(normaliseName(project.name));
+			gidHit || manualHit || dropboxHit
+				? undefined
+				: byNormalised.get(normaliseName(project.name));
 
 		if (gidHit) {
 			clientId = gidHit;
 			how = 'crosswalk';
 			report.by_gid += 1;
+		} else if (manualHit) {
+			clientId = manualHit;
+			how = 'manual';
+			report.by_manual += 1;
 		} else if (dropboxHit) {
 			clientId = dropboxHit;
 			how = 'exact_name';

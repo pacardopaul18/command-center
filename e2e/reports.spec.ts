@@ -213,7 +213,7 @@ test.describe('accessibility basics survive volume', () => {
 		expect(await th.evaluate((e) => getComputedStyle(e).borderBottomWidth)).toBe('2px');
 	});
 
-	for (const path of ['/', '/actions?view=all', '/invoices', '/clients', '/meetings', '/calendar', '/reports/slipping']) {
+	for (const path of ['/', '/actions?view=all', '/invoices', '/clients', '/clients/unassigned', '/meetings', '/calendar', '/reports/slipping']) {
 		test(`${path} never scrolls sideways at 412px`, async ({ page }) => {
 			await page.setViewportSize({ width: 412, height: 900 });
 			await page.goto(path);
@@ -269,12 +269,40 @@ test.describe('pages use the width they are read at', () => {
 		'/sops',
 		'/templates',
 		'/clients',
+		'/clients/unassigned',
 		'/mail',
 		'/invoices',
 		'/ledger',
 		'/reports',
 		'/settings'
 	];
+
+	/*
+	 * A page that throws while hydrating is a page that half works.
+	 *
+	 * Found on the unassigned screen: a `bind:value` on a key that did not exist
+	 * yet threw `props_invalid_value`, hydration stopped where it was, and the
+	 * result was a page the server had rendered correctly with one element
+	 * quietly missing from it. Nothing on screen said anything had failed, no
+	 * request errored, and every assertion anybody had written still passed.
+	 *
+	 * The console is the only place that failure is visible, so the suite reads
+	 * it. Cheap, and it covers the whole class rather than the one instance.
+	 */
+	for (const path of WIDE) {
+		test(`${path} hydrates without throwing`, async ({ page }) => {
+			const thrown: string[] = [];
+			page.on('pageerror', (error) => thrown.push(error.message));
+
+			await page.goto(path);
+			await page.waitForLoadState('networkidle');
+			// Hydration errors surface just after the page settles, not during
+			// the navigation itself.
+			await page.waitForTimeout(300);
+
+			expect(thrown, `${path} threw while hydrating`).toEqual([]);
+		});
+	}
 
 	for (const path of WIDE) {
 		test(`${path} reaches the right edge at 1920px`, async ({ page }) => {

@@ -4908,3 +4908,111 @@ machine, Node picks one per request without falling back, and the dev server
 binds only one of them. Roughly half the calls were refused with a bare
 `fetch failed`. Both sides are pinned to one loopback address now. A name that
 resolves to something unbound half the time is not a convenience.
+
+### D180: a safety test that depends on an absent credential is asserting the absence
+
+The test claiming a seeded `v-` row could not be pushed to a real Asana
+workspace was passing because there was no Asana token locally. Every push
+stopped at the missing-token check, so the guard the test named had never once
+run. Configuring a token to build the mirror made it fail, which is the only
+reason anybody found out.
+
+The rule, and it applies to every safety test in this repo: **write it so it
+fails when the credential is present and the guard is removed.** A test that
+green-lights on "the thing could not have happened anyway" is asserting the
+state of the environment, not the behaviour of the code, and the environment is
+exactly what changes.
+
+Concretely that means three things. Assert the reason, not just that something
+went wrong: a 503 for a missing token and a 403 for a synthetic row are
+different facts and only one of them is the guard. Put the guard before the
+checks that could shadow it, so its refusal does not depend on which other
+things happen to be unconfigured. And when a safety property is claimed, check
+that the claim can fail.
+
+Same class as D80. Zero impact here, because no workspace had been chosen
+either. That is not mitigation, it is a second accident.
+
+### D181: the manual override is its own table, and ranks below a gid
+
+Paul's answer to an unassigned row is recorded in `client_overrides`, keyed on
+the Asana gid or the Dropbox path it answers about.
+
+Not written into `client_crosswalk`, although that is where the instruction
+pointed. The crosswalk is a faithful copy of a file and every load rewrites it
+from what the file says; a manual row has no line in the file to be rewritten
+from, so the next load would delete exactly the corrections that cost the most
+to make. An override has to outlive a re-load or it is not an override. The
+provenance the instruction asked for is still recorded and still visible:
+`client_match` reads `manual` on the row it decided.
+
+The full order, as ruled:
+
+1. `asana_gid` exact
+2. manual override
+3. `dropbox_name` exact
+4. normalised name
+5. unassigned
+
+A manual override outranks name matching because a name match is a guess that
+happened to be good. It does not outrank a gid, because the gid is the
+authoritative identity of a project and a person choosing from a list is
+answering a harder question with less information; where the two disagree the
+gid is right and the override was made against a stale screen.
+
+The first version skipped rows already marked `manual` instead of ranking them,
+which left the precedence half in the matcher and half in whichever rows
+happened to be left alone, and meant a gid could never overtake a stale
+override. The order now lives in one chain of conditions, and a test asserts the
+branches are in it.
+
+An override can be removed. A judgement that cannot be revised without editing
+the database by hand is the thing this whole design exists to avoid.
+
+### D182: the roster is a status overlay and never files anything
+
+`macgray_client_roster.csv` is a second file on a different shape: 36 rows of
+name, status, shared mount, last activity, and the evidence behind the call. It
+loads into its own table through its own route.
+
+It is not a matching authority. The crosswalk decides which client a project
+belongs to; the roster says what state that client is in. A single loader that
+accepted either file and worked out which it had would eventually load one as
+the other, so the crosswalk loader refuses a roster by name, which is what it
+did the first time it was handed one.
+
+The status is stored as the file writes it and is not folded into
+`clients.status`, which allows only `active` and `archived`. Three of the
+roster's five values are Paul saying "this needs a second look", which neither
+of the app's two states can express, and collapsing it would destroy the only
+thing the row was written to say. Same reasoning as storing Asana's sections
+verbatim: a translation written now is a guess that afterwards looks like a
+fact.
+
+`evidence` is free text and is kept whole. It is the sentence that justifies the
+status, and a status without its reason is an opinion.
+
+### D183: a page that throws while hydrating is a page that half works
+
+The unassigned screen bound a select to a key that did not exist yet. Svelte
+threw `props_invalid_value`, hydration stopped where it was, and what came out
+was a page the server had rendered correctly with one element quietly missing
+from it: sixteen archived chips server-side, fifteen on screen.
+
+Nothing said anything had failed. No request errored, the layout was right, the
+counts were right, and every assertion anybody had written still passed. The
+only trace was one line in the browser console, and D128 caught it only because
+rendered verification means actually looking.
+
+Two things follow.
+
+The suite now reads the console. Every route in the width guard is loaded and
+asserted to throw nothing while hydrating. Cheap, and it covers the class rather
+than the instance.
+
+And the select no longer binds. Seeding the keys would have fixed this one
+occurrence; not binding removes the hazard, because a select is a control whose
+value can simply be read when it changes. This is the third time
+`props_invalid_value` has cost real time in this repo, after QuickAdd and
+Templates, and the pattern in all three was `bind:` into a record that did not
+have the key yet.

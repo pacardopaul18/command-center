@@ -28,9 +28,20 @@ const port = flag('port', '5174');
 const workspace = flag('workspace', '');
 const text = readFileSync(file, 'utf8');
 
+/*
+ * Two files, two endpoints.
+ *
+ * The roster is a status overlay on a different shape and the crosswalk loader
+ * refuses it by name, which is right: a loader that accepted either and guessed
+ * which it had would eventually load one as the other. Saying which is being
+ * sent is one word at the call site and removes the guess entirely.
+ */
+const roster = args.includes('--roster');
+const path = roster ? '/api/crosswalk/roster' : '/api/crosswalk';
+
 const url =
-	`http://${flag('host', '127.0.0.1')}:${port}/api/crosswalk?source=${encodeURIComponent(basename(file))}` +
-	(workspace ? `&workspace=${encodeURIComponent(workspace)}` : '');
+	`http://${flag('host', '127.0.0.1')}:${port}${path}?source=${encodeURIComponent(basename(file))}` +
+	(workspace && !roster ? `&workspace=${encodeURIComponent(workspace)}` : '');
 
 const res = await fetch(url, {
 	method: 'POST',
@@ -47,4 +58,6 @@ if (!res.ok) {
 // Counts, so a truncated or stale file announces itself rather than looking
 // like a smaller client list.
 console.log(`load   ${JSON.stringify(body.load)}`);
-console.log(`match  ${body.matched ? JSON.stringify(body.match) : body.not_matched_because}`);
+if (!roster) {
+	console.log(`match  ${body.matched ? JSON.stringify(body.match) : body.not_matched_because}`);
+}

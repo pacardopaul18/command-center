@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import type { ApiEnv } from './env';
 import { ApiError } from './validate';
 import { loadCrosswalk, matchProjectsToClients } from '../crosswalk';
+import { loadRoster } from '../roster';
 import { readSettings } from '../asana';
 
 /**
@@ -86,4 +87,44 @@ crosswalk.get('/', async (c) => {
 	).first();
 
 	return c.json({ last_load: last ?? null, crosswalk: rows, filing });
+});
+
+/**
+ * The roster: a status overlay on the clients the crosswalk already named.
+ *
+ * A separate route from the crosswalk because it is a separate file with a
+ * different shape and a different job. Loading it does not re-file anything:
+ * it says what state a client is in, not which client a project belongs to, and
+ * a route that quietly did both would make the two indistinguishable the first
+ * time they disagreed.
+ */
+crosswalk.post('/roster', async (c) => {
+	const source = c.req.query('source') ?? 'roster upload';
+	const text = await c.req.text();
+
+	if (text.length > MAX_BYTES) {
+		throw new ApiError(413, 'That roster file is larger than 2 MB, which it should not be.');
+	}
+	if (text.trim() === '') throw new ApiError(400, 'The roster file was empty.');
+
+	try {
+		return c.json({ load: await loadRoster(c.env.DB, source, text) });
+	} catch (err) {
+		throw new ApiError(400, err instanceof Error ? err.message : 'The roster file could not be read.');
+	}
+});
+
+/** What the roster says, by status. Counts, and the unmatched named as a count. */
+crosswalk.get('/roster', async (c) => {
+	const last = await c.env.DB.prepare(
+		'SELECT * FROM client_roster_loads ORDER BY loaded_at DESC LIMIT 1'
+	).first();
+
+	const { results: byStatus } = await c.env.DB.prepare(
+		`SELECT COALESCE(status, '(none)') AS status, COUNT(*) AS rows,
+            SUM(CASE WHEN client_id IS NULL THEN 1 ELSE 0 END) AS unmatched
+     FROM client_roster GROUP BY status ORDER BY rows DESC`
+	).all();
+
+	return c.json({ last_load: last ?? null, by_status: byStatus ?? [] });
 });

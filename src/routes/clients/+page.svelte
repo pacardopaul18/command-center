@@ -101,7 +101,20 @@
 		<h1>Clients</h1>
 		<p class="sub">Who the work is for, and on what terms.</p>
 	</div>
-	<Button onclick={() => (showForm = !showForm)}>{showForm ? 'Cancel' : 'New client'}</Button>
+	<div class="head-actions">
+		<!--
+			Shown only when there is something to resolve. D27: an affordance that
+			leads to an empty screen is a promise the app cannot keep, and a
+			permanent link here would train Paul to ignore it on the day it
+			matters.
+		-->
+		{#if data.pending && data.pending.projects + data.pending.folders > 0}
+			<a class="pending" href="/clients/unassigned">
+				{data.pending.projects + data.pending.folders} unfiled
+			</a>
+		{/if}
+		<Button onclick={() => (showForm = !showForm)}>{showForm ? 'Cancel' : 'New client'}</Button>
+	</div>
 </header>
 
 <p class="status-line" role="status" aria-live="polite">{notice}</p>
@@ -269,6 +282,31 @@
 {/if}
 
 <style>
+	.head-actions {
+		display: flex;
+		gap: var(--space-3);
+		align-items: center;
+	}
+
+	.pending {
+		display: inline-flex;
+		align-items: center;
+		/* D22: 44px tap floor. */
+		min-height: 44px;
+		padding: 0 var(--space-4);
+		border-radius: var(--radius-2);
+		background: var(--gold-100);
+		color: var(--gold-600);
+		font-weight: 600;
+		font-size: 0.875rem;
+		text-decoration: none;
+		white-space: nowrap;
+	}
+
+	.pending:hover {
+		background: var(--gold-50);
+	}
+
 
 	.table-wrap {
 		margin-top: var(--space-3);
