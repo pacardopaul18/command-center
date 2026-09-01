@@ -375,8 +375,33 @@ Three entries carry the most weight for anyone touching this code next:
 - **D157**, the seed-guard property rule, because every future fixture stream
   will meet it.
 
+#### AMENDED 2026-09-02, after session 05
+
+A fourth entry joins the three above, and it outranks them.
+
+- **D193**, the wrong-scope guarantee family. Read this one first. It is the
+  generalisation of four separate findings, and its shape is the sentence to
+  carry: *something true was observed, and a different thing was concluded from
+  it.* A guard whose test could not fail; a safety test passing because the
+  credential was absent; a capability held back only by an unchosen setting; a
+  guarantee asserted in the process that asks rather than about the system that
+  answers. The correction is the same move every time, which is to assert the
+  property about the thing that would do the damage.
+
+  It ranks above D166 and D167 because those two each stop one class of defect,
+  and this one names the reasoning error that produced all four. Anybody about
+  to write a safety check should read it before writing the check.
+
+Also worth the detour: **D194**, on why the synthetic fixture is coverage rather
+than convenience, because it is the argument for a cost that otherwise looks
+like overhead.
+
+The reading order in the numbered list above still holds, with the decision
+range extended to **D108 through D194**.
+
 *Session 04 continued and closed at `main` after the layout fix. Nothing above
-alters `HANDOFF_02.md`.*
+alters `HANDOFF_02.md`. The amendment in this section was added by session 05
+and deletes nothing.*
 
 ---
 
