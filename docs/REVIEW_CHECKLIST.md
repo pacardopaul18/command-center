@@ -53,6 +53,15 @@ without a word, 253 tasks short.
 - A non-interactive runner exits non-zero when it did not finish.
 - A limit that fires is reported, not merely obeyed.
 
+**Two stops that are not the same stop.** D201. A per-call budget check and a
+pre-run projection are both correct and they protect different things. The
+per-call check evaluates before each call, so a run that would cost four times
+its allowance *begins*, spends the allowance, and stops. The projection is
+computed before the first call, so the same run never starts. When the question
+is "can this overspend", the answer is the first. When it is "will this fit",
+only the second answers, and reporting a projection alongside the charge is a
+receipt rather than a decision.
+
 ## 3. Can the test fail?
 
 **D80, D180.** A safety test that passes because the dangerous thing could not
@@ -124,6 +133,25 @@ half of the same sentence. The gate was right both times.
 - Confirm the branch: run the narrower check, read the actual failing test, look
   at the state the message describes.
 - A diagnosis that fits is not a diagnosis that was verified.
+
+**A worked example, because this one nearly went the other way.** Pillar 4 was
+ordered against real mail, and the question was whether the 21 threads in the
+local database were real. The check made was for the `v-` prefix that marks
+seeded rows. None of the threads had it.
+
+That check proved nothing. The `v-` prefix is the *volume seed's* convention and
+the mail fixture never used it, so its absence was evidence about the wrong
+fixture. What settled it was the account domain: both connected mailboxes were
+on `.invalid`, the TLD reserved for exactly this, and the mail was synthetic.
+
+The failure mode to recognise: **a check that would have passed either way.** Ask
+what the result would look like if the answer were the other one. If both
+answers produce the same observation, the check is not a check. Here, real mail
+and fixture mail both lack a `v-` prefix.
+
+Had it gone the other way, a pass over 19 synthetic threads would have produced
+counts, a spend line, and a report that looked exactly like the deliverable
+while being about nothing.
 
 This is a habit rather than a defect, which is why it is on a checklist rather
 than in a test. It costs one command to confirm and an hour to guess wrong.

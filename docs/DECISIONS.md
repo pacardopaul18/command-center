@@ -5506,3 +5506,47 @@ described as the provenance and it is, but provenance says where a claim came
 from and evidence is the thing somebody reads to decide whether it is true. A
 reviewer holding a four-paragraph email and a one-line claim was being asked to
 find the sentence themselves.
+
+### D203: a check that would have passed either way is not a check
+
+The near-miss behind D200, recorded because the reasoning generalises and the
+instance does not.
+
+The question was whether 21 threads in the local database were real mail. The
+check made was for the `v-` prefix that marks seeded rows, and none of the
+threads carried it. That looked conclusive and proved nothing: the `v-` prefix
+is the volume seed's convention, the mail fixture never used it, and the
+observation was evidence about a different fixture. Real mail and fixture mail
+both lack a `v-` prefix, so the check could not have come out any other way.
+
+What settled it was the account domain. Both connected mailboxes were on
+`.invalid`, the TLD reserved for exactly this purpose.
+
+The rule, and it is a question to ask rather than a thing to remember: **what
+would this observation look like if the answer were the other one?** If both
+answers produce the same result, the check is decoration. It is the same family
+as D180, where a safety test passed because the credential was absent, and D191,
+where a guarantee was asserted in the process that asks rather than about the
+system that answers. Each is a true observation supporting a conclusion it does
+not reach.
+
+Checklist item 8 now carries it as a worked example, because that item is about
+confirming which branch occurred and this is the case where the confirming step
+itself was the wrong instrument.
+
+### D204: connecting Paul's own mailbox locally is not Stage C
+
+Ruled, and worth separating clearly, because the two look similar and are not.
+
+Stage C is firm data on a hosted database: MacGray's client names, project data
+and file paths leaving this machine. That is the partner conversation, and it
+stays held.
+
+Connecting Paul's own Google account to the local real-data environment is his
+own mail, on his own machine, under read-only scopes already granted and already
+exercised on production. Nothing leaves anywhere. It is the corpus Pillar 4
+needs and it carries none of the question Stage C carries.
+
+The 775 threads already on production are also his, but reaching them means
+lifting Stage C, so they stay out of reach for a different reason than the one
+that applies to the mailbox.
