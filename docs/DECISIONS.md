@@ -4606,4 +4606,3 @@ and `voice` join the Thursday ALTER queue.
 
 Both are asserted now: the guarantee test walks every file that calls a function
 in `ai.ts` and requires it to call the stop and to record what it spent.
-</DOC
