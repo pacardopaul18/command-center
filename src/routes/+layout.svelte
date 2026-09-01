@@ -19,11 +19,34 @@
 	const bare = $derived(page.route.id?.endsWith('/print') ?? false);
 
 	/**
-	 * Mail is laid out as two columns against the full width, per the CR-1
-	 * design. Decided here from the route rather than by each page, so a page
-	 * cannot render in the wrong container by forgetting to say so.
+	 * Width is decided here, from the route, and the default is full width.
+	 *
+	 * D129 made full width an opt-in and this inverts it, which needs saying
+	 * plainly. The opt-in list was the thing that got forgotten: twelve pages
+	 * shipped centred inside a 1200px cap, on designs that are full width, and
+	 * every one of them was a page whose author would have had to remember to
+	 * join a list. A default that is right for the app cannot be forgotten by
+	 * the next page; a list can, and was.
+	 *
+	 * D129's principle stands and is why this is here rather than in each page:
+	 * the route decides, and the change is proved by measuring both kinds. What
+	 * changes is which way round the default sits, because almost every screen
+	 * in this app is a table or a two-column board, and the handful that are
+	 * prose are nameable.
+	 *
+	 * NARROW is for reading, not for tables. A procedure is a document somebody
+	 * reads start to finish, and prose measured at 1700px is bad typography
+	 * whatever the screen allows. Everything else earns the width: eight-column
+	 * tables, boards with a rail, grids of tiles.
+	 *
+	 * Print routes are not listed because they render without the shell at all.
 	 */
-	const wide = $derived(page.route.id?.startsWith('/mail') ?? false);
+	const NARROW_ROUTES = [
+		// One SOP page: markdown prose, read top to bottom.
+		'/sops/[id]'
+	];
+
+	const wide = $derived(!NARROW_ROUTES.includes(page.route.id ?? ''));
 
 	// One place decides the whole app is live. onMount runs after hydration, so
 	// anything gated on this cannot be touched during the window where a keypress
