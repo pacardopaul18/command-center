@@ -540,3 +540,49 @@ archived.
 3. **`docs/data/` stays gitignored.** Holding there by ruling.
 
 *Session 05, second half. Nothing above alters sections 1 to 12.*
+
+---
+
+## 14. The Asana pull is complete
+
+Finished `2026-09-01T16:23:10Z`, four hours fifty-three minutes after it
+started. Phase `done`, no error, cursor cleared.
+
+| | |
+|---|---|
+| workspace | 1, MacGray Consulting |
+| teams | 1 |
+| projects | 66, of which 24 archived |
+| sections | 281, verbatim |
+| tasks | 2,171 |
+| subtasks | 414 |
+| distinct assignees | 6 |
+| follower rows | 2,958 |
+| tags | 1 |
+| custom field values | 309, against 10 definitions |
+| attachments, metadata only | 66, across 48 tasks |
+| stories | 10,062 |
+
+Coverage checks. 2,584 of the 2,585 tasks carry at least one story, which is
+what a completed details walk looks like. There are no sub-subtasks, so nothing
+sits below the depth the pull reached. The crosswalk's own `asana_total_tasks`
+sums to 1,853 across the projects it names by gid and the mirror holds 1,858 in
+those same projects, two figures produced weeks apart by different tools.
+
+The second sweep found no tasks the first had not, so the phase moved to `done`
+rather than sweeping a third time. That is the D169 rule working: the first
+sweep had walked past 335 of 349 subtasks, and without the count comparison it
+would have reported done over a set it never finished.
+
+### Still open, unchanged
+
+1. **Nothing on remote.** Migrations 0032 to 0036 are local only. Stage C is
+   gated on Paul's findings and on a ruling about whether production carries
+   firm client data before the partner conversation.
+2. **16 Asana projects and 14 Dropbox client folders unassigned.** Every one of
+   the 16 is archived. Resolvable on `/clients/unassigned`.
+3. **`docs/data/` stays gitignored** by ruling.
+4. **Pushing to Asana is switched off** (D184) and stays off until Paul turns
+   it on.
+
+*Session 05. Nothing above alters sections 1 to 13.*
