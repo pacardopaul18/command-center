@@ -392,12 +392,27 @@ A fourth entry joins the three above, and it outranks them.
   and this one names the reasoning error that produced all four. Anybody about
   to write a safety check should read it before writing the check.
 
+A fifth joins it, and the two belong together.
+
+- **D203**, the discriminating-observation rule. Where D193 says *assert the
+  property about the thing that would do the damage*, D203 says *check that the
+  observation could have come out the other way*. A check for a `v-` prefix on
+  mail threads proved nothing, because the mail fixture never used that
+  convention and real mail and fixture mail both lack it. The question to ask,
+  before trusting any check: **what would this look like if the answer were the
+  other one?** If both answers produce the same observation, it is decoration.
+
+  D193 and D203 are the only two entries in this file that name reasoning errors
+  rather than defects, and between them they cover the family: one is about
+  where a property is asserted, the other about whether the assertion can fail.
+  Read both before writing any safety check.
+
 Also worth the detour: **D194**, on why the synthetic fixture is coverage rather
 than convenience, because it is the argument for a cost that otherwise looks
 like overhead.
 
 The reading order in the numbered list above still holds, with the decision
-range extended to **D108 through D194**.
+range extended to **D108 through D204**.
 
 *Session 04 continued and closed at `main` after the layout fix. Nothing above
 alters `HANDOFF_02.md`. The amendment in this section was added by session 05
