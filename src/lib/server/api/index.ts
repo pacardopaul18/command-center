@@ -45,11 +45,28 @@ export const api = new Hono<ApiEnv>().basePath('/api');
  */
 api.get('/health', async (c) => {
 	const schema = await schemaStatus(c.env.DB);
+
+	/**
+	 * Which dataset this server is actually looking at, read from the data
+	 * rather than from how the process was started.
+	 *
+	 * A build-time flag would say what somebody intended; this says what is
+	 * there. The volume fixture writes a marker row, so its presence is proof
+	 * the synthetic dataset is loaded, and its absence is proof it is not. A
+	 * label that can disagree with the database is worse than no label, because
+	 * the whole reason for showing it is to stop somebody typing real client
+	 * notes into the fixture or running a destructive test against firm data.
+	 */
+	const seedMarker = await c.env.DB.prepare("SELECT id FROM users WHERE id = 'v-u-seed'")
+		.first<{ id: string }>()
+		.catch(() => null);
+
 	return c.json(
 		{
 			ok: !schema.drift,
 			today: todayInWorkingZone(),
 			time_zone: WORKING_TIME_ZONE,
+			data_environment: seedMarker ? 'seed' : 'real',
 			schema
 		},
 		schema.drift ? 503 : 200

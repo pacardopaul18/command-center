@@ -28,8 +28,15 @@
 		children,
 		today,
 		wide = false,
-		settings = DEFAULT_SETTINGS
-	}: { children: Snippet; today: string; wide?: boolean; settings?: Settings } = $props();
+		settings = DEFAULT_SETTINGS,
+		dataEnvironment = 'seed'
+	}: {
+		children: Snippet;
+		today: string;
+		wide?: boolean;
+		settings?: Settings;
+		dataEnvironment?: 'seed' | 'real';
+	} = $props();
 
 	const nav = [
 		{ href: '/', label: 'Dashboard', exact: true },
@@ -117,6 +124,24 @@
 	<main id="main">
 		<div class="content" class:wide>
 			{@render children()}
+
+			<!--
+				Which dataset is on screen, said out loud on every page.
+
+				Not decoration. Two local databases exist, one holding the synthetic
+				fixture the suite deletes rows from and one holding real firm data,
+				and the screens are identical. A person who cannot tell them apart
+				will eventually type a real client note into the fixture, or run
+				something destructive against the real one.
+
+				Read from the data itself rather than from how the server was
+				started, so the label cannot disagree with the database it
+				describes.
+			-->
+			<footer class="data-env">
+				<span class="dot" class:real={dataEnvironment === 'real'} aria-hidden="true"></span>
+				{dataEnvironment === 'real' ? 'Real data' : 'Synthetic fixture'}
+			</footer>
 		</div>
 	</main>
 </div>
@@ -124,6 +149,31 @@
 <QuickAdd bind:open={quickAddOpen} {today} defaultDue={settings.default_due} />
 
 <style>
+
+	.data-env {
+		display: flex;
+		align-items: center;
+		gap: var(--space-2);
+		margin-top: var(--space-6);
+		padding-top: var(--space-3);
+		border-top: 1px solid var(--border-hairline);
+		font-family: var(--font-mono);
+		font-size: var(--text-xs);
+		color: var(--text-muted);
+	}
+
+	.dot {
+		width: 8px;
+		height: 8px;
+		border-radius: 50%;
+		background: var(--text-muted);
+		flex: none;
+	}
+
+	/* Real data reads as the exceptional state, because it is the one to be careful in. */
+	.dot.real {
+		background: var(--green-700, #2e7d5b);
+	}
 
 	/*
 	 * Compact and zebra, applied from the shell to every table and list beneath

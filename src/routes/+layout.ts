@@ -45,5 +45,16 @@ export const load: LayoutLoad = async ({ fetch }) => {
 			: null
 	);
 
-	return { today, schemaDrift: schema?.drift ? schema : null, settings };
+	/**
+	 * Which dataset is behind this server, shown in the footer.
+	 *
+	 * Carried from health rather than computed here, so the label and the schema
+	 * check describe the same connection.
+	 */
+	const dataEnvironment: 'seed' | 'real' =
+		(body as { data_environment?: string } | null)?.data_environment === 'real'
+			? 'real'
+			: 'seed';
+
+	return { today, schemaDrift: schema?.drift ? schema : null, settings, dataEnvironment };
 };
