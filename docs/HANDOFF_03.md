@@ -377,3 +377,102 @@ Three entries carry the most weight for anyone touching this code next:
 
 *Session 04 continued and closed at `main` after the layout fix. Nothing above
 alters `HANDOFF_02.md`.*
+
+---
+
+## 12. Stage A and B: the real-data mirror
+
+Branch `realdata/stage-a`, commit `a89ae98`, pushed green. Not merged, not on
+production.
+
+### What runs
+
+Two local databases. `.wrangler/state/v3` holds the synthetic fixture the suite
+runs against; `.wrangler/real/v3` holds the mirror. `npm run dev:real` or
+`CC_DATA=real` selects the second, and the footer says which is loaded by
+looking for the fixture's marker row rather than by reading the flag that
+started the server.
+
+The `v3` on the real path is load bearing and must not be tidied away. Wrangler's
+CLI appends it to `--persist-to`; miniflare through the vite plugin does not.
+Without it there are two databases, and the health check reports an empty schema
+on one that has every migration in it.
+
+Both scripts and both dev servers are pinned to `127.0.0.1`. `localhost`
+resolves to two addresses on this machine, Node picks one per request without
+falling back, and vite binds one. Half the calls were refused with a bare
+`fetch failed`.
+
+### Migrations 0032 to 0035
+
+Applied to both local databases. **Not applied to remote.** That is Stage C and
+needs the D50 evidence pattern per migration.
+
+- `0032` the Asana mirror, 17 tables
+- `0033` the client crosswalk, superseded in part by 0035
+- `0034` the Dropbox mirror, 3 tables
+- `0035` re-keys the crosswalk on the row and adds the two honest counts
+
+### Counts, as of the handoff
+
+Asana, workspace `MacGray Consulting`:
+
+| | |
+|---|---|
+| projects | 66, of which 24 archived |
+| sections | 281, stored verbatim |
+| tasks | 2,171 |
+| subtasks | 72 and climbing, details phase still running |
+| distinct assignees | 6 |
+| follower rows | 2,593 |
+| custom field values | 265 |
+| attachments, metadata only | 32 and climbing |
+| stories | 3,840 and climbing |
+
+Filing of the 66 projects: 43 by Asana gid, 7 by name, 0 by hand, 16 unassigned.
+
+The crosswalk: 55 rows in the file, 55 in the table, 0 gids lost, 45 distinct
+clients, 43 rows carrying a gid, 47 carrying a Dropbox name.
+
+Dropbox, local walk of the synced folder in 1,467 seconds: 2,183 folders,
+11,150 files, 415 GB, 0 unreadable. 52 folders at client depth, 38 filed
+against a client, 14 unassigned.
+
+### Reconciliation that gives confidence in the task count
+
+The crosswalk's own `asana_total_tasks` column sums to 1,853 across the projects
+it names by gid. The mirror holds 1,858 tasks in those same projects. The two
+numbers were produced by different tools weeks apart.
+
+### Open
+
+1. **The details phase is still running.** Subtasks, stories and attachments,
+   three requests per task over 2,171 tasks. Resume with
+   `node scripts/asana-mirror.mjs 1209746078758723 --port 5174 --budget 12`.
+   It resumes where it stopped; running it twice costs time and nothing else.
+2. **Nothing is on remote.** Migrations 0032 to 0035 and the mirror itself are
+   local only.
+3. **16 Asana projects and 14 Dropbox client folders are unassigned.** That is
+   the bucket working as ruled, not a failure. They are visible and resolvable
+   by editing the crosswalk and re-loading.
+4. **`name_drift` says 9, the brief said 20.** The file has 35 `no`, 11 `n/a`
+   and 9 `yes`. Reported as the file reads, not adjusted to match the brief.
+5. **`macgray_client_roster.csv` is not loaded.** 36 rows on a different shape
+   (`name, status, shared_mount, last_activity, evidence, notes`). It is a
+   status overlay, not a matching authority, and it needs its own loader.
+6. **`docs/data/` is gitignored.** Real client names, gids and activity dates.
+   The loader reads them from disk; nothing needs them in a remote repository,
+   and putting them there is a one-way step nobody has asked for.
+
+### The safety gap this work exposed
+
+`layer2-api.test.ts` claimed a seeded `v-` row could not be pushed to a real
+Asana workspace. It was passing because there was no Asana token locally, so
+every push stopped at the missing-token check and the guard the test named had
+never run. Configuring a token to build the mirror made it fail.
+
+There is now an actual guard, refusing on the fixture prefix, placed before the
+token and the workspace are looked at. The test asserts the reason, not just
+that something went wrong.
+
+*Session 05. Nothing above alters sections 1 to 11.*
