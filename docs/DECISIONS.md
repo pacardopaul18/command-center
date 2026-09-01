@@ -3686,6 +3686,24 @@ practice. A scripted render with a synthetic fixture, at both widths, with a
 horizontal-overflow assertion and a page-error listener, is a few minutes and it
 caught a fault that would have shown wrong numbers on every archive view.
 
+#### AMENDED 2026-09-01: the widths are 1920 and 412, never 1440 alone
+
+The original entry said "the desktop width", which is not a width. Twelve pages
+were then rendered at 1440 and 412 and shipped centred inside a 1200px cap,
+because at 1440 that cap leaves 120px each side and reads as padding. At 1920 it
+leaves 248px each side and is unmissable.
+
+This is the second time the same defect reached Paul by the same route; D129 had
+already named 1440 as the width where a cap hides, and the entry that mandates
+rendering did not carry the number.
+
+So the number is in the rule now. **A fidelity pass renders at 1920 and at 412.**
+1440 is specifically excluded, because it is close enough to the cap to make a
+capped page look deliberate.
+
+The general form: a rule that says "look at it" must say what to look at it on,
+or the person following it will pick the setting where the fault is invisible.
+
 ### D129: full width is a route-level opt-in, never a change to the cap
 
 From CR1-F4, which Paul raised by looking at the screen at his own width.

@@ -309,3 +309,71 @@ Nothing lands before Thursday except findings.
 ---
 
 *Session 04. Nothing above alters `HANDOFF_02.md`, which stands as written.*
+
+---
+
+## 10. F-CR1-F4-REPEAT: the centred layout, a second time
+
+Raised by Paul, after the twelve pages had shipped, by looking at his own
+screen. Closed structurally the same session.
+
+**What happened.** Every page rendered inside the shell's 1200px cap and
+centred, on designs that are full width. At 1920 that is 248px of dead space
+each side with the table crammed into the middle.
+
+**Why it survived.** Identical to the original CR1-F4, and the cause was already
+written down in `HANDOFF_02.md` and in D129: the fidelity pass rendered at 1440,
+where a 1200px cap leaves 120px each side and reads as padding. D128 mandated
+rendering "at the desktop width", which is not a width, so the pass picked the
+one where the fault is invisible. Twelve times.
+
+**Three closes, because one would not have been enough.**
+
+- **D128 amended.** The widths are named: **1920 and 412, never 1440 alone.** A
+  rule that says "look at it" must say what to look at it on, or the person
+  following it picks the setting where the fault hides.
+- **D167.** Full width is the default and `NARROW_ROUTES` names the prose
+  exceptions. D129's principle is untouched, its direction is superseded: an
+  opt-in list is something the next page's author must remember, and that is
+  precisely what was forgotten.
+- **The guard.** An e2e test at 1920 measuring both kinds, over the thirteen
+  navigable routes and the five detail routes, plus the capped procedure page.
+  Proved by reintroducing the defect on one route, watching it fail, and
+  restoring.
+
+**Standing rule from this:** any route added later that is not in the guard's
+route set is itself a finding. The guard is the list of screens somebody has
+actually looked at.
+
+Detail routes now covered: `/clients/[id]`, `/projects/[id]`, `/meetings/[id]`,
+`/tickets/[id]`, `/sops/books/[id]`. Ids are discovered from the API rather than
+written in, so a fixture change cannot fail as a layout defect.
+
+---
+
+## 11. State of record, and the session 04 opener
+
+**This document is the state of record.** `HANDOFF_02.md` stands as written and
+is inherited unaltered.
+
+The next session opens by reading, in order:
+
+1. **This file**, sections 2 and 5 first: the priority rule from I9, and what the
+   post-reset sequence actually found.
+2. **`docs/DECISIONS.md`, D108 through D167.** D108 to D143 are the account
+   segregation, job and seed rules the modules are built on. D144 to D167 are
+   this session: the send-surface translations, the derived-not-stored rules, the
+   spend stop, and the two layout entries.
+3. Section 9 of this file for Thursday's order of work.
+
+Three entries carry the most weight for anyone touching this code next:
+
+- **D166**, because it is the one that stops a fourth unmetered call site.
+  Careful is not a control.
+- **D167** with the amended **D128**, because the layout defect reached Paul
+  twice and the second time the rule was already written.
+- **D157**, the seed-guard property rule, because every future fixture stream
+  will meet it.
+
+*Session 04 continued and closed at `main` after the layout fix. Nothing above
+alters `HANDOFF_02.md`.*
