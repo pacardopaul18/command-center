@@ -204,6 +204,15 @@ describe('layer 2: the mirror is resumable by gid, never by timestamp', () => {
 		).toBe(false);
 	});
 
+	it('sweeps again when the set grew under the walk', () => {
+		// Subtasks are tasks and are written as they are found, so one discovered
+		// under task 900 can carry a gid below the cursor and be walked past. A
+		// phase that reported done over a set it never finished would look
+		// exactly like success.
+		expect(mirror).toMatch(/sweep_started_with/);
+		expect(mirror).toMatch(/grewBy > 0 && sweepsSoFar < 3/);
+	});
+
 	it('does not claim a project whose pages it did not finish', () => {
 		expect(
 			/if \(!next\) cursor = project\.gid;/.test(mirror),

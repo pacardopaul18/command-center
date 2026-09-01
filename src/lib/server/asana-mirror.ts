@@ -520,6 +520,22 @@ export async function mirrorStep(
 	let phase: Phase = state.phase === 'idle' || state.phase === 'failed' ? 'teams' : state.phase;
 	let cursor = state.cursor;
 
+	// Sweep bookkeeping for the details phase, carried on the state row so it
+	// survives the invocation boundary the way everything else here does.
+	const sweep = ((): { sweep_started_with: number; sweeps: number } => {
+		try {
+			const parsed = state.counts ? JSON.parse(state.counts) : null;
+			return {
+				sweep_started_with: Number(parsed?.sweep_started_with) || 0,
+				sweeps: Number(parsed?.sweeps) || 0
+			};
+		} catch {
+			return { sweep_started_with: 0, sweeps: 0 };
+		}
+	})();
+	const sweepStartedWith = sweep.sweep_started_with;
+	const sweepsSoFar = sweep.sweeps;
+
 	try {
 		// --- teams -----------------------------------------------------------
 		if (phase === 'teams') {
@@ -777,6 +793,27 @@ export async function mirrorStep(
 		// has something to look at after one short run, and the per-task calls
 		// continue behind it.
 		if (phase === 'details') {
+			/*
+			 * A sweep walks a table that grows while it walks.
+			 *
+			 * Subtasks are tasks, written into `asana_tasks` as they are found,
+			 * and a subtask discovered under task 900 can be given a gid below
+			 * the cursor. The `gid > cursor` walk passes it by, and the phase
+			 * would then report done over a set it never finished. So a sweep
+			 * records how many tasks there were when it started, and the end of
+			 * the walk compares.
+			 */
+			if (cursor === null) {
+				const at = await db
+					.prepare('SELECT COUNT(*) AS n FROM asana_tasks WHERE workspace_gid = ?')
+					.bind(workspaceGid)
+					.first<{ n: number }>();
+				await db
+					.prepare('UPDATE asana_sync_state SET counts = ? WHERE workspace_gid = ?')
+					.bind(JSON.stringify({ sweep_started_with: at?.n ?? 0, sweeps: sweepsSoFar + 1 }), workspaceGid)
+					.run();
+			}
+
 			const { results } = await db
 				.prepare(
 					`SELECT gid FROM asana_tasks
@@ -882,6 +919,34 @@ export async function mirrorStep(
 				await runAll(db, pending);
 
 				cursor = task.gid;
+			}
+
+			/*
+			 * Another sweep if the set grew under this one.
+			 *
+			 * The upserts are idempotent, so a repeat costs time and nothing
+			 * else. Bounded at three, because a mirror that swept forever would
+			 * be a pull that never finishes, and by the third sweep a workspace
+			 * that is still growing is growing because somebody is working in
+			 * it, not because the walk missed anything.
+			 */
+			const finalCount = await db
+				.prepare('SELECT COUNT(*) AS n FROM asana_tasks WHERE workspace_gid = ?')
+				.bind(workspaceGid)
+				.first<{ n: number }>();
+
+			const grewBy = (finalCount?.n ?? 0) - sweepStartedWith;
+
+			if (grewBy > 0 && sweepsSoFar < 3) {
+				cursor = null;
+				await writeState(db, workspaceGid, 'details', null, counts);
+				return {
+					phase,
+					calls: pacer.spent,
+					counts,
+					stopped: `Sweep finished; ${grewBy} tasks appeared during it, so another sweep starts.`,
+					done: false
+				};
 			}
 
 			phase = 'done';
