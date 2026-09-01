@@ -15,6 +15,7 @@
 	import type { AsanaRef, AsanaSyncOutcome } from '$lib/types';
 	import { page } from '$app/state';
 	import type { PageData } from './$types';
+	import { DEFAULT_SETTINGS, PAYMENT_TERM_OPTIONS, START_PAGES } from '$lib/settings';
 
 	/**
 	 * Settings.
@@ -357,6 +358,57 @@
 			busy = false;
 		}
 	}
+
+	/* ---------------------------------------------------------------------
+	 * Preferences
+	 * ------------------------------------------------------------------ */
+
+	/**
+	 * A local copy, so nothing saves on its own.
+	 *
+	 * The prototype's own line is right: changes apply on save. A settings screen
+	 * that wrote on every keystroke would make a mistyped tax rate a live figure
+	 * on the next invoice before the reader finished typing it.
+	 */
+	let prefs = $state({ ...DEFAULT_SETTINGS });
+
+	$effect(() => {
+		prefs = { ...data.prefs };
+	});
+
+	/** Held as text, because a half-typed "1." is not a number yet. */
+	let taxInput = $state('');
+
+	$effect(() => {
+		taxInput = String(data.prefs.default_tax_percent);
+	});
+
+	async function savePrefs() {
+		busy = true;
+		errorMessage = '';
+
+		const tax = Number(taxInput);
+		if (!Number.isFinite(tax) || tax < 0 || tax > 100) {
+			busy = false;
+			errorMessage = 'The tax rate is a number between 0 and 100.';
+			return;
+		}
+
+		const res = await apiWrite('/api/settings', 'PATCH', {
+			...prefs,
+			default_tax_percent: tax
+		});
+		busy = false;
+
+		if (res.ok) {
+			notice = 'Saved.';
+			// The shell reads density, zebra rows and the workspace name from the
+			// layout, so the whole page has to reload for a change to show.
+			await invalidateAll();
+		} else {
+			errorMessage = res.error ?? 'Could not save those settings.';
+		}
+	}
 </script>
 
 <svelte:head><title>Settings</title></svelte:head>
@@ -368,6 +420,186 @@
 
 {#if notice}<p class="notice" role="status">{notice}</p>{/if}
 {#if errorMessage}<p class="error" role="alert">{errorMessage}</p>{/if}
+
+
+{#snippet saveRow()}
+	<div class="row">
+		<Button disabled={busy} onclick={savePrefs}>Save changes</Button>
+		<span class="hint">Changes apply on save. Nothing saves on its own.</span>
+	</div>
+{/snippet}
+
+{#snippet toggle(key: keyof typeof prefs, label: string, why: string)}
+	<label class="switch">
+		<input
+			type="checkbox"
+			role="switch"
+			checked={Boolean(prefs[key])}
+			onchange={(e) => {
+				// Assigned through the object so the rune sees the write.
+				prefs = { ...prefs, [key]: (e.currentTarget as HTMLInputElement).checked };
+			}}
+		/>
+		<span class="switch-text">
+			<span class="switch-label">{label}</span>
+			<span class="hint">{why}</span>
+		</span>
+	</label>
+{/snippet}
+
+<!--
+	The preference sections, above the integrations that were already here.
+
+	Every control below reads a value something else acts on. The list at the
+	bottom names what the prototype draws and this does not build, with the
+	reason for each, because a reader who goes looking for a control deserves to
+	find out why it is missing on the screen where they expected it.
+-->
+<Card title="General" subtitle="Workspace basics. These apply everywhere.">
+	<div class="fields">
+		<label class="field">
+			<span>Workspace name</span>
+			<Input bind:value={prefs.workspace_name} maxlength={120} />
+			<span class="hint">Shown in the sidebar.</span>
+		</label>
+		<label class="field">
+			<span>Week starts on</span>
+			<Select bind:value={prefs.week_starts_on}>
+				<option value="monday">Monday</option>
+				<option value="sunday">Sunday</option>
+			</Select>
+			<span class="hint">Changes what every "this week" count covers.</span>
+		</label>
+	</div>
+	{@render saveRow()}
+</Card>
+
+<Card title="Notifications" subtitle="Two emails a day, on a schedule. Nothing is pushed to a phone.">
+	<div class="switches">
+		{@render toggle(
+			'morning_digest',
+			'Morning digest',
+			'Sent at 7:00 Mountain with what will slip today.'
+		)}
+		{@render toggle(
+			'evening_digest',
+			'Evening digest',
+			'Sent at 17:00 Mountain with what moved and what did not.'
+		)}
+	</div>
+	<p class="hint">
+		Turning one off stops the email. The cron still runs and still raises recurring drafts,
+		because keeping the books is not the same job as sending a summary.
+	</p>
+	{@render saveRow()}
+</Card>
+
+<Card title="Appearance" subtitle="How lists and tables render. One theme, no dark mode.">
+	<div class="fields">
+		<label class="field">
+			<span>Density</span>
+			<Select bind:value={prefs.density}>
+				<option value="comfortable">Comfortable</option>
+				<option value="compact">Compact</option>
+			</Select>
+			<span class="hint">Compact tightens every table and list.</span>
+		</label>
+		<label class="field">
+			<span>Start page</span>
+			<Select bind:value={prefs.start_page}>
+				{#each START_PAGES as option (option.value)}
+					<option value={option.value}>{option.label}</option>
+				{/each}
+			</Select>
+			<span class="hint">Where the name in the sidebar takes you.</span>
+		</label>
+	</div>
+	<div class="switches">
+		{@render toggle('zebra_rows', 'Zebra rows in tables', 'Alternating tint on long tables.')}
+	</div>
+	{@render saveRow()}
+</Card>
+
+<Card title="Security" subtitle="One person, one account. Nothing here is shared.">
+	<dl class="state">
+		<div>
+			<dt>Signed in as</dt>
+			<dd class="mono">{data.accountEmail ?? 'Cloudflare Access'}</dd>
+		</div>
+	</dl>
+	<!--
+		Sessions belong to Cloudflare Access, not to this app. Sign out is a real
+		link to a real endpoint; session length and "sign out everywhere else" are
+		Access policy, so a copy of them here would be a control that changes
+		nothing. D164.
+	-->
+	<p class="hint">
+		Sessions are Cloudflare Access, not this app. Signing out ends the Access session for
+		this browser. How long a session lasts, and ending them on other devices, are set in the
+		Access dashboard.
+	</p>
+	<div class="row">
+		<a class="ghost" href="/cdn-cgi/access/logout">Sign out</a>
+	</div>
+</Card>
+
+<Card title="Invoicing" subtitle="Defaults for new invoices. Any invoice can override them.">
+	<div class="fields">
+		<label class="field">
+			<span>Number prefix</span>
+			<Input bind:value={prefs.invoice_prefix} maxlength={8} />
+			<span class="hint">Letters only. The next number is read from what already exists.</span>
+		</label>
+		<label class="field">
+			<span>Payment terms</span>
+			<Select bind:value={prefs.default_payment_terms}>
+				{#each PAYMENT_TERM_OPTIONS as option (option)}
+					<option value={option}>{option}</option>
+				{/each}
+			</Select>
+		</label>
+		<label class="field">
+			<span>Tax rate</span>
+			<Input bind:value={taxInput} inputmode="decimal" placeholder="0" />
+			<span class="hint">Per cent, applied after any discount.</span>
+		</label>
+	</div>
+	{@render saveRow()}
+</Card>
+
+<Card title="Action items" subtitle="Defaults for quick add.">
+	<div class="fields">
+		<label class="field">
+			<span>Default deadline</span>
+			<Select bind:value={prefs.default_due}>
+				<option value="today">Today</option>
+				<option value="tomorrow">Tomorrow</option>
+				<option value="none">No date</option>
+			</Select>
+			<span class="hint">
+				What the deadline field opens with. No date means the item is never overdue and
+				never appears in what will slip.
+			</span>
+		</label>
+	</div>
+	{@render saveRow()}
+</Card>
+
+<Card title="Not built" subtitle="Controls the design shows that this app does not have.">
+	<!--
+		Named rather than drawn. A toggle that stores a value nothing reads tells
+		the reader they have changed something while the app carries on exactly as
+		before, which is worse than the control being absent. D164.
+	-->
+	<dl class="state">
+		{#each data.notBuilt as entry (entry.label)}
+			<div>
+				<dt>{entry.label}</dt>
+				<dd>{entry.why}</dd>
+			</div>
+		{/each}
+	</dl>
+</Card>
 
 <Card title="Asana" subtitle="Push on demand, and pull changes back by running a sync.">
 	<dl class="state">
@@ -781,6 +1013,91 @@
 </Card>
 
 <style>
+
+	.fields {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+		gap: var(--space-3);
+		margin-bottom: var(--space-3);
+	}
+
+	.field {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-1);
+	}
+
+	.field > span:first-child {
+		font-family: var(--font-mono);
+		font-size: var(--text-xs);
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+		color: var(--text-muted);
+	}
+
+	.hint {
+		font-size: var(--text-xs);
+		color: var(--text-muted);
+	}
+
+	.switches {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-2);
+		margin-bottom: var(--space-3);
+	}
+
+	.switch {
+		display: flex;
+		align-items: flex-start;
+		gap: var(--space-3);
+		min-height: 44px;
+		padding: var(--space-2) 0;
+		cursor: pointer;
+	}
+
+	.switch input {
+		width: 18px;
+		height: 18px;
+		margin-top: 2px;
+		accent-color: var(--navy-600);
+		flex: none;
+	}
+
+	.switch-text {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+	}
+
+	.switch-label {
+		font-size: var(--text-sm);
+		color: var(--text-body);
+	}
+
+	.row {
+		display: flex;
+		align-items: center;
+		gap: var(--space-3);
+		flex-wrap: wrap;
+	}
+
+	.ghost {
+		display: inline-flex;
+		align-items: center;
+		/* 44px, D22. */
+		min-height: 44px;
+		padding: 0 var(--space-3);
+		border: 1px solid var(--border-thin);
+		border-radius: var(--radius-sm);
+		font-size: var(--text-sm);
+		color: var(--text-body);
+		text-decoration: none;
+	}
+
+	.ghost:hover {
+		border-color: var(--navy-600);
+	}
 	.head {
 		display: flex;
 		flex-direction: column;

@@ -2,6 +2,7 @@
 	import type { Snippet } from 'svelte';
 	import { page } from '$app/state';
 	import QuickAdd from './QuickAdd.svelte';
+	import { DEFAULT_SETTINGS, type Settings } from '$lib/settings';
 
 	// Ported from docs/design/components/shell/Sidebar.jsx.
 	//
@@ -26,8 +27,9 @@
 	let {
 		children,
 		today,
-		wide = false
-	}: { children: Snippet; today: string; wide?: boolean } = $props();
+		wide = false,
+		settings = DEFAULT_SETTINGS
+	}: { children: Snippet; today: string; wide?: boolean; settings?: Settings } = $props();
 
 	const nav = [
 		{ href: '/', label: 'Dashboard', exact: true },
@@ -76,11 +78,20 @@
 
 <a class="skip" href="#main">Skip to content</a>
 
-<div class="shell">
+<!--
+	Density and zebra rows are classes on the shell, and the rules that read them
+	are `:global` in this file. Every table in the app is inside this element, so
+	one place decides and no page has to opt in or remember.
+-->
+<div class="shell" class:compact={settings.density === 'compact'} class:zebra={settings.zebra_rows}>
 	<nav class="sidebar" aria-label="Main">
-		<a class="brand" href="/actions">
+		<!--
+			The logo goes wherever the reader chose as their start page. It pointed
+			at /actions because that was the only module when the shell was written.
+		-->
+		<a class="brand" href={settings.start_page}>
 			<span class="mark" aria-hidden="true"></span>
-			Command Center
+			{settings.workspace_name}
 		</a>
 		<button type="button" class="quick-add" onclick={() => (quickAddOpen = true)}>
 			<span class="plus" aria-hidden="true">
@@ -110,9 +121,28 @@
 	</main>
 </div>
 
-<QuickAdd bind:open={quickAddOpen} {today} />
+<QuickAdd bind:open={quickAddOpen} {today} defaultDue={settings.default_due} />
 
 <style>
+
+	/*
+	 * Compact and zebra, applied from the shell to every table and list beneath
+	 * it. `:global` because these elements belong to the pages, not to this
+	 * component, and the whole point is that a page does not have to opt in.
+	 */
+	.shell.compact :global(td),
+	.shell.compact :global(th) {
+		padding-top: var(--space-2);
+		padding-bottom: var(--space-2);
+	}
+
+	.shell.compact :global(li) {
+		line-height: 1.35;
+	}
+
+	.shell.zebra :global(tbody tr:nth-child(even)) {
+		background: var(--surface-page);
+	}
 	.skip {
 		position: absolute;
 		left: -9999px;

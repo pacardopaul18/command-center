@@ -31,6 +31,7 @@ import type {
 } from '$lib/types';
 import { invoicingClients } from './invoicing-clients';
 import { nextInvoiceNumber, raiseRecurringDrafts } from '../recurring';
+import { getSettings } from '../settings';
 
 /**
  * Billing periods, time entries and invoices.
@@ -906,8 +907,36 @@ invoicing.post('/invoices/:id/void', async (c) => {
 /** Proposes the next free number, so the form opens with one already in it. */
 invoicing.get('/next-number', async (c) => {
 	const kind = oneOf<InvoiceKind>(c.req.query('kind'), INVOICE_KINDS, 'kind', 'invoice');
-	const prefix = kind === 'estimate' ? 'EST' : kind === 'credit' ? 'CN' : 'INV';
+
+	/**
+	 * The invoice prefix is a setting; estimates and credit notes are not.
+	 *
+	 * A firm has a house style for its invoice numbers and every one already
+	 * issued carries it, so it has to be changeable. EST and CN are this app's
+	 * own labels for two documents that are not invoices, and letting them drift
+	 * would mean a credit note that could be mistaken for one.
+	 */
+	const settings = await getSettings(c.env.SESSIONS);
+	const prefix =
+		kind === 'estimate' ? 'EST' : kind === 'credit' ? 'CN' : settings.invoice_prefix;
+
 	return c.json({ kind, invoice_number: await nextInvoiceNumber(c.env.DB, prefix) });
+});
+
+/**
+ * The defaults a new invoice opens with.
+ *
+ * Read by the form rather than applied on the server, deliberately: a default
+ * the reader can see and change before saving is a default; one the server
+ * applies after they press save is a surprise. The invoice route keeps taking
+ * exactly what it is given.
+ */
+invoicing.get('/defaults', async (c) => {
+	const settings = await getSettings(c.env.SESSIONS);
+	return c.json({
+		payment_terms: settings.default_payment_terms,
+		tax_percent: settings.default_tax_percent
+	});
 });
 
 /**

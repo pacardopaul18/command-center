@@ -38,7 +38,7 @@
 {#if bare}
 	{@render children()}
 {:else}
-	<AppShell today={data.today} {wide}>
+	<AppShell today={data.today} {wide} settings={data.settings}>
 		{@render children()}
 	</AppShell>
 {/if}

@@ -4496,3 +4496,53 @@ that chain is how a file ends up a version behind the page it was taken from.
 Quoting and formula-prefixing follow the ledger export, D156's file: every field
 quoted because a note is where a comma turns up, and a leading =, +, - or @
 prefixed so a spreadsheet reads it as text.
+
+### D164: every setting is read by something, and what is not built says why
+
+The Settings prototype draws about thirty controls. Roughly half describe
+behaviour this app does not have, and building them as switches that store a
+value nothing reads would be the worst version of D27: a toggle tells the reader
+they have changed something, and the app carries on exactly as before. That is
+harder to discover than a missing control, because the reader has no reason to
+doubt it.
+
+So the rule is that every setting in the store is read by something else, and it
+is asserted rather than promised. The guarantee test walks every `.ts` and
+`.svelte` file under `src`, excludes the settings module and the screen that
+edits it, and requires each key to appear somewhere. A setting added later with
+no reader fails, by name, with the reason in the message.
+
+Eleven settings are built and each reaches something: the workspace name and the
+start page reach the shell; density and zebra rows are classes on it that every
+table inherits; the week start reaches the "this week" queries; the two digest
+switches are read by the scheduled handler before it sends; the invoice prefix
+reaches the next-number route; the payment terms and tax rate are offered to the
+invoice form; the default deadline reaches Quick add.
+
+Six groups are named as not built, on the page, with the reason for each.
+Timezone, because the whole app is anchored to Mountain time and the cron
+depends on it: that is a change to the anchor, not a setting. Currency, because
+nothing converts. Date format, because dates are formatted in about two hundred
+places and a module-level default would be shared across requests on the server.
+Quiet hours, because nothing is pushed to a phone. Session length and sign out
+everywhere, because sessions belong to Cloudflare Access and a copy of the
+control here would change nothing. And four project and action-item toggles that
+each need wiring into a module they do not yet touch: worth building, not built,
+which is a different thing from a switch wired to nothing.
+
+Sign out is real and is a link to Access's own logout endpoint. The section says
+where session length lives rather than drawing a picker for it.
+
+Two smaller rulings inside this. Nothing saves on its own: a settings screen that
+wrote on every keystroke would make a mistyped tax rate a live figure on the next
+invoice before the reader finished typing it. And the invoice prefix is settable
+while EST and CN are not, because a firm has a house style for invoice numbers
+and every one already issued carries it, whereas EST and CN are this app's own
+labels for two documents that are not invoices and letting them drift would mean
+a credit note that could be mistaken for one.
+
+Settings live in KV as one key holding one object, written whole. Not D1: these
+are preferences, not records, nothing joins to them, and a table would mean a
+migration every time one is added. `readSettings` narrows on the way in and on
+the way out, so a value written by an older version or by hand cannot hand the
+code a shape it does not expect.
