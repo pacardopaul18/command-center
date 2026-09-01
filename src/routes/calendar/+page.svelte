@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { label } from '$lib/calendar-label';
 	import { goto, invalidateAll } from '$app/navigation';
 	import { apiWrite } from '$lib/http';
 	import Button from '$lib/components/Button.svelte';
@@ -703,7 +704,7 @@
 				onclick={() => openEvent(event)}
 			>
 				<span class="when mono">{timeLabel(event)}</span>
-				<span class="what">{event.summary ?? '(no title)'}</span>
+				<span class="what">{label(event)}</span>
 				{#if event.location}<span class="where">{event.location}</span>{/if}
 				{#if event.own_response && event.own_response !== 'accepted'}
 					<span class="resp">{RESPONSE_LABEL[event.own_response] ?? event.own_response}</span>
@@ -819,9 +820,9 @@
 							class="pip"
 							style="border-left-color: {event.calendar_color ?? 'var(--navy-500)'}"
 							onclick={() => openEvent(event)}
-							title={event.summary ?? '(no title)'}
+							title={label(event)}
 						>
-							{event.summary ?? '(no title)'}
+							{label(event)}
 						</button>
 					{/each}
 					{#if day.events.length > 3}
@@ -849,7 +850,7 @@
 							onclick={() => openEvent(event)}
 						>
 							<span class="when mono">{timeLabel(event)}</span>
-							<span class="what">{event.summary ?? '(no title)'}</span>
+							<span class="what">{label(event)}</span>
 							{#if data.scope === 'all'}
 								<span class="acct mono">{event.account_email}</span>
 							{/if}

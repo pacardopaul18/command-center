@@ -263,14 +263,27 @@ connections.post('/google/calendar/refresh', async (c) => {
 	 * else Google adds by default.
 	 */
 	const chosen = await c.env.DB.prepare(
-		'SELECT id, provider_calendar_id, summary FROM calendars WHERE sync_enabled = 1 AND connection_id = ?'
+		`SELECT id, provider_calendar_id, summary, access_role
+     FROM calendars WHERE sync_enabled = 1 AND connection_id = ?`
 	)
 		.bind(connectionId)
-		.all<{ id: string; provider_calendar_id: string; summary: string | null }>();
+		.all<{
+			id: string;
+			provider_calendar_id: string;
+			summary: string | null;
+			access_role: string | null;
+		}>();
 
 	const targets = (chosen.results ?? []).length
 		? (chosen.results ?? [])
-		: [{ id: null as string | null, provider_calendar_id: 'primary', summary: 'Primary' }];
+		: [
+				{
+					id: null as string | null,
+					provider_calendar_id: 'primary',
+					summary: 'Primary',
+					access_role: 'owner'
+				}
+			];
 
 	/**
 	 * How far back to reach.
@@ -289,6 +302,49 @@ connections.post('/google/calendar/refresh', async (c) => {
 		const tokens = await accessToken(c.env.SESSIONS, connectionId, clientId, clientSecret);
 
 		for (const target of targets) {
+			/*
+			 * A calendar somebody else owns is stored as free and busy only.
+			 *
+			 * Paul subscribes to his partners' calendars, and scheduling against
+			 * them needs to know when they are busy. It does not need to know what
+			 * they are doing, and this app has no business holding the titles,
+			 * descriptions, locations or attendee lists of meetings that belong to
+			 * other people. The times are the whole of what scheduling requires.
+			 *
+			 * Decided from Google's own `accessRole`, which is recorded on the
+			 * calendar when the list is read. Inferring it from the name would be
+			 * guessing, and a calendar named after a person is not evidence about
+			 * who owns it.
+			 */
+			const ownedByPaul = (target.access_role ?? 'owner') === 'owner';
+
+			/*
+			 * Anything already stored for a calendar Paul does not own is cleared.
+			 *
+			 * A calendar synced before this rule existed, or one whose access role
+			 * changed after a share was narrowed, would otherwise keep detail that
+			 * the rule says must not be here. Running it every sync costs one
+			 * statement and makes the property true of the database rather than
+			 * only of new writes.
+			 */
+			if (!ownedByPaul && target.id) {
+				await c.env.DB.prepare(
+					`UPDATE calendar_events
+           SET summary = NULL, description = NULL, location = NULL,
+               organizer = NULL, attendee_count = NULL, html_link = NULL
+           WHERE calendar_id = ?`
+				)
+					.bind(target.id)
+					.run();
+
+				await c.env.DB.prepare(
+					`DELETE FROM calendar_event_attendees
+           WHERE event_id IN (SELECT id FROM calendar_events WHERE calendar_id = ?)`
+				)
+					.bind(target.id)
+					.run();
+			}
+
 			const state = target.id
 				? await c.env.DB.prepare(
 						'SELECT backfilled_from FROM calendar_sync_state WHERE calendar_id = ?'
@@ -345,15 +401,18 @@ connections.post('/google/calendar/refresh', async (c) => {
 						connectionId,
 						target.id,
 						e.provider_event_id,
-						e.summary,
-						e.description,
-						e.location,
+						// Free/busy only on a calendar Paul does not own. The nulls are
+						// the rule, not a gap: nothing about what the meeting is enters
+						// this database.
+						ownedByPaul ? e.summary : null,
+						ownedByPaul ? e.description : null,
+						ownedByPaul ? e.location : null,
 						e.starts_at,
 						e.ends_at,
 						e.all_day,
-						e.organizer,
-						e.attendee_count,
-						e.html_link,
+						ownedByPaul ? e.organizer : null,
+						ownedByPaul ? e.attendee_count : null,
+						ownedByPaul ? e.html_link : null,
 						at
 					)
 					.run();
@@ -384,11 +443,15 @@ connections.post('/google/calendar/refresh', async (c) => {
 
 					// Replaced rather than merged: an attendee removed from the
 					// invitation must leave, and a diff would keep them.
+					//
+					// The delete runs for every calendar, including the ones Paul does
+					// not own. On those the loop below writes nothing, so the delete is
+					// what makes the rule true for anything synced before it existed.
 					await c.env.DB.prepare('DELETE FROM calendar_event_attendees WHERE event_id = ?')
 						.bind(eventRow.id)
 						.run();
 
-					for (const a of e.attendees) {
+					for (const a of ownedByPaul ? e.attendees : []) {
 						if (!a.email && !a.display_name) continue;
 						await c.env.DB.prepare(
 							`INSERT INTO calendar_event_attendees
@@ -471,6 +534,15 @@ connections.get('/google/calendar', async (c) => {
         st.cancelled_at, st.own_response,
         cal.summary AS calendar_name, cal.background_color AS calendar_color,
         (SELECT COUNT(*) FROM calendar_event_attendees a WHERE a.event_id = e.id) AS attendees_known,
+        /*
+         * Whether this row is free/busy only, from the calendar's access role.
+         *
+         * Derived rather than stored on the event: a copy on every row would be
+         * a second answer that goes stale the moment a share is narrowed. The
+         * screen needs it so a busy block reads as busy rather than as an event
+         * whose title failed to load.
+         */
+        CASE WHEN COALESCE(cal.access_role, 'owner') = 'owner' THEN 0 ELSE 1 END AS free_busy_only,
         cal.summary AS calendar_name,
         conn.account_email AS account_email,
         e.connection_id AS account_id
@@ -680,6 +752,7 @@ connections.get('/google/calendar/events/:id', async (c) => {
 	const event = await c.env.DB.prepare(
 		`SELECT e.*, st.cancelled_at, st.own_response,
         cal.summary AS calendar_name, cal.background_color AS calendar_color,
+        CASE WHEN COALESCE(cal.access_role, 'owner') = 'owner' THEN 0 ELSE 1 END AS free_busy_only,
         conn.account_email AS account_email,
         m.title AS meeting_title
      FROM calendar_events e

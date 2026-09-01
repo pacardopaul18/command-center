@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { label } from '$lib/calendar-label';
 	import { formatMoment } from '$lib/format';
 
 	/**
@@ -112,7 +113,7 @@
 						<li>
 							<span class="when mono">{timeLabel(event)}</span>
 							<span class="what">
-								{event.summary ?? '(no title)'}
+								{label(event)}
 								{#if event.location}<span class="where">{event.location}</span>{/if}
 								{#if event.meeting_id}
 									<a class="linked" href="/meetings/{event.meeting_id}">

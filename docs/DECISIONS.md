@@ -5550,3 +5550,55 @@ needs and it carries none of the question Stage C carries.
 The 775 threads already on production are also his, but reaching them means
 lifting Stage C, so they stay out of reach for a different reason than the one
 that applies to the mailbox.
+
+### D205: a partner's calendar stores when they are busy and nothing else
+
+Paul subscribes to his partners' calendars, and scheduling against them is
+meaningless without them. Avoiding a meeting needs its start and its end. It
+does not need the title, the description, the location, the attendees or the
+link, and this app has no business holding any of it: those meetings belong to
+people who never agreed to have them stored here.
+
+So a calendar Paul does not own stores free and busy only. Times, the busy flag,
+and which calendar it came from.
+
+DECIDED FROM GOOGLE'S OWN `accessRole`, recorded on the calendar when the list
+is read and already present before this ruling, so nothing had to be inferred.
+Inferring ownership from the calendar's name would have been a guess, and a
+calendar named after a person is not evidence about who owns it: Paul's own
+calendars are named after him too.
+
+ENFORCED AT THE WRITE, not at the read. Nothing about somebody else's meeting
+reaches the database at all. A read-side filter would hold the data and depend
+on every future query remembering to exclude it, which is the weak form of every
+rule in this file: it survives exactly as long as everybody remembers.
+
+The sync also clears anything a previous run stored, every time. A calendar
+synced before this rule existed, or one whose access role changed after a share
+was narrowed, would otherwise keep detail the rule forbids, and the property
+would be true of the code and false of the database.
+
+### D206: a privacy boundary must not look like a data failure
+
+The calendar views rendered a missing title as "(no title)". Against a partner's
+block that describes a deliberate decision as a bug, and somebody would
+eventually go looking for it, find nothing, and either give up or "fix" it by
+storing the titles.
+
+A free/busy block now reads `Busy · <calendar name>`, which answers the only
+question the screen can honestly answer: whose busy this is. An owned event with
+no title still reads "(no title)", because on Paul's own calendar that is a real
+absence and saying so is accurate.
+
+One function, shared by every calendar view, because the interesting case is the
+one that is easy to get right in some views and forget in others. It also
+refuses to render a title even if one somehow reached the row, which is belt as
+well as braces: the write path is the guard, and the screen is made incapable of
+displaying what it should never have been given.
+
+The flag the screen reads is derived from the access role in the query, not
+stored on the event. A copy on every row would be a second answer that goes
+stale the moment a share is narrowed.
+
+No scope widened to make any of this possible. Still `calendar.readonly` and
+`gmail.readonly`, and a test asserts it alongside the rest.
