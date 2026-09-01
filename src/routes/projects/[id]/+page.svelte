@@ -17,7 +17,7 @@
 		STATUS_LABELS,
 		nextPhase
 	} from '$lib/types';
-	import type { ProjectPhase, ProjectStatus } from '$lib/types';
+	import type { ProjectPhase, ProjectStatus, Ticket } from '$lib/types';
 	import { deadlineLabel, formatDay, formatDayShort } from '$lib/format';
 	import Button from '$lib/components/Button.svelte';
 	import Card from '$lib/components/Card.svelte';
@@ -99,6 +99,85 @@
 	);
 	const closedTickets = $derived(
 		data.tickets.filter((t) => t.status === 'done' || t.status === 'cancelled')
+	);
+
+	const openTickets = $derived(liveTickets.length);
+
+	/**
+	 * Overdue is open and past due, measured against the working day.
+	 *
+	 * The same definition the API uses, because a row shown in red here and
+	 * counted as fine there would be two answers to one question.
+	 */
+	const overdueTickets = $derived(
+		liveTickets.filter((t) => t.due_date && t.due_date < data.today).length
+	);
+
+	/**
+	 * Advancing the phase, with the consequence stated before it happens.
+	 *
+	 * A confirm rather than a disabled button. Work legitimately carries across a
+	 * phase boundary, and an app that refuses is an app somebody stops using;
+	 * what it must not do is move the phase while quietly leaving open work
+	 * behind the reader's back.
+	 */
+	async function advance(to: string) {
+		if (openTickets > 0) {
+			const late = overdueTickets > 0 ? `, ${overdueTickets} of them overdue` : '';
+			const ok = confirm(
+				`${openTickets} ${openTickets === 1 ? 'ticket is' : 'tickets are'} still open on this project${late}.
+
+` +
+					`Move to ${PHASE_LABELS[to as ProjectPhase]} anyway?`
+			);
+			if (!ok) return;
+		}
+		await patch({ phase: to }, `Advanced to ${PHASE_LABELS[to as ProjectPhase]}.`);
+	}
+
+	/** A ticket is late when it is still open and its due date has passed. */
+	function isOverdue(t: { status: string; due_date: string | null }): boolean {
+		return (
+			t.status !== 'done' &&
+			t.status !== 'cancelled' &&
+			Boolean(t.due_date) &&
+			(t.due_date as string) < data.today
+		);
+	}
+
+	/** The first line of a description, for scanning without opening. */
+	function snippet(text: string): string {
+		const flat = text.replace(/\s+/g, ' ').trim();
+		return flat.length > 140 ? `${flat.slice(0, 139)}…` : flat;
+	}
+
+	const TICKET_FILTERS = [
+		{ key: 'open', label: 'Open' },
+		{ key: 'overdue', label: 'Overdue' },
+		{ key: 'unassigned', label: 'Unassigned' },
+		{ key: 'done', label: 'Done' },
+		{ key: 'all', label: 'All' }
+	] as const;
+
+	type TicketFilter = (typeof TICKET_FILTERS)[number]['key'];
+
+	let ticketFilter = $state<TicketFilter>('open');
+
+	function matches(t: Ticket, key: TicketFilter): boolean {
+		if (key === 'all') return true;
+		if (key === 'open') return t.status !== 'done' && t.status !== 'cancelled';
+		if (key === 'done') return t.status === 'done' || t.status === 'cancelled';
+		if (key === 'overdue') return isOverdue(t);
+		return !t.assignee;
+	}
+
+	/** How many each filter would show, so a chip that leads nowhere says zero. D27. */
+	function countFor(key: TicketFilter): number {
+		return data.tickets.filter((t) => matches(t, key)).length;
+	}
+
+	const shownTickets = $derived(
+		[...liveTickets, ...closedTickets].filter((t) => matches(t, ticketFilter))
 	);
 
 	let showTicketForm = $state(false);
@@ -345,13 +424,32 @@
 
 		<div class="controls">
 			{#if upcoming}
+				<!--
+					Advancing with work still open is possible and is not silent.
+
+					Disabling it outright would be wrong: a phase can legitimately move
+					on while tickets stay open, and an app that refuses is an app
+					somebody works around. So the button asks, names the number, and
+					makes the person say yes. D27's other half: an affordance that
+					exists should work, and one with a consequence should say what it
+					is before it happens.
+				-->
 				<Button
 					variant="secondary"
 					disabled={busy}
-					onclick={() => patch({ phase: upcoming }, `Advanced to ${PHASE_LABELS[upcoming]}.`)}
+					onclick={() => advance(upcoming)}
 				>
 					Advance to {PHASE_LABELS[upcoming]}
 				</Button>
+				{#if openTickets > 0}
+					<p class="note warn">
+						{openTickets}
+						{openTickets === 1 ? 'ticket is' : 'tickets are'} still open on this project{overdueTickets >
+						0
+							? `, ${overdueTickets} of them overdue`
+							: ''}.
+					</p>
+				{/if}
 			{:else}
 				<p class="note">Closing is the final phase.</p>
 			{/if}
@@ -436,7 +534,47 @@
 		to put files somewhere else. The read route always serves them as a
 		download, never inline, so a file is a file.
 	-->
-	<Card title="Files" subtitle="{data.files.length} on file">
+<!--
+	The client's Dropbox, on the project page.
+
+	Separate from the uploads card below and deliberately: those are files
+	somebody put here on purpose, this is a view of where the client's work
+	actually lives. Merging them would make one list where nothing says which of
+	the two a row is, and only one of them can be deleted from this page.
+-->
+{#if data.dropbox.total > 0}
+	<div class="block">
+		<Card
+			title="Client files in Dropbox"
+			subtitle="{data.dropbox.total.toLocaleString()} in this client's folder"
+		>
+			{#snippet actions()}
+				{#if project.client_id}
+					<Button variant="ghost" size="sm" href="/files?client_id={project.client_id}">
+						See all
+					</Button>
+				{/if}
+			{/snippet}
+
+			<ul class="mirror-files">
+				{#each data.dropbox.files.slice(0, 8) as file (file.path)}
+					<li>
+						<span class="mf-name">{file.name}</span>
+						<span class="mf-meta">
+							{file.modified_at ? file.modified_at.slice(0, 10) : 'unknown'}
+						</span>
+					</li>
+				{/each}
+			</ul>
+			<p class="mirror-note">
+				Names and dates only, mirrored from Dropbox. Dropbox is the source of truth and
+				nothing here changes it.
+			</p>
+		</Card>
+	</div>
+{/if}
+
+	<Card title="Files" subtitle="{data.files.length} uploaded here">
 		{#snippet actions()}
 			<Button variant="ghost" size="sm" disabled={uploading} onclick={() => fileInput?.click()}>
 				{uploading ? 'Uploading' : 'Upload'}
@@ -596,21 +734,72 @@
 		</form>
 	{/if}
 
+	<!--
+		Quick filters, because a project with 56 tickets is unusable as one list.
+
+		In component state rather than the URL: unlike the Projects views these
+		are a momentary narrowing of a list on a page somebody is already reading,
+		not a view worth sending to anybody.
+	-->
+	{#if data.tickets.length > 0}
+		<div class="ticket-filters">
+			{#each TICKET_FILTERS as f (f.key)}
+				<button
+					type="button"
+					class="chip-filter"
+					class:on={ticketFilter === f.key}
+					aria-pressed={ticketFilter === f.key}
+					onclick={() => (ticketFilter = f.key)}
+				>
+					{f.label}
+					<span class="chip-n">{countFor(f.key)}</span>
+				</button>
+			{/each}
+		</div>
+	{/if}
+
 	{#if data.tickets.length === 0}
 		<p class="empty">No tickets on this project yet.</p>
+	{:else if shownTickets.length === 0}
+		<p class="empty">No tickets match that filter.</p>
 	{:else}
 		<ul class="ticket-rows">
-			{#each [...liveTickets, ...closedTickets] as ticket (ticket.id)}
+			{#each shownTickets as ticket (ticket.id)}
 				{@const variance = estimateVariance(ticket.estimate_hours, ticket.actual_hours)}
-				<li class="ticket-row" class:closed={ticket.status === 'done' || ticket.status === 'cancelled'}>
+				{@const late = isOverdue(ticket)}
+				<li
+					class="ticket-row"
+					class:closed={ticket.status === 'done' || ticket.status === 'cancelled'}
+					class:late
+				>
 					<a class="ticket-body" href="/tickets/{ticket.id}">
-						<span class="ticket-title">{ticket.title}</span>
+						<span class="ticket-title">
+							{ticket.title}
+							{#if late}<span class="late-flag">Overdue</span>{/if}
+						</span>
+
+						<!--
+							The middle of the row was empty and the useful facts were in a
+							single grey line. A person scanning 56 tickets needs to see who
+							has it, when it is due and what it is about without opening
+							each one.
+						-->
+						{#if ticket.description}
+							<span class="ticket-snippet">{snippet(ticket.description)}</span>
+						{/if}
+
 						<span class="ticket-meta mono">
-							{ticket.assignee ?? 'Unassigned'}{ticket.due_date
-								? `, due ${formatDay(ticket.due_date)}`
-								: ''}{ticket.estimate_hours
-								? `, ${ticket.actual_hours ?? 0} of ${ticket.estimate_hours}h`
-								: ''}{variance ? `, ${variance.text}` : ''}
+							<span class:unassigned={!ticket.assignee}>
+								{ticket.assignee ?? 'Unassigned'}
+							</span>
+							{#if ticket.due_date}
+								<span class:late>due {formatDay(ticket.due_date)}</span>
+							{/if}
+							{#if ticket.asana_section}<span class="sect">{ticket.asana_section}</span>{/if}
+							{#if ticket.estimate_hours}
+								<span>{ticket.actual_hours ?? 0} of {ticket.estimate_hours}h</span>
+							{/if}
+							{#if variance}<span>{variance.text}</span>{/if}
 						</span>
 					</a>
 					{#if ticket.priority === 'urgent' || ticket.priority === 'high'}
@@ -640,6 +829,126 @@
 {/if}
 
 <style>
+	.mirror-files {
+		list-style: none;
+		margin: 0 0 var(--space-3);
+		padding: 0;
+		display: grid;
+		gap: var(--space-2);
+	}
+
+	.mirror-files li {
+		display: flex;
+		justify-content: space-between;
+		gap: var(--space-3);
+		align-items: baseline;
+		padding-bottom: var(--space-2);
+		border-bottom: 1px solid var(--border-thin);
+	}
+
+	.mf-name {
+		font-weight: 600;
+		overflow-wrap: anywhere;
+	}
+
+	.mf-meta {
+		color: var(--text-secondary);
+		font-size: 0.8125rem;
+		white-space: nowrap;
+	}
+
+	.mirror-note {
+		margin: 0;
+		color: var(--text-secondary);
+		font-size: 0.8125rem;
+	}
+
+	.ticket-filters {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--space-2);
+		padding: var(--space-3) var(--space-4) 0;
+	}
+
+	.chip-filter {
+		display: inline-flex;
+		align-items: center;
+		gap: var(--space-2);
+		/* D22: 44px tap floor. */
+		min-height: 44px;
+		padding: 0 var(--space-3);
+		border: 1px solid var(--border-thin);
+		border-radius: var(--radius-2);
+		background: var(--surface-card);
+		color: var(--text-secondary);
+		font: inherit;
+		font-size: 0.8125rem;
+		font-weight: 600;
+		cursor: pointer;
+	}
+
+	.chip-filter.on {
+		background: var(--navy);
+		border-color: var(--navy);
+		color: var(--text-inverse);
+	}
+
+	.chip-n {
+		font-variant-numeric: tabular-nums;
+		opacity: 0.75;
+	}
+
+	.ticket-snippet {
+		display: block;
+		color: var(--text-secondary);
+		font-size: 0.8125rem;
+		line-height: 1.5;
+		margin-top: 2px;
+	}
+
+	/*
+	 * Overdue is red, and never red alone.
+	 *
+	 * The word "Overdue" carries it for anyone who cannot separate the colours,
+	 * and the left border carries it at a glance down a list of fifty. D20 keeps
+	 * --red for overdue and nothing else.
+	 */
+	.ticket-row.late {
+		border-left: 3px solid var(--red);
+		padding-left: calc(var(--space-4) - 3px);
+	}
+
+	.late-flag {
+		display: inline-block;
+		margin-left: var(--space-2);
+		padding: 1px var(--space-2);
+		border-radius: var(--radius-1, 4px);
+		background: var(--red-100);
+		color: var(--red);
+		font-size: 0.6875rem;
+		font-weight: 700;
+		letter-spacing: 0.02em;
+		text-transform: uppercase;
+	}
+
+	.ticket-meta .late {
+		color: var(--red);
+		font-weight: 700;
+	}
+
+	.ticket-meta .unassigned {
+		font-style: italic;
+	}
+
+	.ticket-meta .sect {
+		color: var(--text-secondary);
+	}
+
+	.ticket-meta > span + span::before {
+		content: ' · ';
+		color: var(--border-strong);
+	}
+
 
 	.two-up {
 		display: grid;

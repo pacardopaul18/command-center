@@ -316,7 +316,23 @@
 		{/if}
 
 		{#if data.contacts.length === 0}
-			<p class="empty">No contacts yet.</p>
+			<!--
+				Which kind of empty this is.
+
+				"No contacts yet" reads as a sync that did not find any, and every
+				client showed it, so it read as a sync that failed. Nothing is
+				broken: no source of client contacts has been connected. Asana
+				carries ten people and no email addresses, and all ten are MacGray
+				staff rather than client contacts. The empty state says so, because
+				an empty screen that implies a failure sends somebody looking for a
+				bug that is not there.
+			-->
+			<p class="empty">No contacts on file.</p>
+			<p class="empty-why">
+				Nothing here has failed to sync. Contacts come from you or from a billing
+				system, and neither Asana nor Dropbox carries them: the ten people Asana
+				knows about are MacGray staff, with no email addresses. Add one above.
+			</p>
 		{:else}
 			<ul class="rows">
 				{#each data.contacts as contact (contact.id)}
@@ -678,6 +694,14 @@
 </div>
 
 <style>
+	.empty-why {
+		margin: var(--space-2) 0 0;
+		color: var(--text-secondary);
+		font-size: 0.875rem;
+		line-height: 1.6;
+		max-width: 62ch;
+	}
+
 	.mirror-files {
 		list-style: none;
 		margin: 0 0 var(--space-3);

@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import type { ApiEnv } from './env';
 import { nowUtc, todayInWorkingZone } from '../dates';
+import { openTicket, overdueTicket } from '../ticket-state';
 import {
 	ApiError,
 	oneOf,
@@ -70,8 +71,19 @@ const LIST_SELECT = `
     (SELECT COUNT(*) FROM project_milestones m WHERE m.project_id = p.id) AS milestone_count,
     (SELECT COUNT(*) FROM project_milestones m
      WHERE m.project_id = p.id AND m.done_at IS NOT NULL) AS milestones_done,
+    /*
+     * Tickets, counted three ways, from one definition.
+     *
+     * The screen showed only the open count under a heading that read
+     * "Tickets", next to a column headed "Open" that was counting action items.
+     * Both numbers were right and the pair was unreadable. Sending all three
+     * lets the column say "2 of 15" instead of "2".
+     */
     (SELECT COUNT(*) FROM tickets t
-     WHERE t.project_id = p.id AND t.status NOT IN ('done', 'cancelled')) AS open_tickets,
+     WHERE t.project_id = p.id AND ${openTicket()}) AS open_tickets,
+    (SELECT COUNT(*) FROM tickets t WHERE t.project_id = p.id) AS all_tickets,
+    (SELECT COUNT(*) FROM tickets t
+     WHERE t.project_id = p.id AND ${overdueTicket('t', '?1')}) AS overdue_tickets,
     ${NEXT_MILESTONE} AS next_milestone_shown,
 
     /*
@@ -225,7 +237,15 @@ projects.get('/:id', async (c) => {
 		.bind(id)
 		.all();
 
-	return c.json({ project, action_items: results ?? [] });
+	/*
+	 * The working day, sent with the project.
+	 *
+	 * The page decides which tickets are overdue, and it must decide it against
+	 * the same day the API does. Reading the browser's clock would put a laptop
+	 * in another timezone one day out from every count on the screen, which is
+	 * the whole reason the working zone is a server fact.
+	 */
+	return c.json({ project, action_items: results ?? [], today: todayInWorkingZone() });
 });
 
 // Only the fields present in the body are written, so advance-phase and

@@ -11,6 +11,7 @@ import {
 	type ContractBasis,
 	type ContractStatus
 } from '$lib/types';
+import { openTicket } from '../ticket-state';
 
 /**
  * Contacts and contracts, and the one read behind the client page.
@@ -587,7 +588,7 @@ client360.get('/clients/:id/overview', async (c) => {
          (SELECT COUNT(*) FROM action_items a WHERE a.project_id = p.id AND a.status != 'done')
            AS open_items,
          (SELECT COUNT(*) FROM tickets t
-            WHERE t.project_id = p.id AND t.status NOT IN ('done','cancelled')) AS open_tickets
+            WHERE t.project_id = p.id AND ${openTicket()}) AS open_tickets
        FROM projects p WHERE p.client_id = ?
        ORDER BY CASE p.status WHEN 'active' THEN 0 ELSE 1 END, p.name COLLATE NOCASE`
 		).bind(id).all(),
@@ -609,7 +610,7 @@ client360.get('/clients/:id/overview', async (c) => {
 			`SELECT t.id, t.title, t.status, t.priority, t.due_date, t.estimate_hours,
               p.name AS project_name
        FROM tickets t JOIN projects p ON p.id = t.project_id
-       WHERE p.client_id = ? AND t.status NOT IN ('done','cancelled')
+       WHERE p.client_id = ? AND ${openTicket()}
        ORDER BY COALESCE(t.due_date, '9999') ASC LIMIT 10`
 		).bind(id).all(),
 

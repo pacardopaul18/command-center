@@ -91,7 +91,26 @@
 	 * ------------------------------------------------------------------ */
 
 	let commentDraft = $state('');
-	let effortDraft = $state({ hours: '', note: '' });
+	let effortDraft = $state({ hours: '', note: '', logged_on: '' });
+
+	let editingDescription = $state(false);
+	let descriptionDraft = $state('');
+
+	async function saveDescription(event: SubmitEvent) {
+		event.preventDefault();
+		busy = true;
+		errorMessage = '';
+		const res = await apiWrite(`/api/tickets/${ticket.id}`, 'PATCH', {
+			description: descriptionDraft.trim() || null
+		});
+		busy = false;
+		if (res.ok) {
+			editingDescription = false;
+			await invalidateAll();
+		} else {
+			errorMessage = res.error ?? 'Could not save the description.';
+		}
+	}
 	let linkDraft = $state({ kind: 'relates', to: '' });
 
 	/** Hours, from minutes, with no trailing zeroes on a whole number. */
@@ -136,11 +155,14 @@
 		const res = await apiWrite(`/api/tickets/${ticket.id}/time`, 'POST', {
 			hours: effortDraft.hours,
 			note: effortDraft.note || null,
-			who: ticket.assignee ?? null
+			who: ticket.assignee ?? null,
+			// Empty means today, which the API decides. Sending the browser's idea
+			// of today would put a laptop in another timezone a day out.
+			logged_on: effortDraft.logged_on || null
 		});
 		busy = false;
 		if (res.ok) {
-			effortDraft = { hours: '', note: '' };
+			effortDraft = { hours: '', note: '', logged_on: '' };
 			await invalidateAll();
 		} else {
 			errorMessage = res.error ?? 'Could not log that time.';
@@ -325,11 +347,48 @@
 	</Card>
 {/if}
 
-{#if ticket.description}
-	<Card title="Description">
+<!--
+	Always rendered, never conditional on having content.
+
+	The card used to disappear when the description was empty, which meant a
+	ticket with nothing written on it offered no way to write anything: the only
+	route in was the Edit form, and nothing on the page said so. An empty card
+	that invites the first sentence is the point of an empty card.
+-->
+<Card title="Description">
+	{#snippet actions()}
+		<Button
+			variant="ghost"
+			size="sm"
+			disabled={busy}
+			onclick={() => {
+				descriptionDraft = ticket.description ?? '';
+				editingDescription = !editingDescription;
+			}}
+		>
+			{editingDescription ? 'Cancel' : ticket.description ? 'Edit' : 'Add'}
+		</Button>
+	{/snippet}
+
+	{#if editingDescription}
+		<form onsubmit={saveDescription}>
+			<Textarea
+				bind:value={descriptionDraft}
+				rows={8}
+				maxlength={8000}
+				aria-label="Description"
+				placeholder="What this ticket is, and anything the next person needs."
+			/>
+			<div class="form-actions">
+				<Button type="submit" disabled={busy}>Save description</Button>
+			</div>
+		</form>
+	{:else if ticket.description}
 		<Markdown source={ticket.description} />
-	</Card>
-{/if}
+	{:else}
+		<p class="empty">No description yet.</p>
+	{/if}
+</Card>
 
 <div class="two-up">
 	<!--
@@ -360,6 +419,16 @@
 			{#if data.source}
 				<dl class="source">
 					<div>
+						<dt>Open in Asana</dt>
+						<dd>
+							{#if ticket.asana_url}
+								<a href={ticket.asana_url} target="_blank" rel="noreferrer">Asana task</a>
+							{:else}
+								Not linked
+							{/if}
+						</dd>
+					</div>
+					<div>
 						<dt>Section in Asana</dt>
 						<dd>{data.source.section_name ?? 'None'}</dd>
 					</div>
@@ -378,6 +447,42 @@
 					own and is deliberately coarse until the status models are reconciled. Editing
 					here does not change anything in Asana.
 				</p>
+			{/if}
+
+			<!--
+				Everything migration 0038 gave a home to.
+
+				These were reported as dropped by the first projection because the
+				app had no columns for them. Carrying them and then not showing them
+				would be the same loss with extra steps.
+			-->
+			{#if data.tags.length > 0 || data.followers.length > 0 || data.custom_values.length > 0}
+				<div class="fidelity">
+					{#if data.custom_values.length > 0}
+						<dl class="source">
+							{#each data.custom_values as field (field.field_gid)}
+								<div>
+									<dt>{field.field_name}</dt>
+									<dd>{field.display_value}</dd>
+								</div>
+							{/each}
+						</dl>
+					{/if}
+
+					{#if data.tags.length > 0}
+						<p class="chips">
+							<span class="chips-label">Tags</span>
+							{#each data.tags as t (t.tag)}<span class="chip-tag">{t.tag}</span>{/each}
+						</p>
+					{/if}
+
+					{#if data.followers.length > 0}
+						<p class="chips">
+							<span class="chips-label">Followers</span>
+							{#each data.followers as f (f.name)}<span class="chip-tag">{f.name}</span>{/each}
+						</p>
+					{/if}
+				</div>
 			{/if}
 
 			{#if data.activity.length === 0}
@@ -489,12 +594,25 @@
 				</ul>
 			{/if}
 
-			<form class="add-row" onsubmit={logEffort}>
+			<!--
+				The date is editable and defaults to today.
+
+				People log time days after doing it, and a form that can only say
+				"now" makes them either lie about when or not log it at all. The API
+				has always accepted `logged_on`; the form simply never sent one.
+			-->
+			<form class="add-row effort-form" onsubmit={logEffort}>
 				<Input
 					bind:value={effortDraft.hours}
 					placeholder="1.5"
 					inputmode="decimal"
 					aria-label="Hours"
+				/>
+				<Input
+					type="date"
+					bind:value={effortDraft.logged_on}
+					aria-label="Date worked"
+					max={data.today}
 				/>
 				<Input bind:value={effortDraft.note} placeholder="What on" aria-label="Note" />
 				<Button type="submit" variant="secondary" disabled={busy}>Log</Button>
@@ -606,6 +724,32 @@
 {/if}
 
 <style>
+	.fidelity {
+		margin: 0 0 var(--space-4);
+		padding-bottom: var(--space-3);
+		border-bottom: 1px solid var(--border-thin);
+	}
+
+	.chips {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: var(--space-2);
+		margin: 0 0 var(--space-2);
+	}
+
+	.chips-label {
+		font-size: 0.75rem;
+		color: var(--text-secondary);
+	}
+
+	.chip-tag {
+		padding: 2px var(--space-2);
+		border-radius: var(--radius-1, 4px);
+		background: var(--surface-hover);
+		font-size: 0.75rem;
+	}
+
 	.source {
 		display: grid;
 		grid-template-columns: repeat(auto-fit, minmax(14ch, 1fr));

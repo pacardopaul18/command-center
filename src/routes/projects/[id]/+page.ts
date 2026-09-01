@@ -39,7 +39,12 @@ export const load: PageLoad = async ({ fetch, params }) => {
 		throw new Error(body.error ?? 'Could not load the project.');
 	}
 
-	const data = (await res.json()) as { project: Project; action_items: ActionItem[] };
+	const data = (await res.json()) as {
+		project: Project;
+		action_items: ActionItem[];
+		/** The working day, from the server. The browser's clock is not the app's. */
+		today: string;
+	};
 	const clients = clientsRes.ok
 		? ((await clientsRes.json()) as { clients: Client[] }).clients
 		: [];
@@ -62,5 +67,25 @@ export const load: PageLoad = async ({ fetch, params }) => {
 		? ((await filesRes.json()) as { files: ProjectFile[] }).files
 		: [];
 
-	return { ...data, clients, tickets, owners, milestones, files };
+	/*
+	 * The client's Dropbox files, on the project page too.
+	 *
+	 * A project belongs to a client and the client's folder is where its work
+	 * actually lives, so a project page that showed only files somebody uploaded
+	 * here was showing the empty half. Supporting detail: a failure degrades to
+	 * nothing rather than taking the project down.
+	 */
+	const clientId = data.project.client_id;
+	const dropboxRes = clientId
+		? await fetch(`/api/files?client_id=${clientId}&page_size=25`)
+		: null;
+	const dropbox =
+		dropboxRes && dropboxRes.ok
+			? ((await dropboxRes.json()) as {
+					files: { path: string; name: string; size_bytes: number; modified_at: string | null }[];
+					total: number;
+				})
+			: { files: [], total: 0 };
+
+	return { ...data, clients, tickets, owners, milestones, files, dropbox };
 };

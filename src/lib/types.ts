@@ -113,6 +113,14 @@ export interface Project {
 	milestone_count?: number;
 	milestones_done?: number;
 	open_tickets?: number;
+	/** Every ticket on the project, so a count can say "2 of 15". */
+	all_tickets?: number;
+	/** Open and past due. Derived at read time against the working day. */
+	overdue_tickets?: number;
+	/** True when this project is a rendering of an Asana project. */
+	mirrored?: number;
+	/** 1 when Asana calls it archived. Joined from the mirror, never stored here. */
+	archived?: number;
 	/**
 	 * The earliest undone milestone, falling back to the free-text
 	 * `next_milestone` column when a project has no milestone rows. Two places
@@ -823,6 +831,17 @@ export const TICKET_PRIORITY_LABELS: Record<TicketPriority, string> = {
 };
 
 export interface Ticket {
+	/*
+	 * What Asana holds about this ticket, carried so a synced ticket arrives
+	 * complete. All nullable: a ticket written in this app has none of them.
+	 */
+	/** The section name exactly as Asana spells it. Thursday's reconciliation input. */
+	asana_section?: string | null;
+	/** Asana's identity for the assignee. The display name is not an identity. */
+	asana_assignee_gid?: string | null;
+	asana_modified_at?: string | null;
+	asana_url?: string | null;
+
 	id: string;
 	project_id: string;
 	title: string;

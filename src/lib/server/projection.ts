@@ -1,5 +1,5 @@
 import type { D1Database, D1PreparedStatement } from '@cloudflare/workers-types';
-import { nowUtc } from './dates';
+import { nowUtc, todayInWorkingZone } from './dates';
 
 /**
  * Putting the mirror onto the app's own screens.
@@ -48,6 +48,9 @@ export interface ProjectionReport {
 	skipped_because: string[];
 	dropped_fields: { field: string; why: string; rows: number }[];
 	totals: {
+		tags: number;
+		followers: number;
+		custom_values: number;
 		projects: number;
 		projects_from_asana: number;
 		projects_archived: number;
@@ -75,6 +78,7 @@ interface MirrorTask {
 	section_name: string | null;
 	name: string;
 	notes: string | null;
+	assignee_gid: string | null;
 	assignee_name: string | null;
 	completed: number;
 	completed_at: string | null;
@@ -97,10 +101,45 @@ interface MirrorTask {
  * looking like somebody assessed them. Thursday's reconciliation replaces it
  * and the projection re-runs.
  */
-function projectPhase(archived: number): { phase: string; status: string } {
-	return archived
-		? { phase: 'closing', status: 'done' }
-		: { phase: 'executing', status: 'on_track' };
+interface ProjectSignals {
+	archived: number;
+	tickets: number;
+	open: number;
+	overdue: number;
+}
+
+function projectPhase(signal: ProjectSignals): { phase: string; status: string } {
+	const { archived, tickets, open, overdue } = signal;
+
+	/*
+	 * Phase, from what is actually true about the work.
+	 *
+	 * Deliberately not a completion ratio. The PMI phases are not a progress bar,
+	 * and reading "monitoring" off 50% done would be inventing a meaning the
+	 * word does not have. Only three things here are known rather than guessed:
+	 * an archived project is closed, a project nobody has broken into tickets has
+	 * not started, and a project whose tickets are all finished is closing.
+	 * Everything else is under way.
+	 */
+	const phase = archived
+		? 'closing'
+		: tickets === 0
+			? 'initiating'
+			: open === 0
+				? 'closing'
+				: 'executing';
+
+	/*
+	 * Status is health, and health is a fact about lateness.
+	 *
+	 * Anything overdue is at risk, which is the whole of the claim: it does not
+	 * say how badly, because nothing here knows that. `blocked` is left for a
+	 * person to set, since being blocked is something somebody knows and no
+	 * count can show.
+	 */
+	const status = archived || (tickets > 0 && open === 0) ? 'done' : overdue > 0 ? 'at_risk' : 'on_track';
+
+	return { phase, status };
 }
 
 /**
@@ -162,6 +201,53 @@ export async function projectMirror(
 		if (!skippedBecause.includes(why)) skippedBecause.push(why);
 	};
 
+	// --- the tasks, loaded first ------------------------------------------------
+	//
+	// Before the projects, because a project's phase and status are derived from
+	// its tasks and the app's own tickets do not exist yet. The mirror is the
+	// source for both, which is also why the two cannot disagree: they are read
+	// from the same rows in the same pass.
+
+	const { results: mirrorTasks } = await db
+		.prepare(
+			`SELECT t.gid, t.project_gid, t.parent_gid, t.section_name, t.name, t.notes,
+              t.assignee_gid, u.name AS assignee_name,
+              t.completed, t.completed_at, t.start_on, t.due_on, t.created_at, t.modified_at
+       FROM asana_tasks t
+       LEFT JOIN asana_users u ON u.gid = t.assignee_gid
+       WHERE t.workspace_gid = ?
+       ORDER BY t.gid`
+		)
+		.bind(workspaceGid)
+		.all<MirrorTask>();
+
+	const tasks = mirrorTasks ?? [];
+	const taskByGid = new Map(tasks.map((t) => [t.gid, t]));
+
+	/** The project a task belongs to, following parents until one is found. */
+	function projectGidOf(task: MirrorTask): string | null {
+		let current: MirrorTask | undefined = task;
+		for (let depth = 0; current && depth < 8; depth++) {
+			if (current.project_gid) return current.project_gid;
+			current = current.parent_gid ? taskByGid.get(current.parent_gid) : undefined;
+		}
+		return null;
+	}
+
+	const today = todayInWorkingZone();
+	const signals = new Map<string, { tickets: number; open: number; overdue: number }>();
+	for (const task of tasks) {
+		const gid = projectGidOf(task);
+		if (!gid) continue;
+		const row = signals.get(gid) ?? { tickets: 0, open: 0, overdue: 0 };
+		row.tickets += 1;
+		if (!task.completed) {
+			row.open += 1;
+			if (task.due_on && task.due_on < today) row.overdue += 1;
+		}
+		signals.set(gid, row);
+	}
+
 	// --- projects --------------------------------------------------------------
 
 	const { results: mirrorProjects } = await db
@@ -182,18 +268,28 @@ export async function projectMirror(
 	let projectsWritten = 0;
 
 	for (const project of mirrorProjects ?? []) {
-		const { phase, status } = projectPhase(project.archived);
+		const signal = signals.get(project.gid) ?? { tickets: 0, open: 0, overdue: 0 };
+		const { phase, status } = projectPhase({ archived: project.archived, ...signal });
 		const existing = projectIdFor.get(project.gid);
 		const id = existing ?? newId();
 
 		await db
 			.prepare(
 				`INSERT INTO projects
-         (id, client_id, name, phase, status, description, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+         (id, client_id, name, phase, status, description, created_at, updated_at, asana_url)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
          ON CONFLICT(id) DO UPDATE SET
-           client_id = ?2, name = ?3, phase = ?4, status = ?5, description = ?6,
-           updated_at = ?8`
+           client_id = ?2, name = ?3, description = ?6, updated_at = ?8, asana_url = ?9,
+           /*
+            * A person's decision is not re-derived away.
+            *
+            * Phase and status are derived from the tickets, and somebody who
+            * has set either by hand has said something the counts do not know.
+            * Overwriting it on the next projection would revert their decision
+            * with nothing to say why, which is the worst kind of silent write.
+            */
+           phase = CASE WHEN projects.phase_is_manual = 1 THEN projects.phase ELSE ?4 END,
+           status = CASE WHEN projects.status_is_manual = 1 THEN projects.status ELSE ?5 END`
 			)
 			.bind(
 				id,
@@ -203,7 +299,8 @@ export async function projectMirror(
 				status,
 				project.notes,
 				project.created_at ?? at,
-				at
+				at,
+				`https://app.asana.com/0/${project.gid}`
 			)
 			.run();
 
@@ -226,32 +323,6 @@ export async function projectMirror(
 	// from Asana with none: it belongs to its parent. So a task's project is its
 	// own, or its parent's, and a task that ends up with neither is skipped and
 	// counted rather than attached to something arbitrary.
-
-	const { results: mirrorTasks } = await db
-		.prepare(
-			`SELECT t.gid, t.project_gid, t.parent_gid, t.section_name, t.name, t.notes,
-              u.name AS assignee_name,
-              t.completed, t.completed_at, t.start_on, t.due_on, t.created_at, t.modified_at
-       FROM asana_tasks t
-       LEFT JOIN asana_users u ON u.gid = t.assignee_gid
-       WHERE t.workspace_gid = ?
-       ORDER BY t.gid`
-		)
-		.bind(workspaceGid)
-		.all<MirrorTask>();
-
-	const tasks = mirrorTasks ?? [];
-	const taskByGid = new Map(tasks.map((t) => [t.gid, t]));
-
-	/** The project a task belongs to, following parents until one is found. */
-	function projectGidOf(task: MirrorTask): string | null {
-		let current: MirrorTask | undefined = task;
-		for (let depth = 0; current && depth < 8; depth++) {
-			if (current.project_gid) return current.project_gid;
-			current = current.parent_gid ? taskByGid.get(current.parent_gid) : undefined;
-		}
-		return null;
-	}
 
 	const { results: taskLinks } = await db
 		.prepare('SELECT asana_gid, ticket_id FROM asana_task_links')
@@ -284,12 +355,14 @@ export async function projectMirror(
 				.prepare(
 					`INSERT INTO tickets
            (id, project_id, title, description, start_date, due_date, status,
-            assignee, completed_at, created_at, updated_at)
-           VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+            assignee, completed_at, created_at, updated_at,
+            asana_section, asana_assignee_gid, asana_modified_at, asana_url)
+           VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
            ON CONFLICT(id) DO UPDATE SET
              project_id = ?2, title = ?3, description = ?4, start_date = ?5,
              due_date = ?6, status = ?7, assignee = ?8, completed_at = ?9,
-             updated_at = ?11`
+             updated_at = ?11, asana_section = ?12, asana_assignee_gid = ?13,
+             asana_modified_at = ?14, asana_url = ?15`
 				)
 				.bind(
 					id,
@@ -302,7 +375,11 @@ export async function projectMirror(
 					task.assignee_name,
 					completedAt,
 					task.created_at ?? at,
-					at
+					at,
+					task.section_name,
+					task.assignee_gid,
+					task.modified_at,
+					`https://app.asana.com/0/0/${task.gid}`
 				)
 		);
 
@@ -350,6 +427,105 @@ export async function projectMirror(
 
 	await runAll(db, parents);
 
+	// --- the sets: tags, followers, custom values --------------------------------
+	//
+	// Everything the first projection reported as dropped, now carried. These are
+	// the app's own rows and the projection owns them, so each is cleared and
+	// rewritten for the tickets it manages: a tag removed in Asana has to
+	// disappear here too, and an upsert alone would leave it behind for ever.
+	//
+	// Only the rows this pass owns. A tag somebody adds in the app is marked
+	// manual and is not the projection's to delete.
+
+	await db.prepare("DELETE FROM ticket_tags WHERE source = 'asana'").run();
+	await db.prepare("DELETE FROM ticket_followers WHERE source = 'asana'").run();
+	await db
+		.prepare(
+			`DELETE FROM ticket_custom_values
+       WHERE ticket_id IN (SELECT ticket_id FROM asana_task_links)`
+		)
+		.run();
+
+	const sets: D1PreparedStatement[] = [];
+	let tagRows = 0;
+	let followerRows = 0;
+	let customRows = 0;
+
+	const { results: mirrorTags } = await db
+		.prepare(
+			`SELECT tt.task_gid, g.name FROM asana_task_tags tt
+       JOIN asana_tags g ON g.gid = tt.tag_gid`
+		)
+		.all<{ task_gid: string; name: string }>();
+
+	for (const row of mirrorTags ?? []) {
+		const ticket = ticketIdFor.get(row.task_gid);
+		if (!ticket) continue;
+		sets.push(
+			db
+				.prepare(
+					"INSERT OR IGNORE INTO ticket_tags (ticket_id, tag, source) VALUES (?, ?, 'asana')"
+				)
+				.bind(ticket, row.name)
+		);
+		tagRows += 1;
+	}
+
+	const { results: mirrorFollowers } = await db
+		.prepare(
+			`SELECT f.task_gid, f.user_gid, COALESCE(u.name, f.user_gid) AS name
+       FROM asana_task_followers f
+       LEFT JOIN asana_users u ON u.gid = f.user_gid`
+		)
+		.all<{ task_gid: string; user_gid: string; name: string }>();
+
+	for (const row of mirrorFollowers ?? []) {
+		const ticket = ticketIdFor.get(row.task_gid);
+		if (!ticket) continue;
+		sets.push(
+			db
+				.prepare(
+					`INSERT OR IGNORE INTO ticket_followers (ticket_id, person_gid, name, source)
+           VALUES (?, ?, ?, 'asana')`
+				)
+				.bind(ticket, row.user_gid, row.name)
+		);
+		followerRows += 1;
+	}
+
+	const { results: mirrorCustom } = await db
+		.prepare(
+			`SELECT v.task_gid, v.field_gid, v.display_value, f.name AS field_name, f.type AS field_type
+       FROM asana_task_custom_values v
+       JOIN asana_custom_fields f ON f.gid = v.field_gid`
+		)
+		.all<{
+			task_gid: string;
+			field_gid: string;
+			display_value: string;
+			field_name: string;
+			field_type: string | null;
+		}>();
+
+	for (const row of mirrorCustom ?? []) {
+		const ticket = ticketIdFor.get(row.task_gid);
+		if (!ticket) continue;
+		sets.push(
+			db
+				.prepare(
+					`INSERT INTO ticket_custom_values
+           (ticket_id, field_gid, field_name, field_type, display_value)
+           VALUES (?1, ?2, ?3, ?4, ?5)
+           ON CONFLICT(ticket_id, field_gid) DO UPDATE SET
+             field_name = ?3, field_type = ?4, display_value = ?5`
+				)
+				.bind(ticket, row.field_gid, row.field_name, row.field_type, row.display_value)
+		);
+		customRows += 1;
+	}
+
+	await runAll(db, sets);
+
 	// --- what could not come across ---------------------------------------------
 
 	const count = async (sql: string, ...binds: unknown[]) => {
@@ -373,26 +549,11 @@ export async function projectMirror(
 		},
 		{
 			field: 'assignee_id',
-			why: 'Asana assignees are not app users and inventing user rows for them would put six people into a roster nobody added. The name is carried as free text.',
+			why: 'Still no app user row, and deliberately: six Asana assignees are not six members of this app. The gid is now carried on the ticket as asana_assignee_gid, so grouping and filtering work on identity rather than on a display name.',
 			rows: await count(
 				'SELECT COUNT(*) AS n FROM asana_tasks WHERE workspace_gid = ? AND assignee_gid IS NOT NULL',
 				workspaceGid
 			)
-		},
-		{
-			field: 'tags',
-			why: 'Tickets have no tag model. One tag exists in the whole workspace, so the loss is small and the mirror keeps it.',
-			rows: await count('SELECT COUNT(*) AS n FROM asana_task_tags')
-		},
-		{
-			field: 'custom fields',
-			why: 'No home on a ticket. 10 definitions, and the values stay in the mirror where a later screen can read them.',
-			rows: await count('SELECT COUNT(*) AS n FROM asana_task_custom_values')
-		},
-		{
-			field: 'followers',
-			why: 'Tickets have one assignee and one reporter, no watcher list.',
-			rows: await count('SELECT COUNT(*) AS n FROM asana_task_followers')
 		},
 		{
 			field: 'stories',
@@ -407,6 +568,9 @@ export async function projectMirror(
 	];
 
 	const totals = {
+		tags: tagRows,
+		followers: followerRows,
+		custom_values: customRows,
 		projects: await count('SELECT COUNT(*) AS n FROM projects'),
 		projects_from_asana: await count('SELECT COUNT(*) AS n FROM asana_project_links'),
 		projects_archived: await count(

@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import type { ApiEnv } from './env';
 import { daysAgoUtc, todayInWorkingZone, workingDayStartUtc } from '../dates';
+import { openTicket } from '../ticket-state';
 
 /**
  * The Today cockpit.
@@ -149,7 +150,7 @@ today.get('/', async (c) => {
               (SELECT COUNT(*) FROM action_items a
                 WHERE a.project_id = p.id AND a.status = 'done') AS done_items,
               (SELECT COUNT(*) FROM tickets t
-                WHERE t.project_id = p.id AND t.status NOT IN ('done','cancelled')) AS open_tickets,
+                WHERE t.project_id = p.id AND ${openTicket()}) AS open_tickets,
               CASE WHEN p.target_close IS NOT NULL AND p.target_close < ?1 THEN 1 ELSE 0 END AS late
        FROM projects p
        LEFT JOIN clients cl ON cl.id = p.client_id
@@ -178,7 +179,7 @@ today.get('/', async (c) => {
               CASE WHEN t.due_date IS NOT NULL AND t.due_date <= ?1 THEN 1 ELSE 0 END AS breaching
        FROM tickets t
        JOIN projects p ON p.id = t.project_id
-       WHERE t.status NOT IN ('done','cancelled')
+       WHERE ${openTicket()}
        ORDER BY
          breaching DESC,
          CASE t.priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END,
@@ -287,9 +288,9 @@ today.get('/', async (c) => {
          (SELECT COUNT(*) FROM projects
            WHERE status IN ('at_risk', 'blocked')) AS projects_at_risk,
          (SELECT COUNT(*) FROM tickets
-           WHERE status NOT IN ('done','cancelled')) AS tickets_open,
+           WHERE ${openTicket('tickets')}) AS tickets_open,
          (SELECT COUNT(*) FROM tickets
-           WHERE status NOT IN ('done','cancelled')
+           WHERE ${openTicket('tickets')}
              AND due_date IS NOT NULL AND due_date <= ?1) AS tickets_breaching`
 		)
 		.bind(day, soon, stale)

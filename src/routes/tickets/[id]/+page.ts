@@ -109,6 +109,16 @@ export const load: PageLoad = async ({ fetch, params }) => {
 		activity: AsanaStory[];
 		subtasks: Subtask[];
 		parent: { id: string; title: string } | null;
+		tags: { tag: string; source: string }[];
+		followers: { name: string; person_gid: string | null; source: string }[];
+		custom_values: {
+			field_gid: string;
+			field_name: string;
+			field_type: string | null;
+			display_value: string;
+		}[];
+		/** The working day from the server. The browser's clock is not the app's. */
+		today: string;
 	};
 
 	// The roster is supporting detail. A failure must not stop the ticket

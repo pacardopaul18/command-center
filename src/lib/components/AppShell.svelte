@@ -181,6 +181,33 @@
 	 * it. `:global` because these elements belong to the pages, not to this
 	 * component, and the whole point is that a page does not have to opt in.
 	 */
+	/*
+	 * Cards do not touch.
+	 *
+	 * The Card component carries no outer margin, on the reasoning that spacing
+	 * belongs to whatever is arranging the cards. Most pages wrap them in a
+	 * container that supplies it; the ones that place two cards as plain
+	 * siblings got nothing, and four screens rendered with the cards flush
+	 * against each other at zero pixels. Measured, not guessed.
+	 *
+	 * Fixed here rather than in Card, because a margin on the component would
+	 * fight every page that already arranges its own spacing with a grid gap.
+	 * A sibling rule only fires where nothing else has.
+	 *
+	 * `:global` because the cards belong to the pages, not to this component.
+	 */
+	.content :global(.card + .card),
+	.content :global(.card + .block),
+	.content :global(.card + .cols),
+	.content :global(.card + .two-up),
+	.content :global(.card + .stack),
+	.content :global(.block + .card),
+	.content :global(.cols + .card),
+	.content :global(.two-up + .card),
+	.content :global(.stack + .card) {
+		margin-top: var(--space-5);
+	}
+
 	.shell.compact :global(td),
 	.shell.compact :global(th) {
 		padding-top: var(--space-2);

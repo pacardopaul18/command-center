@@ -26,7 +26,20 @@ const projection = code('src', 'lib', 'server', 'projection.ts');
 
 describe('layer 2: a projection never writes to Asana or Dropbox', () => {
 	it('makes no outbound request of any kind', () => {
-		for (const call of ['fetch(', 'request(', 'asana.com', 'dropboxapi', 'ASANA_TOKEN']) {
+		/*
+		 * `asana.com` was on this list and has been taken off, deliberately.
+		 *
+		 * The projection now builds a link to the Asana task so a ticket can
+		 * offer "open this in Asana". That is a string in a column, not a
+		 * request: a URL nobody fetches reaches nothing. Keeping the hostname
+		 * banned would have meant dropping the link or weakening the claim,
+		 * and the property was never "the word does not appear" but "nothing
+		 * here calls out".
+		 *
+		 * What remains is what could actually make a call: the two request
+		 * helpers, and the token without which none would be authorised.
+		 */
+		for (const call of ['fetch(', 'request(', 'dropboxapi', 'ASANA_TOKEN']) {
 			expect(
 				projection.includes(call),
 				`projection.ts names ${call}. It reads mirror tables and writes app tables. ` +
@@ -54,12 +67,32 @@ describe('layer 2: the projection is idempotent by construction', () => {
 	it('upserts rather than inserting', () => {
 		// Two runs must converge. An INSERT with no conflict clause doubles the
 		// app's model every time somebody re-pulls.
-		const inserts = projection.match(/INSERT INTO (projects|tickets|ticket_parents)[\s\S]{0,600}?`/g) ?? [];
-		expect(inserts.length).toBeGreaterThanOrEqual(3);
-		for (const statement of inserts) {
+		const tables = [
+			'projects',
+			'tickets',
+			'ticket_parents',
+			'ticket_tags',
+			'ticket_followers',
+			'ticket_custom_values'
+		];
+
+		// Checked per table rather than by counting matches inside a fixed
+		// window. The window was 600 characters, the projects statement grew
+		// past it, and the test started checking two of three without saying
+		// so. A test that quietly checks less than it claims is worse than one
+		// that fails.
+		for (const table of tables) {
+			const at = projection.indexOf(`INTO ${table}`);
+			expect(at, `nothing writes ${table}`).toBeGreaterThan(-1);
+
+			const statement = projection.slice(at, at + 900);
+			const upserts =
+				/ON CONFLICT/.test(statement) ||
+				/INSERT OR IGNORE/.test(projection.slice(Math.max(0, at - 24), at));
+
 			expect(
-				/ON CONFLICT/.test(statement),
-				`This INSERT has no ON CONFLICT clause, so a second run doubles it:\n${statement.slice(0, 160)}`
+				upserts,
+				`The write to ${table} is a plain INSERT, so a second run doubles it.`
 			).toBe(true);
 		}
 	});
@@ -118,14 +151,34 @@ describe('layer 2: nothing is projected without a source, and nothing is invente
 		expect(projection).toMatch(/assignee_name/);
 	});
 
-	it('reports every field it could not carry, with the reason and a count', () => {
+	it('reports every field it still cannot carry, with the reason and a count', () => {
 		expect(projection).toMatch(/dropped_fields/);
-		for (const field of ['tags', 'custom fields', 'followers', 'stories', 'assignee_id']) {
+
+		/*
+		 * This list shrank, and that is the point of the change that shrank it.
+		 *
+		 * Tags, custom fields and followers were on it because the app had no
+		 * columns for them. Migration 0038 gave them tables and the projection
+		 * carries them, so asserting they are still reported as dropped would be
+		 * asserting yesterday's truth. What is left is what is deliberately not
+		 * carried, and each of those has a reason that is a decision rather than
+		 * a gap.
+		 */
+		for (const field of ['stories', 'assignee_id', 'ticket status detail']) {
 			expect(
 				projection.includes(`'${field}'`),
 				`${field} is not in the dropped list. A projection that discards a field ` +
 					'quietly leaves a screen looking complete while real information is nowhere.'
 			).toBe(true);
+		}
+
+		// And these must no longer claim to be dropped, because they are not.
+		for (const carried of ['tags', 'custom fields', 'followers']) {
+			expect(
+				projection.includes(`field: '${carried}'`),
+				`${carried} is still reported as dropped, but the projection now carries it. ` +
+					'A report that overstates the loss is as wrong as one that hides it.'
+			).toBe(false);
 		}
 	});
 

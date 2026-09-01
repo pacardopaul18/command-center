@@ -96,13 +96,42 @@
 	 * A project with neither returns null rather than zero: nothing to count is
 	 * not the same as nothing done, and an empty bar says the second. D27.
 	 */
-	function progressOf(project: Project): number | null {
+	/**
+	 * Progress, counted from whichever measure the project actually has.
+	 *
+	 * Milestones first because they are somebody's deliberate statement of what
+	 * done means. Then tickets, which is what a project mirrored from Asana has
+	 * and the reason every row read "Not tracked" until now: 2,585 tickets were
+	 * on the projects and nothing looked at them. Action items last, since a
+	 * project with none of the three reports nothing rather than 0%, which would
+	 * read as "nothing done" instead of "not tracked". D161.
+	 *
+	 * The label says which measure was used, because 87% from tickets and 87%
+	 * from milestones are different claims.
+	 */
+	function progressOf(project: Project): { percent: number; from: string } | null {
 		const milestones = project.milestone_count ?? 0;
 		if (milestones > 0) {
-			return Math.round(((project.milestones_done ?? 0) / milestones) * 100);
+			return {
+				percent: Math.round(((project.milestones_done ?? 0) / milestones) * 100),
+				from: 'milestones'
+			};
 		}
+
+		const tickets = project.all_tickets ?? 0;
+		if (tickets > 0) {
+			const done = tickets - (project.open_tickets ?? 0);
+			return { percent: Math.round((done / tickets) * 100), from: 'tickets' };
+		}
+
 		const items = project.all_action_items ?? 0;
-		if (items > 0) return Math.round(((project.done_action_items ?? 0) / items) * 100);
+		if (items > 0) {
+			return {
+				percent: Math.round(((project.done_action_items ?? 0) / items) * 100),
+				from: 'action items'
+			};
+		}
+
 		return null;
 	}
 </script>
@@ -252,8 +281,15 @@
 					<th scope="col">Phase</th>
 					<th scope="col">Progress</th>
 					<th scope="col">Target</th>
-					<th scope="col" class="num">Open</th>
-					<th scope="col" class="num">Tickets</th>
+					<!--
+						Both headings used to be ambiguous next to each other. "Open"
+						counted action items and "Tickets" counted open tickets, so a
+						row reading 0 and 2 was read as "no open tickets, two tickets"
+						when it meant "no open action items, two open tickets". Both
+						numbers were correct and the pair was unreadable.
+					-->
+					<th scope="col" class="num">Action items</th>
+					<th scope="col" class="num">Tickets open</th>
 					<th scope="col">Status</th>
 				</tr>
 			</thead>
@@ -284,11 +320,17 @@
 								-->
 								<span class="dim mono">Not tracked</span>
 							{:else}
-								<span class="progress">
+								<span class="progress" title="Counted from {done.from}">
 									<span class="progress-bar" aria-hidden="true">
-										<span class="progress-fill" style="width: {done}%"></span>
+										<span class="progress-fill" style="width: {done.percent}%"></span>
 									</span>
-									<span class="progress-text mono">{done}%</span>
+									<span class="progress-text mono">{done.percent}%</span>
+									<!--
+										Which measure this came from. 87% of milestones and 87%
+										of tickets are different claims, and a bare percentage
+										invites the reader to assume whichever they had in mind.
+									-->
+									<span class="progress-from">{done.from}</span>
 								</span>
 							{/if}
 						</td>
@@ -306,7 +348,13 @@
 								{project.open_action_items ?? 0}
 							{/if}
 						</td>
-						<td class="num mono">{project.open_tickets ?? 0}</td>
+						<td class="num mono">
+							{#if (project.overdue_tickets ?? 0) > 0}
+								<span class="overdue">{project.open_tickets ?? 0}</span>
+							{:else}
+								{project.open_tickets ?? 0}
+							{/if}<span class="of">of {project.all_tickets ?? 0}</span>
+						</td>
 						<td>
 							<StatusChip
 								tone={PROJECT_STATUS_TONE[project.status]}
@@ -322,6 +370,18 @@
 {/if}
 
 <style>
+	.progress-from {
+		color: var(--text-secondary);
+		font-size: 0.6875rem;
+		white-space: nowrap;
+	}
+
+	.of {
+		color: var(--text-secondary);
+		font-size: 0.8125rem;
+		margin-left: 0.4ch;
+	}
+
 	.views {
 		display: flex;
 		gap: var(--space-2);

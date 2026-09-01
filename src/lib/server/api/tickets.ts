@@ -5,6 +5,7 @@ import { nowUtc, todayInWorkingZone } from '../dates';
 import { ApiError, oneOf, optionalDate, optionalText, readJsonObject, requiredText } from './validate';
 import { TICKET_PRIORITIES, TICKET_STATUSES } from '$lib/types';
 import type { TicketPriority, TicketStatus } from '$lib/types';
+import { FINISHED_TICKET_STATUSES, finishedTicket, openTicket } from '../ticket-state';
 
 /**
  * Tickets: the worked unit under a project.
@@ -45,7 +46,7 @@ const SELECT = `
 /** Live first, then soonest due, undated last, newest as the tie break. */
 const ORDER_BY = `
   ORDER BY
-    CASE WHEN t.status IN ('done','cancelled') THEN 1 ELSE 0 END,
+    CASE WHEN ${finishedTicket()} THEN 1 ELSE 0 END,
     CASE WHEN t.due_date IS NULL THEN 1 ELSE 0 END,
     t.due_date ASC,
     CASE t.priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END,
@@ -101,7 +102,7 @@ tickets.get('/', async (c) => {
 	} else if (!status) {
 		// The default view is work that is still live. Finished tickets are
 		// reachable, they are just not what the screen is for.
-		where.push("t.status NOT IN ('done','cancelled')");
+		where.push(openTicket());
 	}
 
 	const q = c.req.query('q')?.trim();
@@ -201,9 +202,33 @@ tickets.get('/:id', async (c) => {
 		.bind(id)
 		.first();
 
+	/** Everything migration 0038 gave a home to, read back for the detail view. */
+	const tags = await c.env.DB.prepare(
+		'SELECT tag, source FROM ticket_tags WHERE ticket_id = ? ORDER BY tag'
+	)
+		.bind(id)
+		.all();
+
+	const followers = await c.env.DB.prepare(
+		'SELECT name, person_gid, source FROM ticket_followers WHERE ticket_id = ? ORDER BY name'
+	)
+		.bind(id)
+		.all();
+
+	const customValues = await c.env.DB.prepare(
+		`SELECT field_gid, field_name, field_type, display_value
+     FROM ticket_custom_values WHERE ticket_id = ? ORDER BY field_name`
+	)
+		.bind(id)
+		.all();
+
 	return c.json({
 		ticket,
 		entries: entries.results ?? [],
+		tags: tags.results ?? [],
+		followers: followers.results ?? [],
+		custom_values: customValues.results ?? [],
+		today: todayInWorkingZone(),
 		source: source ?? null,
 		mirrored: Boolean(source),
 		activity: activity.results ?? [],
@@ -253,7 +278,7 @@ function readField(field: (typeof WRITABLE)[number], raw: unknown): string | num
 }
 
 /** Finished statuses carry a timestamp; unfinished ones must not. */
-const FINISHED: readonly string[] = ['done', 'cancelled'];
+const FINISHED: readonly string[] = FINISHED_TICKET_STATUSES;
 
 tickets.post('/', async (c) => {
 	const body = await readJsonObject(c.req.raw);

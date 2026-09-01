@@ -5301,3 +5301,117 @@ ones.
 So: a feature verified only against real data is half verified, and a difference
 between the two datasets is the finding rather than an inconvenience to be
 worked around.
+
+### D195: two right numbers under two wrong headings
+
+The Projects list showed a column headed "Open" against open action items, and
+immediately beside it a column headed "Tickets" against open tickets. A project
+reading 0 and 2 was read as "no open tickets, two tickets" while its own page
+said 2 open and 13 closed.
+
+**Nothing was miscounted.** That is worth stating plainly, because the obvious
+diagnosis was two queries disagreeing and the obvious diagnosis was wrong. Both
+numbers were correct and the pair of headings was unreadable. Item 8 of the
+review checklist, applied to a screen rather than to an error message: the
+diagnosis that fits is not the diagnosis that was verified.
+
+Three changes. The headings say what they count. The column shows "2 of 15"
+rather than "2", because a bare number invites the reader to supply the missing
+half. And the definition of an open ticket, which was spelled out in ten places
+across five files, now lives in one, with a test that fails if the literal
+reappears. All ten copies agreed; the tenth was written by copying the ninth,
+and the first one somebody edits without finding the others is the day two
+screens really do disagree.
+
+### D196: a synced ticket arrives complete
+
+The standard, now that the ALTER freeze is lifted: everything Asana holds about
+a task has somewhere to go.
+
+Columns for what belongs to one ticket and the app might itself author, side
+tables for sets and for anything whose shape belongs to the workspace. So
+`asana_section`, `asana_assignee_gid`, `asana_modified_at` and `asana_url` are
+columns; tags, followers and custom values are tables. A tags column would mean
+parsing a delimited string, and a column per custom field would mean a migration
+every time somebody edits a dropdown in Asana.
+
+Custom values are keyed on the field's gid, not its name, because a field can be
+renamed at any time and keying on the label would orphan every value the first
+time somebody tidied one.
+
+Carried on the re-run: 2,958 followers, 309 custom values, 1 tag. What remains
+in `dropped_fields` is now only what is deliberately not carried, and the report
+shrank accordingly. A report that overstates the loss is as wrong as one that
+hides it, so the test asserting those fields were dropped was rewritten to
+assert that they are not.
+
+Still not carried, each a decision: stories, because they are an activity trail
+and not commitments; app user rows for Asana people, because six assignees are
+not six members of this app, though the gid is now carried so identity works;
+and fine-grained status, because the real vocabulary is 103 section names and
+that is Thursday's reconciliation.
+
+### D197: derived from the work, and a person's override survives the derivation
+
+Every project read "Executing / Not tracked" because phase and status were
+derived from `archived` alone, and progress looked only at milestones and action
+items, of which the mirrored projects have none.
+
+Both now read the work. Phase: archived is closing, no tickets is initiating, no
+open tickets is closing, anything else is executing. Deliberately not a
+completion ratio, because the PMI phases are not a progress bar and reading
+"monitoring" off 50% done would invent a meaning the word does not have. Status:
+done when the work is finished, at risk when anything is overdue, on track
+otherwise; `blocked` is left for a person, because being blocked is something
+somebody knows and no count can show. Progress counts milestones, then tickets,
+then action items, and the screen says which measure it used, since 87% of
+milestones and 87% of tickets are different claims.
+
+The real spread that replaced "everything executing": 2 initiating, 35
+executing, 29 closing; 15 on track, 22 at risk, 29 done.
+
+The signals are computed from the mirror rather than from the projected tickets,
+because the tickets do not exist yet when the projects are written, and two
+derivations from two sources is how two screens start disagreeing.
+
+`phase_is_manual` and `status_is_manual` mean a person's decision is not
+re-derived away on the next projection. Overwriting it would revert their
+judgement with nothing to say why, which is the worst kind of silent write.
+
+### D198: an empty card is an invitation, and an empty screen says which empty it is
+
+The ticket's Description card disappeared when there was nothing in it, so a
+ticket with no description offered no way to write one: the only route in was
+the Edit form and nothing on the page said so. It always renders now, with an
+Add control and in-place editing.
+
+The same rule, twice more. Every client showed "No contacts yet", which reads as
+a sync that found nothing, and reading it on every client reads as a sync that
+failed. Nothing failed: no source of client contacts exists. Asana holds ten
+people, all MacGray staff, with no email addresses at all. The empty state says
+that, because a screen that implies a failure sends somebody looking for a bug
+that is not there.
+
+And effort logging: the form asked for hours and a note and had no date, so it
+could only ever mean "now". People log time days late, and a form that can only
+say now makes them either misstate the day or not log it at all. The API had
+always accepted `logged_on`; the form simply never sent one.
+
+### D199: cards do not touch, measured rather than judged
+
+Four screens rendered with cards flush against each other at zero pixels.
+
+The Card component carries no outer margin, on the reasoning that spacing
+belongs to whatever arranges the cards. Most pages wrap them in a container that
+supplies it; the pages that placed two cards as plain siblings got nothing.
+
+Fixed in the shell with a sibling rule rather than on the component, because a
+margin on Card would fight every page that already arranges its own spacing with
+a grid gap. A sibling rule only fires where nothing else has.
+
+Found and confirmed by measuring in a browser at 1920 and 412, not by looking
+and judging. The first measurement listed the gaps and the second proved they
+had gone. Two of the apparent faults turned out to be side-by-side columns,
+which a bottom-to-top comparison across a grid reports as negative space and
+which are not a defect at all: measuring found the real one and stopped three
+imaginary ones being fixed.
