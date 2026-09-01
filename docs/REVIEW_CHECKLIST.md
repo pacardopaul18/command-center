@@ -28,6 +28,18 @@ Found by asking it: the one-way Asana push was held back only by no workspace
 having been chosen, and choosing one to make the mirror settings coherent would
 have armed it.
 
+**The boundary, because without it this question stops discriminating.** A
+feature that was asked for, is on by default, and runs when its credential is
+supplied is **on by design**. The daily digests are that: an email to Paul's own
+inbox is the ruled MVP feature, the preference is read and a skip is logged, and
+setting `RESEND_API_KEY` turns on a thing somebody wanted. A capability nobody
+chose, that runs because some value happens to be set, is **armed by omission**.
+The Asana push was that.
+
+The test is not "does it need configuration to run". Everything does. It is
+whether a person decided this should happen. Treat every default-on feature as a
+finding and the rule is retired within a week.
+
 ## 2. Does every early exit say that it stopped, and why?
 
 **D138, D185.** A path that ends before completing and stays quiet produces a

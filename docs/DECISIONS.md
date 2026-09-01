@@ -5109,3 +5109,41 @@ nobody chose.
 **Result: one path was armed by omission, it is closed, and no others are.**
 Neither of the two Resend observations was changed, because tonight's
 authorisation was the audit and the report.
+
+### D187: a send has no fallback destination, and an override says it overrode
+
+Two changes from the D186 audit, both ruled.
+
+**`DIGEST_TO` refuses rather than defaulting.** The sender used to fall back to
+a hard-coded address when the variable was unset. The address was Paul's own, so
+the behaviour was right, and that was luck rather than design.
+
+The correction to my own report: the variable is set in `wrangler.toml`, so the
+fallback was latent rather than active and would only have fired if somebody
+deleted the var. That is milder than I first described it and still worth
+removing, because the failure it produced would be mail going somewhere on the
+strength of a line in the source instead of a deployment failing loudly. A
+destination that survives a configuration mistake is a destination nobody chose.
+Same family as D108.
+
+Refusing is safe here in a way it would not be for a read. A digest that does
+not go out is a missing email; a digest that goes to a compiled-in address is a
+delivery nobody can explain. The refusal is a named outcome,
+`skipped_no_recipient`, rather than a bare failure.
+
+`DIGEST_FROM` still falls back, deliberately. `onboarding@resend.dev` is
+Resend's sandbox sender and only delivers to the account owner, so an unset
+sender narrows where mail can go rather than widening it. That is the opposite
+case, and treating it the same way would be applying the rule without its
+reason.
+
+**`POST /api/digests/run` reads the preference the cron reads.** It still sends
+when the schedule preference is off, because asking for a digest now is a
+different act from a daily one and is not undone by having turned the daily one
+off. But the result carries `scheduled_digest_enabled`, and when the two
+disagree it says so in a sentence.
+
+The point is not to stop the send. It is that the Settings screen must not be
+able to say digests are off while a path sends one and reports nothing. D164's
+other half: a setting has to be visible where it is being overridden, not only
+where it is obeyed.

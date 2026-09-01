@@ -279,7 +279,7 @@ export async function buildDigest(
 export interface DigestResult {
 	kind: DigestKind;
 	day: string;
-	status: 'sent' | 'already_sent' | 'skipped_no_key' | 'failed';
+	status: 'sent' | 'already_sent' | 'skipped_no_key' | 'skipped_no_recipient' | 'failed';
 	detail?: string;
 	subject?: string;
 	/** Dry run only. The HTML part, so the rendering can be checked without sending. */
@@ -329,8 +329,38 @@ export async function runDigest(
 		return { kind, day, status: 'skipped_no_key', detail: 'RESEND_API_KEY is not set.' };
 	}
 
+	/*
+	 * No recipient means no send. Never a fallback.
+	 *
+	 * This used to default to a hard-coded address. It happened to be Paul's, so
+	 * the behaviour was right, but that was luck rather than design: a
+	 * destination that survives a configuration mistake is a destination nobody
+	 * chose, and the failure mode is mail arriving somewhere on the strength of
+	 * a line in the source. The same rule as D108, which refuses a named account
+	 * that does not exist rather than quietly substituting one.
+	 *
+	 * Refusing is safe here in a way it would not be for a read: a digest that
+	 * does not go out is a missing email, and a digest that goes to a compiled-in
+	 * address is a delivery nobody can explain.
+	 */
+	const to = env.DIGEST_TO?.trim();
+	if (!to) {
+		return {
+			kind,
+			day,
+			status: 'skipped_no_recipient',
+			detail: 'DIGEST_TO is not set, so there is nobody to send this to.'
+		};
+	}
+
+	/*
+	 * The sender does still fall back, and deliberately.
+	 *
+	 * `onboarding@resend.dev` is Resend's sandbox sender, which only delivers to
+	 * the account owner. An unset sender therefore narrows where mail can go
+	 * rather than widening it, which is the opposite of the recipient case.
+	 */
 	const from = env.DIGEST_FROM || 'onboarding@resend.dev';
-	const to = env.DIGEST_TO || 'pacardopaul18@gmail.com';
 
 	const res = await fetch('https://api.resend.com/emails', {
 		method: 'POST',

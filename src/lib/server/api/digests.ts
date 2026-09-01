@@ -4,6 +4,7 @@ import { DIGEST_HOURS, digestDueAt, runDigest } from '../digest';
 import type { DigestKind } from '../digest';
 import { ApiError } from './validate';
 import { todayInWorkingZone, WORKING_TIME_ZONE } from '../dates';
+import { getSettingsOrDefaults } from '../settings';
 
 /**
  * HTTP access to the digests.
@@ -56,7 +57,11 @@ digests.get('/status', async (c) => {
 		digests: marks,
 		resend_key_present: Boolean(c.env.RESEND_API_KEY),
 		from: c.env.DIGEST_FROM ?? 'onboarding@resend.dev',
-		to: c.env.DIGEST_TO ?? 'pacardopaul18@gmail.com'
+
+		// Null, not a hard-coded address. This screen reports configuration, and
+		// reporting a fallback that the sender no longer applies would be the
+		// screen and the code disagreeing about where mail goes.
+		to: c.env.DIGEST_TO?.trim() || null
 	});
 });
 
@@ -68,5 +73,31 @@ digests.post('/run', async (c) => {
 	const kind = parseKind(c.req.query('kind') ?? undefined);
 	const force = c.req.query('force') === '1';
 	const result = await runDigest(c.env, kind, { force });
-	return c.json(result, result.status === 'failed' ? 502 : 200);
+
+	/*
+	 * What the schedule preference says, reported alongside what was done.
+	 *
+	 * Sending on purpose is a different act from a schedule, so this route still
+	 * sends when the preference is off: asking for a digest now is not undone by
+	 * having turned off the daily one. But the Settings screen must not be able
+	 * to say digests are off while a path sends one and says nothing, so the
+	 * result carries the preference and, when the two disagree, a sentence
+	 * saying so. D164's other half: a setting has to be visible where it is
+	 * being overridden, not only where it is obeyed.
+	 */
+	const prefs = await getSettingsOrDefaults(c.env.SESSIONS);
+	const scheduled = kind === 'morning' ? prefs.morning_digest : prefs.evening_digest;
+
+	return c.json(
+		{
+			...result,
+			scheduled_digest_enabled: scheduled,
+			note:
+				!scheduled && result.status === 'sent'
+					? `The ${kind} digest is switched off in Settings. This was sent because it ` +
+						'was asked for directly, which the schedule preference does not govern.'
+					: null
+		},
+		result.status === 'failed' ? 502 : 200
+	);
 });
