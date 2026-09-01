@@ -5147,3 +5147,28 @@ The point is not to stop the send. It is that the Settings screen must not be
 able to say digests are off while a path sends one and reports nothing. D164's
 other half: a setting has to be visible where it is being overridden, not only
 where it is obeyed.
+
+### D188: read the whole message, then confirm the branch
+
+A push was rejected by the pre-push suite. The hook's message named two
+possible causes: the volume fixture expiring overnight, or a dev server holding
+the build directory open. The first was read, the fixture was regenerated and
+reloaded, and the push failed again on the cause that had been sitting in the
+second half of the same sentence.
+
+The gate was right both times. The mistake was diagnostic: acting on the first
+branch of a two-branch message without confirming which branch had occurred. A
+diagnosis that fits is not a diagnosis that was verified, and confirming costs
+one command where guessing wrong costs an hour.
+
+It is a habit rather than a defect, so it lives on the review checklist rather
+than in a test. Item 8.
+
+Recorded alongside it, because it came out of the same exchange: a finding
+revised downward on evidence is the same discipline as one revised upward, and
+is the easier of the two to skip, because nobody is harmed by an overstatement
+and it makes the work look more valuable. The `DIGEST_TO` fallback was reported
+as a live misdirection risk and was latent, because the variable is set in
+`wrangler.toml`. The fix was still worth making and the severity was still
+wrong. Both were said, and a rule applied without its reason is not the rule,
+which is why `DIGEST_FROM` keeps its fallback.

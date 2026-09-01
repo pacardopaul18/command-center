@@ -107,3 +107,38 @@ assertion still passing.
 - Rendered at 1920 and 412 with real data in it.
 - Browser console read, not just the page looked at.
 - One H1, 44px tap floor, no horizontal page scroll.
+
+## 8. When something names more than one possible cause, which one was it?
+
+**D188.** A gate that fails, an error that lists two explanations, a log line
+with an "or": read the whole message, then confirm which branch actually
+occurred before acting on it.
+
+A push was rejected by the suite. The hook's message named two possibilities:
+the volume fixture expiring overnight, or a dev server holding the build
+directory open. The first was read, the fixture was regenerated and reloaded,
+and the push failed again for the reason that had been sitting in the second
+half of the same sentence. The gate was right both times.
+
+- Read to the end of the message before acting on the start of it.
+- Confirm the branch: run the narrower check, read the actual failing test, look
+  at the state the message describes.
+- A diagnosis that fits is not a diagnosis that was verified.
+
+This is a habit rather than a defect, which is why it is on a checklist rather
+than in a test. It costs one command to confirm and an hour to guess wrong.
+
+---
+
+## A note on revising a finding
+
+A report corrected downward on evidence is the same discipline as one corrected
+upward, and is easier to skip because nobody is harmed by the overstatement.
+
+The `DIGEST_TO` fallback was first reported as a live misdirection risk. Checking
+`wrangler.toml` showed the variable was set, so the fallback was latent: it would
+only have fired if somebody deleted the var. The fix was still worth making and
+the severity was still wrong, and both facts were recorded.
+
+Say what changed, say what the evidence was, and do not quietly leave the
+stronger version standing because it made the work look more valuable.
