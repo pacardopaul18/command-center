@@ -176,11 +176,24 @@ async function toError(res: Response): Promise<AsanaError> {
 	}
 }
 
-async function request<T>(token: string, path: string, init?: RequestInit): Promise<T> {
+/** How long any one Asana request may take before it is treated as stuck. */
+const REQUEST_TIMEOUT_MS = 30_000;
+
+/**
+ * One Asana request. Exported so the mirror can page without a second client
+ * that would need its own error mapping and drift from this one.
+ */
+export async function request<T>(token: string, path: string, init?: RequestInit): Promise<T> {
 	let res: Response;
 	try {
 		res = await fetch(`${BASE}${path}`, {
 			...init,
+			// A request with no deadline is not a slow request, it is a stuck
+			// one. A mirror pull that hangs on a single connection stops making
+			// progress while still looking alive, and the only symptom is a
+			// count that stops going up. Thirty seconds is far longer than any
+			// page of a hundred rows takes.
+			signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
 			headers: {
 				authorization: `Bearer ${token}`,
 				'content-type': 'application/json',
@@ -188,8 +201,14 @@ async function request<T>(token: string, path: string, init?: RequestInit): Prom
 				...(init?.headers ?? {})
 			}
 		});
-	} catch {
-		throw new AsanaError(502, 'Could not reach Asana. The push did not happen.');
+	} catch (err) {
+		const timedOut = err instanceof Error && (err.name === 'TimeoutError' || err.name === 'AbortError');
+		throw new AsanaError(
+			timedOut ? 504 : 502,
+			timedOut
+				? `Asana did not answer within ${REQUEST_TIMEOUT_MS / 1000} seconds.`
+				: 'Could not reach Asana. The request did not happen.'
+		);
 	}
 
 	if (!res.ok) throw await toError(res);

@@ -605,6 +605,30 @@ actionItems.post('/:id/asana', async (c) => {
 		);
 	}
 
+	/*
+	 * A fixture row can never reach a real Asana workspace.
+	 *
+	 * This guard is written here rather than assumed, because a test claimed it
+	 * for months and was passing for a different reason: locally there was no
+	 * Asana token, every push stopped at the 503 below, and the seeded item was
+	 * never actually refused for being a seeded item. The moment a real token
+	 * was configured to build the mirror, the only thing standing between three
+	 * thousand synthetic action items and MacGray's live workspace was that no
+	 * workspace had been picked yet.
+	 *
+	 * The id prefix is the seed's own convention: everything the volume fixture
+	 * writes is prefixed `v-`, which is also how the reset script knows what it
+	 * owns. First, before the token and the workspace, so the refusal does not
+	 * depend on which other things happen to be unconfigured.
+	 */
+	if (id.startsWith('v-')) {
+		throw new ApiError(
+			403,
+			'This is a row from the synthetic fixture and will not be pushed to Asana. ' +
+				'Fixture rows carry the `v-` prefix and stay in the local database.'
+		);
+	}
+
 	const token = c.env.ASANA_TOKEN;
 	if (!token) {
 		throw new ApiError(

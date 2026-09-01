@@ -23,7 +23,7 @@
   "invoice_payments": 542,
   "invoices": 900,
   "ledger_categories": 6,
-  "ledger_transactions": 666,
+  "ledger_transactions": 651,
   "meeting_action_proposals": 700,
   "meetings": 450,
   "projects": 220,
@@ -42,7 +42,7 @@
   "time_entries": 3200,
   "users": 7
  },
- "fingerprint": "621b897c1a5b723d",
+ "fingerprint": "7a851f9e66024cd7",
  "invoice_bands": {
   "b0_30": 114,
   "b0_30_cents": 137129589,
@@ -256,10 +256,10 @@
   "v-sop-98": 2,
   "v-sop-99": 3
  },
- "today_mt": "2026-08-31",
+ "today_mt": "2026-09-01",
  "totals": {
   "action_items_open": 2543,
-  "ledger_cost_cents": 4888100,
+  "ledger_cost_cents": 5272400,
   "ledger_income_cents": 532452629,
   "meetings_today": 6,
   "outstanding_cents": 712250371,

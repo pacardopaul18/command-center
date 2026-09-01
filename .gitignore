@@ -46,3 +46,12 @@ playwright-report/
 # Local dev server log, an artifact of running the suite.
 dev.out
 remote.out
+mirror-progress.log
+
+# Real client data placed here by Paul for the crosswalk loader to read.
+#
+# Not committed. The crosswalk is loaded from disk at run time and the file is
+# Paul's override path, so nothing needs it in version control, and putting
+# fifty-five real client names, Asana gids and activity dates into a remote
+# repository is a one-way step that has not been asked for.
+docs/data/

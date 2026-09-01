@@ -11,6 +11,7 @@ import {
 } from '../asana';
 import type { AsanaSettings } from '../asana';
 import { CURSOR_KEY, STALE_DAYS, syncFromAsana } from '../asana-sync';
+import { mirrorStep, mirrorTotals } from '../asana-mirror';
 
 /**
  * Asana configuration.
@@ -209,4 +210,51 @@ asana.post('/sync/acknowledge/:id', async (c) => {
 		throw new ApiError(404, 'No ambiguous Asana link on that item.');
 	}
 	return c.json({ ok: true });
+});
+
+/**
+ * The mirror: a full read-only pull of the workspace into the asana_* tables.
+ *
+ * A POST because it writes, even though it writes nothing to Asana. One call
+ * spends one budget of requests and returns where it got to; call it again to
+ * continue. That is the shape because a full pull is thousands of requests
+ * against a service that allows 150 a minute, and a single invocation that
+ * tried it would be killed halfway with nothing recorded.
+ */
+asana.post('/mirror', async (c) => {
+	requireToken(c.env.ASANA_TOKEN);
+	const workspace = c.req.query('workspace') ?? (await readSettings(c.env.SESSIONS)).workspace_gid;
+	if (!workspace) throw new ApiError(400, 'Choose a workspace before mirroring it.');
+
+	const budget = Number(c.req.query('budget') ?? '120');
+	if (!Number.isFinite(budget) || budget < 1 || budget > 2000) {
+		throw new ApiError(400, 'The request budget must be between 1 and 2000.');
+	}
+
+	const outcome = await mirrorStep(c.env, workspace, Math.floor(budget));
+	return c.json({ ...outcome, totals: await mirrorTotals(c.env.DB, workspace) });
+});
+
+/**
+ * Where the mirror has got to, without pulling anything.
+ *
+ * Counted from the tables rather than read back from the last run's own
+ * report, so a resumed pull's numbers are about the mirror and not about one
+ * invocation of it.
+ */
+asana.get('/mirror', async (c) => {
+	const workspace = c.req.query('workspace') ?? (await readSettings(c.env.SESSIONS)).workspace_gid;
+	if (!workspace) throw new ApiError(400, 'Choose a workspace before reading its mirror.');
+
+	const state = await c.env.DB.prepare(
+		'SELECT phase, cursor, started_at, finished_at, last_error, updated_at FROM asana_sync_state WHERE workspace_gid = ?'
+	)
+		.bind(workspace)
+		.first();
+
+	return c.json({
+		workspace_gid: workspace,
+		state: state ?? null,
+		totals: await mirrorTotals(c.env.DB, workspace)
+	});
 });

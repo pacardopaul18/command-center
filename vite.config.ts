@@ -29,7 +29,18 @@ function latestMigration(): string {
  * so starting the ordinary dev server can never accidentally point at firm
  * data, and pointing at firm data is a deliberate act with a different command.
  */
-export const REAL_STATE_DIR = '.wrangler/real';
+/*
+ * The real-data miniflare state.
+ *
+ * The `v3` on the end is not decoration and must not be tidied away. Wrangler's
+ * CLI appends it to whatever `--persist-to` is given, while miniflare, driven
+ * here through platformProxy, takes an explicit path exactly as written. Naming
+ * the directory without it produced two databases at two paths: migrations
+ * applied to one, the dev server reading the other and reporting an empty
+ * schema. The default `persist: true` lands on `.wrangler/state/v3` for the
+ * same reason, so this matches it rather than inventing a second convention.
+ */
+export const REAL_STATE_DIR = '.wrangler/real/v3';
 
 function dataEnvironment(): 'seed' | 'real' {
 	return process.env.CC_DATA === 'real' ? 'real' : 'seed';

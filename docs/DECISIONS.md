@@ -4696,3 +4696,215 @@ defect on one route and watching it fail before being restored.
 
 The general rule, which is the part worth keeping: **when a defect is invisible
 at the width you develop at, the test picks the width, not the developer.**
+
+### D168: the mirror is a copy, kept apart from the app's own model
+
+Asana and Dropbox are the source of truth. The app mirrors them, read only in
+this phase.
+
+The mirrored rows live in their own tables, `asana_*` and `dropbox_*`, keyed on
+the source system's own identifier and stamped with when they were pulled. They
+are not `projects` and `tickets` under another name, and they do not replace
+them. The link between the two sides is a side table, so a re-pull rebuilds the
+mirror without touching a row Paul has written and without an ALTER on anything
+that existed before.
+
+The property that matters is that the whole mirror can be thrown away and
+pulled again. That is what makes Thursday's schema work free, and it is why
+nothing in the app edits a mirrored row. A row corrected by hand is a correction
+the next sync silently reverts, and afterwards nobody can say which of the two
+was right. A test asserts that only the puller and the client filing write these
+tables, and that the filing changes nothing but which client a row belongs to.
+
+### D169: the mirror resumes by gid, and never by a timestamp
+
+Every phase records the identifier it last finished, and a resumed pull carries
+on from there.
+
+A timestamp cursor was the obvious alternative and is wrong twice over. It
+re-syncs the whole workspace the first time somebody bulk edits anything,
+because every `modified_at` moves at once. And it ties: two tasks written in the
+same second cannot be ordered, so a cursor sitting between them either repeats
+one or skips one, and skipping is silent.
+
+A gid survives renames, moves and re-pulls, which is exactly the set of things
+that happen to a task between one sync and the next.
+
+The same reasoning produced a smaller rule with the same shape: a phase advances
+its cursor past a project only when that project's last page has come back. An
+unconditional advance marks a half-read project finished and loses the rest of
+its tasks with no error anywhere, which looks like success.
+
+### D170: a mirrored row carries where it came from, and attachments carry no bytes
+
+Every mirrored table is keyed on the source identifier and carries `synced_at`.
+A row has to be able to say when it was last true; a mirror where that is
+implicit is a mirror nobody can date.
+
+Attachments are metadata only: name, size, kind, when it was created. No bytes,
+and deliberately no download URL. Pulling the contents would mean this app
+holding copies of client files it was never asked to hold, and Asana's download
+URL is short lived by design, so storing one produces a link that looks like a
+link and is not.
+
+The same rule governs Dropbox, where it matters more: 11,150 files and 415 GB.
+The app holds a map of where the client work is. It does not hold the client
+work.
+
+### D171: the section is recorded as Asana spells it, and translated by nobody
+
+A task's section is stored verbatim, in `asana_tasks.section_name`.
+
+Mapping it onto the app's own status vocabulary during the pull was available
+and was refused. Thursday's status-model reconciliation exists to ask what
+MacGray's real statuses are; a mapping written now would be this session
+guessing the answer, and the guess would then be sitting in a column looking
+like evidence for it.
+
+Two hundred and eighty-one sections came back across sixty-six projects. That
+list is the input to the reconciliation, and it is worth more unedited.
+
+### D172: archived projects are pulled, because an archived project is not an absent one
+
+The pull asks Asana for archived projects as well as live ones.
+
+Missing them was one of the two systemic misses recorded in the MacGray handoff,
+and it is now a permanent refresh check rather than a thing to remember. Of
+sixty-six projects in the workspace, twenty-four are archived. A live-only pull
+would have shown forty-two and looked complete, and every question about
+finished work would have been answered as if it had never happened.
+
+### D173: the crosswalk is data loaded into a table, and its grain is the row
+
+The client crosswalk is a file Paul edits. It is loaded into a table, and
+editing the file is the override path. Encoding fifty-five name mappings as code
+would have made every correction a deploy and hidden the mapping from the person
+who owns it.
+
+The first version keyed the table on `canonical_name`, on the reasoning that the
+file is organised around it. The file disagreed: fifty-five rows, forty-five
+distinct names. One client carries nine program workstreams, each a separate
+line with its own Asana gid. The load wrote fifty-five rows into forty-five
+slots and the last one won, so ten Asana gids went in and did not come out, and
+ten real projects were filed as unassigned.
+
+The grain was always the row. A client legitimately has several Asana projects,
+and `canonical_name` is which client a row belongs to, not what the row is.
+
+The gid is unique where it is present, because a gid identifies one project and
+a project belongs to one client. Two rows claiming the same gid is a
+contradiction in the file, and it should fail the load rather than resolve
+itself by whichever row was written last.
+
+### D174: a load reports what the table holds, not only what the loader did
+
+The crosswalk load reported `rows_written: 55` while the table held 45. Both
+numbers were true. Only one of them was the answer to the question anybody was
+asking, and the wrong one was on the screen.
+
+So a load now reads the table back and reports that too, alongside the count of
+identifiers that went in and did not survive, which should always be zero. This
+is D138 in a new place: a count has to say what it is a count of, and a number
+that describes the attempt rather than the outcome will be believed as the
+outcome.
+
+The same reasoning covers the load record itself. It is a row in a table, not a
+log line, because "is the crosswalk in this database the whole file" gets asked
+weeks later when the terminal has long since scrolled.
+
+### D175: matching precedence is ordered, and the fourth answer is a real answer
+
+A mirrored project or folder is filed against a client by, in order: an exact
+Asana gid, which is authoritative and never overridden by a name; an exact
+Dropbox folder name; a normalised name, ignoring case, punctuation and the legal
+suffix; and then the unassigned bucket.
+
+The fourth is not a failure. A project filed under the wrong client is worse than
+one filed under none, because the wrong filing is invisible and gets believed,
+while an unassigned project is a question on a screen that somebody answers
+once. `client_match` records which rule fired, so a name match can never be
+mistaken for a gid match when somebody asks why a project is filed where it is.
+
+The normalised pass is deliberately conservative and sits below two exact ones.
+An over-eager normaliser is the failure that matters here: it collapses two real
+clients onto one key and files the work of one under the other, silently. A test
+asserts that six deliberately similar names produce six distinct keys.
+
+### D176: Dropbox activity is file level, and a folder's own date is never read
+
+Paul ruled this a hard rule rather than a preference, and it is asserted rather
+than trusted.
+
+A synced Dropbox touches folder modification times when it syncs. A folder date
+therefore says when the sync client last thought about the folder, not when
+anybody last did work in it, and reading one made dormant clients look active.
+
+So: the scan never stats a directory, for its date or for anything else, because
+a value that is not fetched cannot be sent by accident. Folder entries carry no
+time. The ingest drops a folder modification time loudly if one ever arrives,
+since the OAuth connector is a different source and could supply one. The
+`dropbox_folders` table has no column to hold one. A folder's `last_activity` is
+derived from the newest file beneath it, recursively, because "when did anything
+happen for this client" is answered wrongly by an answer that stops at the first
+level when all the work sits one folder deeper.
+
+Four tests cover those four places. Any one of them alone would be a rule
+somebody could route around without noticing.
+
+### D177: the two local environments are separated by the path, and the footer reads the data
+
+There are two local databases: the synthetic fixture the suite runs against, and
+the real mirror. They are separate miniflare state directories.
+
+The path needs its `v3` suffix and it is load bearing. Wrangler's CLI appends
+`v3` to whatever `--persist-to` is given; miniflare, driven through the vite
+plugin, takes an explicit path exactly as written. Naming the directory without
+it produced two databases at two paths, migrations applied to one and the dev
+server reading the other, and a health check reporting an empty schema on a
+database that had thirty-two migrations in it.
+
+The footer says which environment is loaded, and it decides by looking for the
+fixture's own marker row rather than by reading the environment variable that
+was used to start the server. A label that reads the same flag as the thing it
+describes cannot contradict it, and a label that cannot contradict its subject
+is not a check.
+
+### D178: a request with no deadline is not slow, it is stuck
+
+Every Asana request carries a thirty second timeout.
+
+Without one, a single hung connection stopped a pull that continued to look
+alive: the process was running, no error was logged, and the only symptom was a
+row count that stopped going up. Fifteen minutes went into finding that.
+
+Two things follow from the same incident. The pager retries the failures that
+are about timing rather than about the request, twice, backing off: a rate
+limit, a timeout, a bad gateway. It does not retry a 401 or a 404, because
+retrying those only delays finding out.
+
+And an error is unwrapped before it is recorded. `fetch failed` on its own is a
+sentence with no information in it; the cause chain underneath it said
+`ECONNRESET`, which named the layer and made the fix obvious. An error that
+reaches a person stripped of its cause costs an hour, which is the same
+complaint as D138 wearing different clothes.
+
+### D179: a transient fault keeps its place in the queue
+
+When a step fails, the phase and cursor stay where they were and the error is
+recorded beside them.
+
+The first version set the phase to `failed`, and a resumed run treated that as
+"start again", re-reading every project and every section to get back to where
+it already was. A dropped connection is not a reason to redo an hour of work.
+
+The driver follows the same principle from the other side: it rides out a
+refused connection and a failing step, and gives up only after several in a row.
+It quit on the first one, which meant an hour of no progress on a server that
+was working, because a dev server restarts itself whenever a source file
+changes.
+
+Related, and found the same way: `localhost` resolves to two addresses on this
+machine, Node picks one per request without falling back, and the dev server
+binds only one of them. Roughly half the calls were refused with a bare
+`fetch failed`. Both sides are pinned to one loopback address now. A name that
+resolves to something unbound half the time is not a convenience.

@@ -209,11 +209,15 @@ describe('layer 2: the owner picker is sourced, not typed', () => {
 });
 
 describe('layer 2: Asana push guards', () => {
-	it('reports itself unavailable locally, with a reason', async () => {
+	it('says whether it is ready, and why not when it is not', async () => {
 		const { json } = await api('/api/asana');
-		expect(json.token_present).toBe(false);
-		expect(json.ready).toBe(false);
-		expect(json.blocked_because).toBeTruthy();
+		expect(typeof json.token_present).toBe('boolean');
+		// Ready means a token and a chosen workspace. Whenever it is not ready
+		// it has to say which of the two is missing, because a screen that can
+		// only show a disabled button and no reason is a screen nobody can act
+		// on. D27.
+		if (!json.ready) expect(json.blocked_because).toBeTruthy();
+		else expect(json.blocked_because).toBe(null);
 	});
 
 	it('never returns the token itself', async () => {
@@ -225,9 +229,19 @@ describe('layer 2: Asana push guards', () => {
 		const list = await api('/api/action-items?view=open&page_size=10');
 		const seeded = list.json.items.find((i: any) => String(i.id).startsWith('v-'));
 		expect(seeded).toBeTruthy();
+
 		const { res, json } = await api(`/api/action-items/${seeded.id}/asana`, { method: 'POST' });
-		expect(res.status).toBe(503);
-		expect(json.error).toMatch(/no asana token/i);
+
+		// 403, and specifically because the row is synthetic.
+		//
+		// This assertion used to accept a 503 for a missing token, and passed
+		// for months without the guard it names ever running: locally there was
+		// no token, so every push stopped before reaching the question. The
+		// moment a real token was configured the test failed, which is the only
+		// reason anybody found out. A refusal has to be checked for its reason,
+		// or it is only a check that something went wrong.
+		expect(res.status).toBe(403);
+		expect(json.error).toMatch(/synthetic fixture/i);
 	});
 
 	it('409s a second push on an item that already carries a gid', async () => {
