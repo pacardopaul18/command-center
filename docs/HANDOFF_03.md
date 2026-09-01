@@ -476,3 +476,67 @@ token and the workspace are looked at. The test asserts the reason, not just
 that something went wrong.
 
 *Session 05. Nothing above alters sections 1 to 11.*
+
+---
+
+## 13. The roster, the unassigned bucket, and what the mirror shows
+
+Branch `realdata/stage-a`, through commit `b1a2a83`, pushed green. Still not
+merged, still nothing on production.
+
+### Built
+
+- **Migration 0036**: `client_roster`, `client_roster_loads`, and
+  `client_overrides`. Applied to both local databases, not to remote.
+- **The roster loader**, its own route at `/api/crosswalk/roster`. 36 rows in
+  the file, 36 written, 36 held, 36 matched exactly, 0 unmatched, 0 normalised
+  guesses. Statuses: 24 active, 7 dormant, 3 reclassify_active, 1
+  reclassify_completed, 1 reclassify_unknown.
+- **`/clients/unassigned`**, the resolution screen. Verified rendered at 1920
+  and 412 against the real mirror, one H1, 44px tap floor, no page overflow.
+  The override round trip was exercised on live data and left clean: 16
+  unassigned to 15 with `by_manual: 1`, then back to 16.
+- **Precedence** is now one chain in one place: gid, manual override,
+  dropbox_name, normalised name, unassigned. D181.
+
+### What the mirror shows
+
+Numbers, not conclusions. 2,585 tasks across 66 projects.
+
+| | |
+|---|---|
+| open tasks | 790 |
+| open with no assignee | **561** |
+| open with no due date | 152 |
+| open and past due | 189 |
+| open inside an archived project | 98 |
+| open with no section | 364 |
+| distinct section names | **103** across 66 projects |
+| custom field definitions | 10, carrying 265 values |
+| tags defined in the whole workspace | 1 |
+
+Clients: 45 in the app. 36 carry a roster row, 38 have an Asana project, 38
+have a Dropbox folder, 32 have both, 1 has neither.
+
+Dropbox: 2,183 folders, 11,150 files, 415 GB. 2 client folders hold no file at
+all; 4 have not been touched in twelve months; 2,928 files were modified in the
+last ninety days.
+
+Disagreements worth a person looking at: 4 clients the roster calls dormant
+still have open Asana tasks. 16 unassigned projects, every one of them
+archived.
+
+### Open
+
+1. **The details sweep is on its second pass.** The first pass walked
+   `gid > cursor` over a table that grew as it discovered subtasks: 335 of 349
+   subtasks carried a gid below the cursor and were walked past. Fixed in
+   `b1a2a83`; the second sweep is running and will take about ninety minutes.
+   Structure, sections, tasks, assignees, followers and custom values are
+   complete and unaffected.
+2. **Nothing on remote.** Migrations 0032 to 0036 are local only. Stage C is
+   gated on Paul's findings and on a ruling about whether production carries
+   firm client data before the partner conversation.
+3. **`docs/data/` stays gitignored.** Holding there by ruling.
+
+*Session 05, second half. Nothing above alters sections 1 to 12.*
