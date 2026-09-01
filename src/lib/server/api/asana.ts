@@ -60,12 +60,17 @@ asana.get('/', async (c) => {
 	return c.json({
 		token_present: tokenPresent,
 		settings,
-		ready: tokenPresent && Boolean(settings.workspace_gid),
+		// Ready to push, which is a narrower question than ready to read. The
+		// mirror needs a token and a workspace; a push needs both of those and
+		// somebody to have decided it may happen.
+		ready: tokenPresent && Boolean(settings.workspace_gid) && settings.push_enabled,
 		blocked_because: !tokenPresent
 			? 'ASANA_TOKEN is not set on the Worker.'
 			: !settings.workspace_gid
 				? 'No Asana workspace has been chosen yet.'
-				: null
+				: !settings.push_enabled
+					? 'Pushing to Asana is switched off. Asana is the source of truth in this phase.'
+					: null
 	});
 });
 
@@ -112,7 +117,13 @@ asana.put('/', async (c) => {
 		workspace_name: optionalText(body.workspace_name, 'workspace_name', 200),
 		project_gid: optionalText(body.project_gid, 'project_gid', 64),
 		project_name: optionalText(body.project_name, 'project_name', 200),
-		assignee: optionalText(body.assignee, 'assignee', 200)
+		assignee: optionalText(body.assignee, 'assignee', 200),
+
+		// Only `true` turns it on. Anything else, including the field being
+		// absent, leaves it off: a write that forgot to mention the push must
+		// not be able to enable it, which is the failure this switch exists to
+		// prevent in the first place.
+		push_enabled: body.push_enabled === true
 	};
 
 	// A project id without its workspace is meaningless, and a stale project name

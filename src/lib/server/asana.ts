@@ -65,6 +65,22 @@ export interface AsanaSettings {
 	project_name: string | null;
 	/** A user gid, an email, or the literal "me". Empty means unassigned. */
 	assignee: string | null;
+
+	/*
+	 * Whether this app may create tasks in Asana at all.
+	 *
+	 * Off unless somebody turns it on, and that is the point. The one-way push
+	 * is a v1 feature and it stays in the code, but during the mirror phase the
+	 * ruling is that Asana is the source of truth and the app only reads it.
+	 *
+	 * Before this existed, the only thing preventing a push was that no
+	 * workspace had been chosen. That is not a decision, it is an accident of
+	 * configuration, and picking a workspace to make the mirror settings
+	 * coherent would have quietly armed it. Exactly the shape of D180: a
+	 * capability held back by something being unconfigured rather than by
+	 * anybody having decided.
+	 */
+	push_enabled: boolean;
 }
 
 /**
@@ -95,7 +111,13 @@ export const EMPTY_SETTINGS: AsanaSettings = {
 	workspace_name: null,
 	project_gid: null,
 	project_name: null,
-	assignee: null
+	assignee: null,
+
+	// Off by default, and off for anything already stored: the spread in
+	// readSettings puts this value under whatever was saved before the field
+	// existed, so an old settings blob reads as push disabled rather than as
+	// push enabled by omission.
+	push_enabled: false
 };
 
 /** KV key holding the Asana settings. Settings live in KV per the architecture. */

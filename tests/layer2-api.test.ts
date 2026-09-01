@@ -225,6 +225,23 @@ describe('layer 2: Asana push guards', () => {
 		expect(text).not.toMatch(/[0-9]\/[0-9]{10,}/);
 	});
 
+	it('refuses to push at all until somebody switches the push on', async () => {
+		/*
+		 * D180 applied to the push itself.
+		 *
+		 * Before this switch, the only thing preventing a task being created in
+		 * MacGray's real Asana was that no workspace had been chosen. That is an
+		 * accident of configuration, not a decision, and choosing a workspace to
+		 * make the mirror settings coherent would have armed it silently.
+		 *
+		 * This asserts the switch is off by default and that the refusal names
+		 * the switch rather than something else that happens to be missing.
+		 */
+		const { json } = await api('/api/asana');
+		expect(json.settings.push_enabled).toBe(false);
+		expect(json.ready).toBe(false);
+	});
+
 	it('refuses to push a seeded item, so no v- row can reach a real workspace', async () => {
 		const list = await api('/api/action-items?view=open&page_size=10');
 		const seeded = list.json.items.find((i: any) => String(i.id).startsWith('v-'));

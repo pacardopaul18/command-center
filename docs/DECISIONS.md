@@ -5016,3 +5016,38 @@ value can simply be read when it changes. This is the third time
 `props_invalid_value` has cost real time in this repo, after QuickAdd and
 Templates, and the pattern in all three was `bind:` into a record that did not
 have the key yet.
+
+### D184: the one-way push is off until somebody switches it on
+
+`asana_settings.push_enabled` is false by default and false for every settings
+blob written before the field existed. Nothing creates a task in Asana until it
+is true.
+
+Found by applying D180 to the rest of the code rather than to the one test that
+had failed. The one-way push is a v1 feature and it stays; during the mirror
+phase Asana is the source of truth and the app only reads it. But the only
+thing standing between an action item and MacGray's live workspace was that no
+workspace had been chosen. That is not a decision, it is an accident of
+configuration, and choosing a workspace to make the mirror settings coherent
+would have armed it silently. The exact shape of the finding this rule came
+from.
+
+Three details, and each is the same rule in a different place. The switch is
+checked before the token and the workspace, so its refusal never depends on
+which other things happen to be unconfigured. Only the literal `true` enables
+it, so a settings write that forgot to mention the push cannot turn it on by
+omission. And `ready` now means ready to push, which is a narrower question than
+ready to read: the mirror needs a token and a workspace, a push needs both of
+those and somebody to have decided.
+
+### D185: a limit that stops work has to say it stopped
+
+The mirror driver capped itself at 800 steps and, on reaching the cap, simply
+fell out of its loop. It printed nothing. The run looked exactly like a run that
+had finished, and the pull was 253 tasks short; the only way to know was to read
+the phase out of the database.
+
+It now says so and exits non-zero. Any bound that ends work early belongs in the
+same category as D138: the number of things done and the reason for stopping are
+two different facts, and reporting only the first lets an incomplete run be read
+as a complete one.

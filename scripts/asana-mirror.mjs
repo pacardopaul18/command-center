@@ -59,7 +59,19 @@ const say = (line) => {
 
 let stalls = 0;
 
-for (let i = 1; i <= 800; i++) {
+/*
+ * A cap on invocations, so a driver that is making no progress cannot run for
+ * ever unattended.
+ *
+ * It has to say when it fires. The first version simply fell out of the loop,
+ * which printed nothing and looked exactly like finishing: the pull was 253
+ * tasks short and the only way to know was to read the phase out of the
+ * database. A limit that stops work silently is worse than no limit. D138.
+ */
+const LIMIT = 800;
+let hitLimit = true;
+
+for (let i = 1; i <= LIMIT; i++) {
 	let body;
 	try {
 		// A deadline on this side too. A step is budgeted to a fixed number of
@@ -70,6 +82,7 @@ for (let i = 1; i <= 800; i++) {
 		body = await res.json();
 		if (!res.ok) {
 			say(`${pad(i, 3)}  HTTP ${res.status}  ${JSON.stringify(body).slice(0, 200)}`);
+			hitLimit = false;
 			break;
 		}
 	} catch (err) {
@@ -81,6 +94,7 @@ for (let i = 1; i <= 800; i++) {
 		say(`${pad(i, 3)}  request failed (${stalls}/5): ${err.message}`);
 		if (stalls >= 5) {
 			say('MIRROR STOPPED: the app did not answer five times running');
+			hitLimit = false;
 			break;
 		}
 		await new Promise((r) => setTimeout(r, 5_000));
@@ -97,6 +111,7 @@ for (let i = 1; i <= 800; i++) {
 
 	if (body.done) {
 		say('MIRROR COMPLETE');
+		hitLimit = false;
 		break;
 	}
 	// A step that stopped on an error keeps its phase and cursor, so the next
@@ -106,10 +121,19 @@ for (let i = 1; i <= 800; i++) {
 		stalls += 1;
 		if (stalls >= 3) {
 			say('MIRROR STOPPED: three failing steps in a row, see last_error on asana_sync_state');
+			hitLimit = false;
 			break;
 		}
 		await new Promise((r) => setTimeout(r, 5_000));
 	} else {
 		stalls = 0;
 	}
+}
+
+if (hitLimit) {
+	say(
+		`MIRROR INCOMPLETE: stopped after ${LIMIT} steps without finishing. ` +
+			'The pull is resumable, so running this again continues from where it stopped.'
+	);
+	process.exitCode = 1;
 }

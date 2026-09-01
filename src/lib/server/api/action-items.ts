@@ -629,6 +629,28 @@ actionItems.post('/:id/asana', async (c) => {
 		);
 	}
 
+	/*
+	 * Pushing has to be switched on deliberately.
+	 *
+	 * During the mirror phase Asana is the source of truth and the app reads it.
+	 * The one-way push is a v1 feature and it stays here, but it is off until
+	 * somebody turns it on, because before this the only thing preventing a
+	 * push was that no workspace had been chosen. That is not a decision, it is
+	 * an accident of configuration, and choosing a workspace to make the mirror
+	 * settings coherent would have quietly armed it. D180.
+	 *
+	 * Ahead of the token and the workspace checks, so the refusal never depends
+	 * on which other things happen to be unconfigured.
+	 */
+	const settings = await readSettings(c.env.SESSIONS);
+	if (!settings.push_enabled) {
+		throw new ApiError(
+			403,
+			'Pushing to Asana is switched off. Asana is the source of truth in this phase ' +
+				'and the app only reads it. Turn the push on in Asana settings to change that.'
+		);
+	}
+
 	const token = c.env.ASANA_TOKEN;
 	if (!token) {
 		throw new ApiError(
@@ -637,7 +659,6 @@ actionItems.post('/:id/asana', async (c) => {
 		);
 	}
 
-	const settings = await readSettings(c.env.SESSIONS);
 	if (!settings.workspace_gid) {
 		throw new ApiError(
 			400,
