@@ -8,6 +8,7 @@ import { apiWrite } from '$lib/http';
 	import Input from './Input.svelte';
 	import Select from './Select.svelte';
 	import Textarea from './Textarea.svelte';
+	import type { DefaultDue } from '$lib/settings';
 
 	/**
 	 * Global capture, per the architecture's UX principles: reachable from
@@ -33,7 +34,11 @@ import { apiWrite } from '$lib/http';
 	 * nothing.
 	 */
 
-	let { open = $bindable(false), today }: { open?: boolean; today: string } = $props();
+	let {
+		open = $bindable(false),
+		today,
+		defaultDue = 'tomorrow'
+	}: { open?: boolean; today: string; defaultDue?: DefaultDue } = $props();
 
 	interface FieldSpec {
 		key: string;
@@ -539,13 +544,27 @@ import { apiWrite } from '$lib/http';
 	/** What this session has captured, newest first, with a way back to it. */
 	let log = $state<{ id: string; message: string; href: string }[]>([]);
 
+	/**
+	 * What the deadline field opens with, from settings.
+	 *
+	 * It was two days, hardcoded. The setting exists because two days is a
+	 * guess: some people capture things they mean to do today and some capture
+	 * things for tomorrow, and neither is wrong. `none` leaves it empty, which
+	 * is a real choice rather than an absence: an item with no deadline is not
+	 * overdue and does not appear in what will slip.
+	 */
+	function deadlineDefault(): string {
+		if (defaultDue === 'none') return '';
+		return defaultDue === 'today' ? today : addDays(1);
+	}
+
 	function defaults(spec: KindSpec): Record<string, string> {
 		const next: Record<string, string> = {};
 		for (const field of spec.fields) {
 			if (field.kind === 'date') {
 				next[field.key] =
 					field.key === 'deadline'
-						? addDays(2)
+						? deadlineDefault()
 						: field.key === 'due_date' || field.key === 'target_close'
 							? addDays(15)
 							: today;

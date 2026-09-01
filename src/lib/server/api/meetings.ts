@@ -5,6 +5,7 @@ import { ApiError, optionalDate, optionalText, readJsonObject, requiredText } fr
 import { meetingAi } from './meeting-ai';
 import { PAGE_SIZES, readPaging } from './action-items';
 import { resolveAccount } from '../accounts';
+import { getSettings } from '../settings';
 
 /**
  * Meetings, with transcript import.
@@ -83,12 +84,21 @@ meetings.get('/', async (c) => {
 	 */
 	const today = todayInWorkingZone();
 	const anchor = new Date(`${today}T00:00:00Z`);
-	const monday = new Date(anchor);
-	monday.setUTCDate(monday.getUTCDate() - ((monday.getUTCDay() + 6) % 7));
-	const sunday = new Date(monday);
-	sunday.setUTCDate(sunday.getUTCDate() + 6);
-	const weekStart = monday.toISOString().slice(0, 10);
-	const weekEnd = sunday.toISOString().slice(0, 10);
+
+	/**
+	 * Which day the week starts on is a setting, because a Sunday start moves
+	 * what "this week" means by a day at both ends. It is not cosmetic: the
+	 * count on the tile is a different number.
+	 */
+	const settings = await getSettings(c.env.SESSIONS);
+	const offset = settings.week_starts_on === 'sunday' ? 0 : 1;
+
+	const first = new Date(anchor);
+	first.setUTCDate(first.getUTCDate() - ((first.getUTCDay() - offset + 7) % 7));
+	const last = new Date(first);
+	last.setUTCDate(last.getUTCDate() + 6);
+	const weekStart = first.toISOString().slice(0, 10);
+	const weekEnd = last.toISOString().slice(0, 10);
 
 	/**
 	 * The narrowing every query shares, kept apart from the tab.

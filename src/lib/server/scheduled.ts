@@ -4,6 +4,7 @@ import { backupDueAt, runBackup } from './backup';
 import { runMailMaintenance } from './mail-jobs';
 import { raiseRecurringDrafts } from './recurring';
 import type { MailEnv } from './mail-jobs';
+import { getSettingsOrDefaults } from './settings';
 
 /**
  * The Cron Trigger entry point.
@@ -120,6 +121,31 @@ export async function handleScheduled(
 		} catch (err) {
 			console.error(`cron ${event.cron}: recurring raise threw`, String(err));
 		}
+	}
+
+	/**
+	 * The one setting that can stop a digest, read here rather than inside the
+	 * digest builder.
+	 *
+	 * Checked after the recurring raise, deliberately: raising drafts is
+	 * bookkeeping the firm depends on, and turning off a morning email is not a
+	 * request to stop doing the books. The two happen to share a trigger and are
+	 * not the same job.
+	 *
+	 * `getSettingsOrDefaults` cannot throw. A preference store being unreachable
+	 * is not a reason to skip the one thing this app does on a timer, and the
+	 * defaults are exactly the behaviour it had before settings existed.
+	 */
+	const prefs = await getSettingsOrDefaults(env.SESSIONS);
+	const wanted = kind === 'morning' ? prefs.morning_digest : prefs.evening_digest;
+
+	if (!wanted) {
+		// Logged, not silent. A digest that stopped arriving with nothing in the
+		// logs to say why is the incident this line prevents.
+		console.log(
+			`cron ${event.cron} at ${now.toISOString()}: ${kind} digest due but switched off in settings, skipping`
+		);
+		return;
 	}
 
 	console.log(`cron ${event.cron} at ${now.toISOString()}: ${kind} digest due, sending`);

@@ -6,6 +6,7 @@ import type {
 	EmailIngestStatus
 } from '$lib/types';
 import type { CalendarRow } from '$lib/components/CalendarList.svelte';
+import { readSettings } from '$lib/settings';
 import { accountQuery, resolveAccountScope, scopedError } from '$lib/account-scope';
 
 export const load: PageLoad = async ({ fetch, url }) => {
@@ -21,13 +22,14 @@ export const load: PageLoad = async ({ fetch, url }) => {
 	const scope = await resolveAccountScope(fetch, url);
 	const acct = accountQuery(scope.account);
 
-	const [res, syncRes, connRes, mailRes, calRes, spendRes] = await Promise.all([
+	const [res, syncRes, connRes, mailRes, calRes, spendRes, prefsRes] = await Promise.all([
 		fetch('/api/asana'),
 		fetch('/api/asana/sync'),
 		fetch('/api/connections'),
 		fetch(`/api/email/ingest${acct}`),
 		fetch(`/api/connections/google/calendars${acct}`),
-		fetch(`/api/email/summarise${acct}`)
+		fetch(`/api/email/summarise${acct}`),
+		fetch('/api/settings')
 	]);
 
 	/**
@@ -74,8 +76,22 @@ export const load: PageLoad = async ({ fetch, url }) => {
 			})
 		: null;
 
+	/**
+	 * Preferences, and the list of controls the design shows that this app does
+	 * not have. Both come from the same read: the reasons are as much a part of
+	 * the settings screen as the switches are.
+	 */
+	const prefsBody = prefsRes.ok
+		? ((await prefsRes.json()) as {
+				settings?: unknown;
+				not_built?: { label: string; why: string }[];
+			})
+		: null;
+
 	return {
 		asana: (await res.json()) as AsanaStatus,
+		prefs: readSettings(prefsBody?.settings),
+		notBuilt: prefsBody?.not_built ?? [],
 		sync,
 		connections,
 		mail,

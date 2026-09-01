@@ -14,6 +14,7 @@ import { meetings } from './meetings';
 import { people } from './people';
 import { projects } from './projects';
 import { reports } from './reports';
+import { settings } from './settings';
 import { sops } from './sops';
 import { templates } from './templates';
 import { tickets } from './tickets';
@@ -73,6 +74,7 @@ api.route('/people', people);
 api.route('/projects', projects);
 api.route('/reports', reports);
 api.route('/sops', sops);
+api.route('/settings', settings);
 api.route('/templates', templates);
 
 api.notFound((c) => c.json({ error: 'Not found.' }, 404));
