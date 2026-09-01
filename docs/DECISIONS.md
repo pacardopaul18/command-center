@@ -4642,3 +4642,39 @@ with a live key. A scan fires on the next `npm test` after the file is saved.
 The general form, for anything that follows: when the cost of forgetting is
 invisible, the check belongs in the suite and keys on the shape of the code, not
 on the behaviour of a run.
+
+### D167: the width default is inverted, because the opt-in was the thing forgotten
+
+D129 made full width a route-level opt-in. Twelve pages then shipped centred
+inside the 1200px cap on designs that are full width, and Paul found it the same
+way he found CR1-F4: by looking at his own screen.
+
+The cause is identical to the one D129 already named. The fidelity pass rendered
+at 1440 and 412. At 1440 a 1200 cap leaves 120px each side, which reads as
+padding. At 1920 it leaves 248px each side and is unmissable. D129 said the
+width you look at is part of the test; I looked at the width where the defect is
+invisible, twelve times.
+
+D129's principle stands and is untouched: the route decides, never the page, and
+the change is proved by measuring both kinds. What is superseded is the
+direction of the default.
+
+**The opt-in list was the failure mode.** Joining a list is something the author
+of the next page has to remember, and forgetting it produces a page that looks
+plausible and is wrong. Almost every screen in this app is a table or a
+two-column board; the ones that are prose are nameable and few. So the default
+is full width, and `NARROW_ROUTES` names the exceptions with the reason.
+
+Today that list holds one route: a single SOP page, which is markdown read start
+to finish. Prose measured at 1700px is bad typography whatever the screen
+allows, and a table crammed into 1200px on a 1920px screen is wasted space. Both
+are layout defects; they just point opposite ways.
+
+The guard is an e2e test at **1920px**, not 1440, and it measures both kinds:
+every navigable route must reach the right edge, and the procedure page must
+still be capped. A test that only checked the wide ones would pass just as
+happily if the cap were deleted everywhere. It was proved by reintroducing the
+defect on one route and watching it fail before being restored.
+
+The general rule, which is the part worth keeping: **when a defect is invisible
+at the width you develop at, the test picks the width, not the developer.**

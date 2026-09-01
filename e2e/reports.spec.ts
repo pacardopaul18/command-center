@@ -239,3 +239,74 @@ test.describe('accessibility basics survive volume', () => {
 		expect(overflow).toBeLessThanOrEqual(1);
 	});
 });
+
+/**
+ * The width the page is actually read at.
+ *
+ * D129 came from Paul looking at his own screen and finding Mail centred inside
+ * a 1200px cap. The rule was written, and then twelve pages shipped centred
+ * anyway, because the fidelity pass rendered at 1440 where a 1200 cap leaves
+ * margins narrow enough to read as padding. The same defect, the same cause,
+ * the same discovery route: Paul's eyes.
+ *
+ * So the width is asserted rather than looked at, at a width where a cap is
+ * unmissable. 1920 leaves 496px of dead space if a page is capped, which no
+ * amount of squinting turns into padding.
+ *
+ * Both kinds are measured, which is what D129 asks for: a page that should be
+ * wide reaches the edge, and a page that should be capped still is. A test that
+ * only checked the wide ones would pass just as happily if the cap were deleted
+ * everywhere, and prose at 1700px is its own defect.
+ */
+test.describe('pages use the width they are read at', () => {
+	const WIDE = [
+		'/',
+		'/actions',
+		'/projects',
+		'/meetings',
+		'/calendar',
+		'/sops',
+		'/templates',
+		'/clients',
+		'/mail',
+		'/invoices',
+		'/ledger',
+		'/reports',
+		'/settings'
+	];
+
+	for (const path of WIDE) {
+		test(`${path} reaches the right edge at 1920px`, async ({ page }) => {
+			await page.setViewportSize({ width: 1920, height: 1000 });
+			await page.goto(path);
+			await page.waitForLoadState('networkidle');
+
+			const gap = await page.evaluate(() => {
+				const el = document.querySelector('.content');
+				if (!el) throw new Error('No .content element on this page.');
+				return Math.round(window.innerWidth - el.getBoundingClientRect().right);
+			});
+
+			// The shell's own padding is inside .content, so the box itself should
+			// end at the viewport edge.
+			expect(gap, `${path} is centred inside a cap at 1920px`).toBeLessThanOrEqual(1);
+		});
+	}
+
+	test('a procedure page stays capped, because prose is not a table', async ({ page, request }) => {
+		const list = await (await request.get('/api/sops?status=active')).json();
+		const id = list.sops[0].id;
+
+		await page.setViewportSize({ width: 1920, height: 1000 });
+		await page.goto(`/sops/${id}`);
+		await page.waitForLoadState('networkidle');
+
+		const width = await page.evaluate(() =>
+			Math.round(document.querySelector('.content')!.getBoundingClientRect().width)
+		);
+
+		// Capped and centred on purpose. If this ever reaches the edge, the
+		// narrow list has been emptied and every SOP is being read at 1700px.
+		expect(width, 'a procedure page is no longer capped for reading').toBeLessThan(1400);
+	});
+});
