@@ -530,7 +530,30 @@
 {/if}
 
 {#if data.items.length === 0}
-	<p class="empty">Nothing here. Clear the search or pick another tab.</p>
+	<!--
+		An empty screen has to say which kind of empty it is.
+
+		"Nothing here" reads as "you have nothing outstanding", which is a
+		reassuring thing to tell somebody whose commitments have simply never
+		been loaded. When the table holds nothing at all, say that instead, and
+		say what would fill it. Asana's comments were deliberately not projected
+		into this screen: ten thousand of them are not ten thousand commitments,
+		and burying this list under them would make it useless. D138 on a screen
+		rather than in a payload.
+	-->
+	{#if data.counts.all === 0}
+		<div class="empty-state">
+			<p class="empty">No action items exist yet.</p>
+			<p class="empty-why">
+				This screen holds what you owe people and what you are waiting on. Nothing has
+				been captured into it: mirrored Asana comments are an activity trail on their
+				ticket, not commitments, so they are deliberately not here. Items arrive when a
+				meeting is summarised, or when you add one with Quick add.
+			</p>
+		</div>
+	{:else}
+		<p class="empty">Nothing here. Clear the search or pick another tab.</p>
+	{/if}
 {:else}
 	<!-- D22: the table appears at 960px. Below that the same rows render as
 	     cards, which is the only readable shape at 412px. -->
@@ -1034,6 +1057,19 @@
 	.bulk-count {
 		font-size: var(--text-sm);
 		font-weight: var(--weight-medium);
+	}
+
+	.empty-state {
+		display: grid;
+		gap: var(--space-2);
+		max-width: 66ch;
+	}
+
+	.empty-why {
+		margin: 0;
+		color: var(--text-secondary);
+		font-size: 0.9375rem;
+		line-height: 1.6;
 	}
 
 	.empty {

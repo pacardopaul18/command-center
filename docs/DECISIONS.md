@@ -5172,3 +5172,84 @@ as a live misdirection risk and was latent, because the variable is set in
 `wrangler.toml`. The fix was still worth making and the severity was still
 wrong. Both were said, and a rule applied without its reason is not the rule,
 which is why `DIGEST_FROM` keeps its fallback.
+
+### D189: the projection, and why the mirror alone was not the job
+
+The mirror held 66 projects, 2,585 tasks, 281 sections and 11,150 files, and
+`/projects` showed nothing. The mirror is a side model on purpose, so a re-pull
+after Thursday's schema work costs nothing, and nothing was ever built to read
+it onto the screens.
+
+A derivation, not a copy by hand. Every projected row is found again by its
+Asana gid through `asana_project_links` and `asana_task_links`, the tables 0032
+created for exactly this. Pull again, project again, and the app converges: two
+runs produced identical totals, which is the property, not a coincidence.
+
+Nothing in the pass reads the app's own rows to decide what to write, because
+that would make the result depend on how many times it had run. It reads them
+afterwards to report, which D174 requires. The test draws the line at the
+reporting helper rather than banning both, since banning both would have forced
+the reporting to be dropped.
+
+Derivations that are guesses are stated as guesses. A project's phase and status
+come from `archived` alone, because Asana has no PMI phase and no project
+health, and the columns are NOT NULL so something goes in them. A ticket's
+status is only complete or not, because the real vocabulary is the section name
+and there are 103 of them; the verbatim section is shown on the ticket beside
+the app's own status, so the guess sits next to the fact. Both are in the run's
+`dropped_fields` with the reason, along with tags, custom fields, followers and
+assignee identity, which have no home at all and stay in the mirror.
+
+### D190: stories are an activity trail, and files are read rather than copied
+
+Two things the projection deliberately does not do.
+
+10,062 Asana stories are not projected into `action_items`. They are comments
+and system events, not commitments, and ten thousand of them would bury the one
+screen that says what Paul owes people. They are shown on the ticket, read
+straight from the mirror, so a re-pull updates the trail with nothing to
+reconcile. `action_items` stays empty, and its empty state now says which kind
+of empty it is: "no action items exist yet", with what would fill it, rather
+than "nothing here", which reads as "you owe nobody anything".
+
+11,150 files are rendered by query rather than copied into `project_files`. A
+copy would be a second set of rows to keep converging with the first, for no
+gain: the app authors nothing about them. The Files screen, the client page and
+the per-client filters all read `dropbox_files` through the folder that carries
+the client. Files under a folder nobody has matched are counted and named on
+screen, 694 of them, rather than quietly omitted.
+
+### D191: the suite must check which database is answering, not which flag is set
+
+A dev server backed by the real mirror was found answering on the suite's own
+base URL, left over from earlier in the session on the IPv6 loopback while the
+fixture server had been stopped.
+
+The guarantee test that exists for this asserts `CC_DATA !== 'real'` in the
+vitest process. That says nothing about the server the tests talk to, and layer
+2 creates rows and deletes them again. Nothing was written to the real mirror,
+because the pre-flight seed count refused to start on finding zero action items.
+That was luck, not a control: the check that saved it was looking for a
+different problem.
+
+Both now assert the thing itself. The pre-flight reads `/api/health` and refuses
+when `data_environment` is not `seed`, naming what it found. The layer 2 test
+does the same over HTTP rather than over `process.env`.
+
+This is D180 in a third place. A safety property held by a flag in the wrong
+process is not held.
+
+### D192: a bare alias in HAVING beside a real column of the same name
+
+The projects list gained an archived filter written as `HAVING archived = 0`
+against a `COALESCE(ap.archived, 0) AS archived` in the SELECT.
+
+SQLite binds the bare name to `asana_projects.archived`, not to the alias, and
+that column is NULL for any project with no Asana link. `NULL = 0` is NULL, so
+the filter returned nothing.
+
+It worked perfectly on the real data, where every project has a link, and
+emptied the screen on the fixture, where none do. That asymmetry is the reason
+the suite runs against a synthetic fixture at all: a defect that only appears
+when the join misses is invisible on a dataset where it never does. Fixed by
+writing the expression rather than the alias.

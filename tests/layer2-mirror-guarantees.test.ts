@@ -111,6 +111,30 @@ describe('layer 2: the suite never runs against the real database', () => {
 		).not.toBe('real');
 	});
 
+	it('is talking to the fixture database, not the real one', async () => {
+		/*
+		 * Asserted over HTTP, because the process variable says nothing about the
+		 * server. `CC_DATA` is read by vite when a dev server starts; a suite run
+		 * can point at a server started hours earlier with different settings, and
+		 * the tests below this one create rows and delete them again.
+		 *
+		 * This is not hypothetical. A dev server backed by the real mirror was
+		 * found answering on the suite's own base URL, left over from earlier in a
+		 * session. The pre-flight seed count refused to start and nothing was
+		 * written, which was luck rather than a control.
+		 */
+		const base = process.env.API_BASE ?? 'http://127.0.0.1:5173';
+		const health = (await (await fetch(`${base}/api/health`)).json()) as {
+			data_environment?: string;
+		};
+
+		expect(
+			health.data_environment,
+			`${base} is serving the ${health.data_environment} database. The suite writes ` +
+				'and deletes rows and must never be pointed at real data.'
+		).toBe('seed');
+	});
+
 	it('keeps the two state directories apart in the build config', () => {
 		const config = readFileSync(join(process.cwd(), 'vite.config.ts'), 'utf8');
 		expect(config).toMatch(/REAL_STATE_DIR = '\.wrangler\/real\/v3'/);

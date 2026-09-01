@@ -70,6 +70,28 @@ async function preflight() {
 	// a defect rather than like an unprepared machine.
 	if (existsSync('seed/expected.json')) {
 		try {
+			/*
+			 * Which database is answering at BASE, before anything writes to it.
+			 *
+			 * The suite creates fixtures and deletes them again. It must never do
+			 * that to the real mirror, and until now the only thing checking was a
+			 * test asserting `CC_DATA !== 'real'` in the vitest process, which says
+			 * nothing about the server it talks to.
+			 *
+			 * A stale dev server backed by the real data was found squatting on
+			 * this port from earlier in a session. The seed count below refused to
+			 * start, which is the only reason nothing was written. That was luck.
+			 * This is the check.
+			 */
+			const health = await fetch(`${BASE}/api/health`).then((r) => r.json());
+			if (health?.data_environment && health.data_environment !== 'seed') {
+				problems.push(
+					`${BASE} is serving the ${health.data_environment} database, not the fixture. ` +
+						'The suite writes and deletes rows; it must never be pointed at real data. ' +
+						'Stop that server and start one without CC_DATA=real.'
+				);
+			}
+
 			const res = await fetch(`${BASE}/api/action-items?view=all`);
 			const body = await res.json();
 			const want = JSON.parse(readFileSync('seed/expected.json', 'utf8')).counts.action_items;

@@ -52,5 +52,23 @@ export const load: PageLoad = async ({ fetch, params }) => {
 		throw new Error(body.error ?? 'Could not load the client.');
 	}
 
-	return (await res.json()) as Overview;
+	const overview = (await res.json()) as Overview;
+
+	/*
+	 * The client's Dropbox files, read from the mirror.
+	 *
+	 * Supporting detail on the same footing as everything else here: a failure
+	 * must not stop the client loading, so it degrades to nothing rather than
+	 * taking the page down. The first page only, because a client can have two
+	 * hundred files and this is a summary card, not the Files screen.
+	 */
+	const filesRes = await fetch(`/api/files?client_id=${params.id}&page_size=25`);
+	const dropbox = filesRes.ok
+		? ((await filesRes.json()) as {
+				files: { path: string; name: string; size_bytes: number; modified_at: string | null }[];
+				total: number;
+			})
+		: { files: [], total: 0 };
+
+	return { ...overview, dropbox };
 };

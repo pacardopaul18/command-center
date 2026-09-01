@@ -341,6 +341,95 @@
 		Append only. Nothing edits or deletes a line, because a history that can
 		be edited is not a history.
 	-->
+	<!--
+		Asana's own history, when this ticket came from Asana.
+
+		Separate from the app's Activity card below rather than merged into it.
+		The two are different things: one is what people did in Asana, the other
+		is what has happened to this ticket here, and interleaving them would
+		make a single list where nothing says which system a line came from. The
+		mirror is read only, so nothing on this card can be edited.
+	-->
+	{#if data.mirrored}
+		<Card
+			title="Asana activity"
+			subtitle="{data.activity.length} from the mirror{data.activity.length === 200
+				? ', most recent'
+				: ''}"
+		>
+			{#if data.source}
+				<dl class="source">
+					<div>
+						<dt>Section in Asana</dt>
+						<dd>{data.source.section_name ?? 'None'}</dd>
+					</div>
+					<div>
+						<dt>Asana assignee</dt>
+						<dd>{data.source.asana_assignee ?? 'Nobody'}</dd>
+					</div>
+					<div>
+						<dt>Mirrored</dt>
+						<dd>{formatMoment(data.source.linked_at)}</dd>
+					</div>
+				</dl>
+				<p class="note">
+					Asana is the source of truth for this ticket. The section above is what Asana
+					calls its status, kept exactly as written; the status on this page is the app's
+					own and is deliberately coarse until the status models are reconciled. Editing
+					here does not change anything in Asana.
+				</p>
+			{/if}
+
+			{#if data.activity.length === 0}
+				<p class="empty">No comments or changes in Asana.</p>
+			{:else}
+				<ul class="feed">
+					{#each data.activity as story (story.gid)}
+						<li class:system={story.type !== 'comment_added'}>
+							<span class="feed-when mono">{formatMoment(story.created_at ?? '')}</span>
+							<span class="feed-body">
+								<!--
+									The author is shown only on a comment. Asana writes a system
+									story's text with the actor already in it, so printing the
+									name beside it reads "John McHugh John McHugh changed the due
+									date". A comment's text is the person's words and does need
+									attributing.
+								-->
+								{#if story.author && story.type === 'comment_added'}
+									<span class="feed-who">{story.author}</span>
+								{/if}
+								{story.text ?? story.type ?? 'Change recorded'}
+							</span>
+						</li>
+					{/each}
+				</ul>
+			{/if}
+		</Card>
+	{/if}
+
+	{#if data.parent || data.subtasks.length > 0}
+		<Card
+			title="Subtasks"
+			subtitle={data.subtasks.length > 0 ? `${data.subtasks.length} under this` : 'Part of another ticket'}
+		>
+			{#if data.parent}
+				<p class="note">
+					Part of <a href="/tickets/{data.parent.id}">{data.parent.title}</a>.
+				</p>
+			{/if}
+			{#if data.subtasks.length > 0}
+				<ul class="subtasks">
+					{#each data.subtasks as sub (sub.id)}
+						<li>
+							<a href="/tickets/{sub.id}">{sub.title}</a>
+							<span class="sub-meta">{sub.status}{sub.due_date ? ` - due ${sub.due_date}` : ''}</span>
+						</li>
+					{/each}
+				</ul>
+			{/if}
+		</Card>
+	{/if}
+
 	<Card title="Activity" subtitle="{data.events.length} recorded">
 		{#if data.events.length === 0}
 			<p class="empty">Nothing recorded yet.</p>
@@ -517,6 +606,53 @@
 {/if}
 
 <style>
+	.source {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(14ch, 1fr));
+		gap: var(--space-3);
+		margin: 0 0 var(--space-4);
+	}
+
+	.source dt {
+		font-size: 0.75rem;
+		color: var(--text-secondary);
+		margin-bottom: var(--space-1);
+	}
+
+	.source dd {
+		margin: 0;
+		font-weight: 600;
+	}
+
+	.note {
+		margin: 0 0 var(--space-4);
+		color: var(--text-secondary);
+		font-size: 0.875rem;
+		max-width: 70ch;
+	}
+
+	.subtasks {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+		display: grid;
+		gap: var(--space-2);
+	}
+
+	.subtasks li {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--space-2) var(--space-3);
+		align-items: baseline;
+		padding-bottom: var(--space-2);
+		border-bottom: 1px solid var(--border-thin);
+	}
+
+	.sub-meta {
+		color: var(--text-secondary);
+		font-size: 0.8125rem;
+	}
+
 
 	.two-up {
 		display: grid;

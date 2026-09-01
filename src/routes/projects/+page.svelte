@@ -121,6 +121,29 @@
 	</Button>
 </header>
 
+<!--
+	The archived view, offered only when there is one.
+
+	24 of the 66 mirrored projects are archived, and mixing them into live work
+	by default would make this a worse version of Asana. They are reachable
+	rather than dropped: an archived project holds finished work somebody asks
+	about, which is why it was pulled. D172, and D27 for showing the tab only
+	when the count is not zero.
+-->
+{#if data.counts.archived > 0}
+	<nav class="views" aria-label="Which projects to show">
+		<a href="/projects" aria-current={data.archived === 'no' ? 'page' : undefined}>
+			Live <span class="n">{data.counts.live}</span>
+		</a>
+		<a href="/projects?archived=only" aria-current={data.archived === 'only' ? 'page' : undefined}>
+			Archived <span class="n">{data.counts.archived}</span>
+		</a>
+		<a href="/projects?archived=all" aria-current={data.archived === 'all' ? 'page' : undefined}>
+			All <span class="n">{data.counts.live + data.counts.archived}</span>
+		</a>
+	</nav>
+{/if}
+
 <p class="status-line" role="status" aria-live="polite">{notice}</p>
 
 {#if errorMessage}
@@ -299,6 +322,40 @@
 {/if}
 
 <style>
+	.views {
+		display: flex;
+		gap: var(--space-2);
+		margin-bottom: var(--space-4);
+		flex-wrap: wrap;
+	}
+
+	.views a {
+		display: inline-flex;
+		align-items: center;
+		gap: var(--space-2);
+		/* D22: 44px tap floor. */
+		min-height: 44px;
+		padding: 0 var(--space-4);
+		border-radius: var(--radius-2);
+		border: 1px solid var(--border-thin);
+		background: var(--surface-card);
+		color: var(--text-secondary);
+		text-decoration: none;
+		font-size: 0.875rem;
+		font-weight: 600;
+	}
+
+	.views a[aria-current='page'] {
+		background: var(--navy);
+		border-color: var(--navy);
+		color: var(--text-inverse);
+	}
+
+	.views .n {
+		font-variant-numeric: tabular-nums;
+		opacity: 0.75;
+	}
+
 
 	.tabs {
 		display: flex;

@@ -141,7 +141,75 @@ tickets.get('/:id', async (c) => {
 		.bind(id)
 		.all();
 
-	return c.json({ ticket, entries: entries.results ?? [] });
+	/*
+	 * Where this ticket came from, and what Asana calls its status.
+	 *
+	 * The section name is the verbatim provenance. The app's own status is
+	 * coarse on purpose, because Asana's real vocabulary is 103 section names
+	 * across 66 projects and mapping those now would be guessing the answer
+	 * Thursday's reconciliation exists to ask. Showing both puts the guess next
+	 * to the fact rather than in place of it. D171.
+	 */
+	const source = await c.env.DB.prepare(
+		`SELECT l.asana_gid, l.linked_at, t.section_name, t.completed,
+            t.modified_at AS source_modified_at, u.name AS asana_assignee
+     FROM asana_task_links l
+     JOIN asana_tasks t ON t.gid = l.asana_gid
+     LEFT JOIN asana_users u ON u.gid = t.assignee_gid
+     WHERE l.ticket_id = ?`
+	)
+		.bind(id)
+		.first();
+
+	/*
+	 * The activity trail: Asana's stories, which are comments and system events.
+	 *
+	 * Deliberately not projected into action items. Ten thousand comments are
+	 * not ten thousand commitments, and putting them there would bury the one
+	 * screen that says what Paul owes people. Read straight from the mirror, so
+	 * a re-pull updates the trail with nothing to reconcile.
+	 */
+	const activity = source
+		? await c.env.DB.prepare(
+				`SELECT s.gid, s.created_at, s.type, s.text, u.name AS author
+         FROM asana_stories s
+         LEFT JOIN asana_users u ON u.gid = s.created_by_gid
+         WHERE s.task_gid = ?
+         ORDER BY s.created_at DESC
+         LIMIT 200`
+			)
+				.bind((source as { asana_gid: string }).asana_gid)
+				.all()
+		: { results: [] };
+
+	/** Subtasks, through the parent table the projection writes. */
+	const subtasks = await c.env.DB.prepare(
+		`SELECT t.id, t.title, t.status, t.due_date, t.assignee
+     FROM ticket_parents tp
+     JOIN tickets t ON t.id = tp.child_ticket_id
+     WHERE tp.parent_ticket_id = ?
+     ORDER BY t.title COLLATE NOCASE`
+	)
+		.bind(id)
+		.all();
+
+	const parent = await c.env.DB.prepare(
+		`SELECT t.id, t.title FROM ticket_parents tp
+     JOIN tickets t ON t.id = tp.parent_ticket_id
+     WHERE tp.child_ticket_id = ?`
+	)
+		.bind(id)
+		.first();
+
+	return c.json({
+		ticket,
+		entries: entries.results ?? [],
+		source: source ?? null,
+		mirrored: Boolean(source),
+		activity: activity.results ?? [],
+		subtasks: subtasks.results ?? [],
+		parent: parent ?? null
+	});
 });
 
 /** Fields a caller may set, on create and on patch alike. */

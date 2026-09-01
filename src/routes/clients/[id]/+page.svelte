@@ -538,6 +538,43 @@
 		document this app generated. Filing the signed PDF where the client's
 		other facts live costs nothing and answers the question that gets asked.
 	-->
+	<!--
+		Dropbox, read from the mirror.
+
+		Separate from the signed files above and deliberately so. Those are
+		documents somebody filed here on purpose; this is a view of the client's
+		folder in Dropbox, which the app mirrors and does not own. Merging them
+		would make one list where nothing says which of the two a row is, and only
+		one of them can be deleted from this page.
+	-->
+	{#if data.dropbox.total > 0}
+		<Card
+			title="Dropbox"
+			subtitle="{data.dropbox.total.toLocaleString()} files in this client's folder"
+		>
+			{#snippet actions()}
+				<Button variant="ghost" size="sm" href="/files?client_id={data.client.id}">
+					See all
+				</Button>
+			{/snippet}
+
+			<ul class="mirror-files">
+				{#each data.dropbox.files.slice(0, 8) as file (file.path)}
+					<li>
+						<span class="mf-name">{file.name}</span>
+						<span class="mf-meta">
+							{file.modified_at ? file.modified_at.slice(0, 10) : 'unknown'}
+						</span>
+					</li>
+				{/each}
+			</ul>
+			<p class="mirror-note">
+				Names and dates only, mirrored from Dropbox. Dropbox is the source of truth and
+				nothing here changes it.
+			</p>
+		</Card>
+	{/if}
+
 	<Card title="Signed files" subtitle="{data.files.length} on file">
 		{#snippet actions()}
 			<Button variant="ghost" size="sm" disabled={uploading} onclick={() => fileInput?.click()}>
@@ -641,6 +678,40 @@
 </div>
 
 <style>
+	.mirror-files {
+		list-style: none;
+		margin: 0 0 var(--space-3);
+		padding: 0;
+		display: grid;
+		gap: var(--space-2);
+	}
+
+	.mirror-files li {
+		display: flex;
+		justify-content: space-between;
+		gap: var(--space-3);
+		align-items: baseline;
+		padding-bottom: var(--space-2);
+		border-bottom: 1px solid var(--border-thin);
+	}
+
+	.mf-name {
+		font-weight: 600;
+		overflow-wrap: anywhere;
+	}
+
+	.mf-meta {
+		color: var(--text-secondary);
+		font-size: 0.8125rem;
+		white-space: nowrap;
+	}
+
+	.mirror-note {
+		margin: 0;
+		color: var(--text-secondary);
+		font-size: 0.8125rem;
+	}
+
 
 	.hidden-input {
 		display: none;

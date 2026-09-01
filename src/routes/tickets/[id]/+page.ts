@@ -46,6 +46,46 @@ export interface EffortEntry {
 	created_at: string;
 }
 
+/**
+ * What Asana says about this ticket, when the ticket came from Asana.
+ *
+ * The section name is the verbatim status vocabulary, kept because the app's own
+ * status is coarse on purpose: mapping 103 section names onto six values now
+ * would guess the answer Thursday's reconciliation exists to ask. Showing both
+ * puts the guess beside the fact. D171.
+ */
+export interface AsanaSource {
+	asana_gid: string;
+	linked_at: string;
+	section_name: string | null;
+	completed: number;
+	source_modified_at: string | null;
+	asana_assignee: string | null;
+}
+
+/**
+ * One line of Asana's own history: a person's comment or a system event.
+ *
+ * Read from the mirror rather than projected into the app, because these are
+ * comments and not commitments. Ten thousand of them in `action_items` would
+ * bury the screen that says what Paul owes people.
+ */
+export interface AsanaStory {
+	gid: string;
+	created_at: string | null;
+	type: string | null;
+	text: string | null;
+	author: string | null;
+}
+
+export interface Subtask {
+	id: string;
+	title: string;
+	status: string;
+	due_date: string | null;
+	assignee: string | null;
+}
+
 export const load: PageLoad = async ({ fetch, params }) => {
 	const [res, ownersRes, eventsRes, linksRes, effortRes] = await Promise.all([
 		fetch(`/api/tickets/${params.id}`),
@@ -61,7 +101,15 @@ export const load: PageLoad = async ({ fetch, params }) => {
 		throw new Error(body.error ?? 'Could not load the ticket.');
 	}
 
-	const data = (await res.json()) as { ticket: Ticket; entries: TimeEntry[] };
+	const data = (await res.json()) as {
+		ticket: Ticket;
+		entries: TimeEntry[];
+		mirrored: boolean;
+		source: AsanaSource | null;
+		activity: AsanaStory[];
+		subtasks: Subtask[];
+		parent: { id: string; title: string } | null;
+	};
 
 	// The roster is supporting detail. A failure must not stop the ticket
 	// loading, so it degrades to an empty picker.

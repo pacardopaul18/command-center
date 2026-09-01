@@ -72,16 +72,65 @@ const LIST_SELECT = `
      WHERE m.project_id = p.id AND m.done_at IS NOT NULL) AS milestones_done,
     (SELECT COUNT(*) FROM tickets t
      WHERE t.project_id = p.id AND t.status NOT IN ('done', 'cancelled')) AS open_tickets,
-    ${NEXT_MILESTONE} AS next_milestone_shown
+    ${NEXT_MILESTONE} AS next_milestone_shown,
+
+    /*
+     * Where this project came from, and whether Asana calls it archived.
+     *
+     * Read through the link table rather than stored on the project, because a
+     * copy of the archived flag here would be a second answer that goes stale
+     * the next time somebody archives something in Asana. The mirror is the
+     * source; this joins to it.
+     *
+     * The mirrored flag is the marker a write path needs: a projected row is a
+     * rendering of what Asana said, and editing it here would be a correction
+     * the next projection silently reverts.
+     */
+    CASE WHEN al.asana_gid IS NOT NULL THEN 1 ELSE 0 END AS mirrored,
+    COALESCE(ap.archived, 0) AS archived
   FROM projects p
   LEFT JOIN clients cl ON cl.id = p.client_id
   LEFT JOIN action_items a ON a.project_id = p.id
+  LEFT JOIN asana_project_links al ON al.project_id = p.id
+  LEFT JOIN asana_projects ap ON ap.gid = al.asana_gid
   GROUP BY p.id
 `;
 
 projects.get('/', async (c) => {
+	/*
+	 * Archived projects are hidden by default and reachable on request.
+	 *
+	 * 24 of the 66 mirrored projects are archived, and showing them alongside
+	 * live work by default would make the screen a worse version of Asana. They
+	 * are not dropped: an archived project holds finished work somebody asks
+	 * about, which is why they were pulled in the first place. D172.
+	 */
+	const archived = c.req.query('archived') ?? 'no';
+	if (!['no', 'only', 'all'].includes(archived)) {
+		throw new ApiError(400, "archived must be one of: no, only, all.");
+	}
+
+	/*
+	 * The full expression, not the SELECT alias.
+	 *
+	 * `HAVING archived = 0` binds the bare name to `asana_projects.archived`
+	 * rather than to the alias, and that column is NULL for any project with no
+	 * Asana link. NULL = 0 is NULL, so the filter returned nothing.
+	 *
+	 * It looked correct on the real data, where every project has a link, and
+	 * emptied the screen on the fixture, where none do. The suite caught it. A
+	 * bare alias in HAVING beside a real column of the same name is ambiguous
+	 * and SQLite resolves it the other way.
+	 */
+	const filter =
+		archived === 'no'
+			? 'HAVING COALESCE(ap.archived, 0) = 0'
+			: archived === 'only'
+				? 'HAVING COALESCE(ap.archived, 0) = 1'
+				: '';
+
 	const { results } = await c.env.DB.prepare(
-		`${LIST_SELECT}
+		`${LIST_SELECT.replace('GROUP BY p.id', `GROUP BY p.id ${filter}`)}
      ORDER BY
        CASE WHEN p.status = 'done' THEN 1 ELSE 0 END,
        CASE p.phase
@@ -96,7 +145,23 @@ projects.get('/', async (c) => {
 	)
 		.bind(todayInWorkingZone())
 		.all();
-	return c.json({ projects: results ?? [] });
+
+	// Both counts every time, so the screen can offer the archived view with a
+	// number rather than a link into a page that might be empty. D27.
+	const counts = await c.env.DB.prepare(
+		`SELECT
+       SUM(CASE WHEN ap.archived = 1 THEN 1 ELSE 0 END) AS archived,
+       SUM(CASE WHEN ap.archived = 1 THEN 0 ELSE 1 END) AS live
+     FROM projects p
+     LEFT JOIN asana_project_links al ON al.project_id = p.id
+     LEFT JOIN asana_projects ap ON ap.gid = al.asana_gid`
+	).first<{ archived: number; live: number }>();
+
+	return c.json({
+		projects: results ?? [],
+		archived,
+		counts: { live: counts?.live ?? 0, archived: counts?.archived ?? 0 }
+	});
 });
 
 projects.post('/', async (c) => {

@@ -47,6 +47,7 @@
 		{ href: '/sops', label: 'SOPs', exact: false },
 		{ href: '/templates', label: 'Templates', exact: false },
 		{ href: '/clients', label: 'Clients', exact: false },
+		{ href: '/files', label: 'Files', exact: false },
 		{ href: '/mail', label: 'Mail', exact: false },
 		{ href: '/invoices', label: 'Invoicing', exact: false },
 		{ href: '/ledger', label: 'Ledger', exact: false },

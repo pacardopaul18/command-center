@@ -12,6 +12,7 @@ import {
 import type { AsanaSettings } from '../asana';
 import { CURSOR_KEY, STALE_DAYS, syncFromAsana } from '../asana-sync';
 import { mirrorStep, mirrorTotals } from '../asana-mirror';
+import { projectMirror } from '../projection';
 
 /**
  * Asana configuration.
@@ -268,4 +269,37 @@ asana.get('/mirror', async (c) => {
 		state: state ?? null,
 		totals: await mirrorTotals(c.env.DB, workspace)
 	});
+});
+
+/**
+ * Puts the mirror onto the app's own screens.
+ *
+ * Separate from the pull on purpose. The mirror is a faithful copy and this is a
+ * rendering of it, and keeping the two apart is what lets Thursday's schema work
+ * change the rendering without touching a single row of what Asana said.
+ *
+ * Safe to run twice, and safe to run after a re-pull: every row is found again
+ * by its gid, so a second run updates rather than doubles.
+ */
+asana.post('/project', async (c) => {
+	const workspace =
+		c.req.query('workspace') ??
+		(await readSettings(c.env.SESSIONS)).workspace_gid ??
+		(
+			await c.env.DB.prepare(
+				'SELECT workspace_gid FROM asana_sync_state ORDER BY updated_at DESC LIMIT 1'
+			).first<{ workspace_gid: string }>()
+		)?.workspace_gid;
+
+	if (!workspace) throw new ApiError(400, 'There is no mirrored workspace to project.');
+
+	return c.json(await projectMirror(c.env.DB, workspace));
+});
+
+/** The last projection run, so the report survives the terminal it printed in. */
+asana.get('/project', async (c) => {
+	const run = await c.env.DB.prepare(
+		'SELECT * FROM projection_runs ORDER BY started_at DESC LIMIT 1'
+	).first();
+	return c.json({ last_run: run ?? null });
 });
