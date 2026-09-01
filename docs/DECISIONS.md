@@ -4606,3 +4606,39 @@ and `voice` join the Thursday ALTER queue.
 
 Both are asserted now: the guarantee test walks every file that calls a function
 in `ai.ts` and requires it to call the stop and to record what it spent.
+
+### D166: a path that spends money must be structurally unable to spend unrecorded
+
+The rule the spend stop is worth more than the stop itself.
+
+D165 built a ceiling. A ceiling reads a meter, so a ceiling is only as complete
+as the meter beneath it, and the meter had two holes: `context.ts` counted its
+own tokens and wrote nothing, and three of the six names in `UsageKind` would
+have been refused by the column's CHECK while `recordUsage` swallowed the
+failure by design. Neither was visible. Both would have spent real money with
+the meter reading zero and the stop declining to fire, and the app would have
+looked exactly as it does when nothing is happening.
+
+Careful is not a control. Both holes were made by people who intended to meter
+everything, which is the same intention that produced `costCents` with no
+caller. So the rule is structural:
+
+**Any file that calls a function which spends money must call the budget check
+and must record what it spent, and a guarantee test asserts both by walking the
+source.**
+
+The test scans `src/lib/server` for callers of the functions in `ai.ts`,
+excluding `ai.ts` itself and the budget module, and fails by filename if a
+caller does not reference `checkAiBudget` and `recordUsage`. It also asserts the
+scan found at least five files, because a loop over an empty result passes every
+case it contains and a broken pattern would otherwise read as universal
+compliance.
+
+This is deliberately a source scan rather than a runtime assertion. The failure
+being prevented is a call site added later by somebody who did not read this
+entry, and a runtime check only fires if a test happens to exercise that path
+with a live key. A scan fires on the next `npm test` after the file is saved.
+
+The general form, for anything that follows: when the cost of forgetting is
+invisible, the check belongs in the suite and keys on the shape of the code, not
+on the behaviour of a run.
