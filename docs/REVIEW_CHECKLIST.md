@@ -128,6 +128,31 @@ half of the same sentence. The gate was right both times.
 This is a habit rather than a defect, which is why it is on a checklist rather
 than in a test. It costs one command to confirm and an hour to guess wrong.
 
+## 9. Is the property asserted about the thing that answers?
+
+**D191.** A guarantee checked in the process that asks says nothing about the
+system that responds. Fourth appearance of this family, and the most expensive:
+the others were reports, this one was a control.
+
+The suite creates rows and deletes them again, and its guarantee against running
+on real data asserted `CC_DATA !== 'real'` inside the vitest process. That
+variable is read by vite when a dev server starts. A suite run can point at a
+server started hours earlier with different settings, and one was: a dev server
+backed by the real mirror was answering on the suite's own base URL, on the IPv6
+loopback, while the fixture server was stopped.
+
+**No write reached the mirror. That was luck, not design.** The pre-flight
+refused to start because it found zero action items, and it was looking for a
+stale fixture, not for the wrong database. A check that saves you while looking
+for something else has not been tested.
+
+- Ask the system that answers. `/api/health` reports which database is behind
+  it; the environment variable reports what somebody typed once.
+- Assert it in both places that could act on it: the pre-flight that starts the
+  run, and the test that claims the property.
+- For any flag, credential or mode: is it read in the same process that does the
+  dangerous thing? If not, the property is asserted about the wrong system.
+
 ---
 
 ## A note on revising a finding
@@ -142,3 +167,30 @@ the severity was still wrong, and both facts were recorded.
 
 Say what changed, say what the evidence was, and do not quietly leave the
 stronger version standing because it made the work look more valuable.
+
+---
+
+## Why the synthetic fixture exists
+
+It is coverage, not convenience.
+
+Real data is one shape. The Asana mirror gives every project a link, so a query
+joining through that link never misses, and a defect on the null-join path is
+invisible on it. The fixture has no mirror at all, so every one of those joins
+misses, which is the other half of the space.
+
+`HAVING archived = 0` against a `COALESCE(ap.archived, 0) AS archived` was the
+demonstration. SQLite binds the bare name in `HAVING` to the real column
+`asana_projects.archived`, not to the SELECT alias, and that column is NULL
+where there is no link. `NULL = 0` is NULL, so the filter returned nothing. It
+worked flawlessly on 66 real projects and emptied the screen on 220 fixture
+ones. D192.
+
+Two consequences worth keeping:
+
+- **Write the expression, not the alias, in `HAVING` and `WHERE`** whenever a
+  real column of the same name is in scope. The ambiguity resolves the other
+  way.
+- **A feature verified only against real data is half verified.** Run it against
+  the fixture too, and treat a difference between the two as the finding rather
+  than as an inconvenience.

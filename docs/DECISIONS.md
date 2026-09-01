@@ -5253,3 +5253,51 @@ emptied the screen on the fixture, where none do. That asymmetry is the reason
 the suite runs against a synthetic fixture at all: a defect that only appears
 when the join misses is invisible on a dataset where it never does. Fixed by
 writing the expression rather than the alias.
+
+### D193: the wrong-scope guarantee is a family, and this is its fourth member
+
+D191 is not a one-off, and naming the family is the point of this entry.
+
+Four instances now, each a property that was believed because something was
+checked, where the something was not the thing:
+
+1. **D80.** A guard whose test could not fail, because the dangerous path was
+   unreachable for an unrelated reason.
+2. **D180.** A safety test that passed because the credential was absent, so the
+   guard it named had never once executed.
+3. **D184.** A capability held back only by an unchosen setting, which the next
+   obvious click would have armed.
+4. **D191.** A guarantee asserted in the process that asks rather than about the
+   system that answers.
+
+The shared shape: something true was observed, and a different thing was
+concluded from it. The correction is always the same move, which is to assert
+the property about the thing that would do the damage. `/api/health` is asked
+which database is behind it, because the environment variable only reports what
+somebody typed when a server started, possibly hours earlier and possibly for a
+different server entirely.
+
+Recorded plainly: no write reached the real mirror. That was luck. The
+pre-flight that stopped the run was looking for a stale fixture, not for the
+wrong database, and a check that saves you while looking for something else has
+not been tested. Checklist item 9.
+
+### D194: the synthetic fixture is coverage, not convenience
+
+Formalising what D192 demonstrated, because the fixture costs real time to
+maintain and the reason to keep it should be written down rather than assumed.
+
+Real data is one shape. Every mirrored project has an Asana link, so a query
+joining through that link never misses, and a defect on the null-join path
+cannot appear. The fixture has no mirror at all, so every one of those joins
+misses. Between them they cover both halves; either alone covers one.
+
+The demonstration: `HAVING archived = 0` against a
+`COALESCE(ap.archived, 0) AS archived`. SQLite binds the bare name to the real
+column rather than to the alias, that column is NULL where there is no link, and
+`NULL = 0` is NULL. Perfect against 66 real projects, empty against 220 fixture
+ones.
+
+So: a feature verified only against real data is half verified, and a difference
+between the two datasets is the finding rather than an inconvenience to be
+worked around.
