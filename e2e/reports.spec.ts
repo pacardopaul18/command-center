@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import type { APIRequestContext } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 
 /**
@@ -290,6 +291,77 @@ test.describe('pages use the width they are read at', () => {
 			// The shell's own padding is inside .content, so the box itself should
 			// end at the viewport edge.
 			expect(gap, `${path} is centred inside a cap at 1920px`).toBeLessThanOrEqual(1);
+		});
+	}
+
+	/**
+	 * The detail routes, which inherit the default and were not measured.
+	 *
+	 * Added before anybody looked at them rather than after somebody found one
+	 * wrong. The navigable routes above were the ones checked when the default
+	 * was inverted, and a detail page is exactly the kind of screen that gets
+	 * the new behaviour without anybody having rendered it.
+	 *
+	 * Ids are discovered from the API rather than written in. A hardcoded
+	 * `v-cl-1` passes until the fixture changes and then fails as a layout
+	 * defect, which is a test lying about what broke.
+	 */
+	const DETAIL_ROUTES: { name: string; find: (request: APIRequestContext) => Promise<string> }[] = [
+		{
+			name: '/clients/[id]',
+			find: async (request) => {
+				const body = await (await request.get('/api/clients?status=active')).json();
+				return `/clients/${body.clients[0].id}`;
+			}
+		},
+		{
+			name: '/projects/[id]',
+			find: async (request) => {
+				const body = await (await request.get('/api/projects')).json();
+				return `/projects/${body.projects[0].id}`;
+			}
+		},
+		{
+			name: '/meetings/[id]',
+			find: async (request) => {
+				const body = await (await request.get('/api/meetings')).json();
+				return `/meetings/${body.meetings[0].id}`;
+			}
+		},
+		{
+			name: '/tickets/[id]',
+			find: async (request) => {
+				const body = await (await request.get('/api/tickets?status=all')).json();
+				return `/tickets/${body.tickets[0].id}`;
+			}
+		},
+		{
+			name: '/sops/books/[id]',
+			find: async (request) => {
+				const shelves = await (await request.get('/api/sops/shelves')).json();
+				const shelf = await (
+					await request.get(`/api/sops/shelves/${shelves.shelves[0].id}`)
+				).json();
+				return `/sops/books/${shelf.books[0].id}`;
+			}
+		}
+	];
+
+	for (const route of DETAIL_ROUTES) {
+		test(`${route.name} reaches the right edge at 1920px`, async ({ page, request }) => {
+			const path = await route.find(request);
+
+			await page.setViewportSize({ width: 1920, height: 1000 });
+			await page.goto(path);
+			await page.waitForLoadState('networkidle');
+
+			const gap = await page.evaluate(() => {
+				const el = document.querySelector('.content');
+				if (!el) throw new Error('No .content element on this page.');
+				return Math.round(window.innerWidth - el.getBoundingClientRect().right);
+			});
+
+			expect(gap, `${route.name} is centred inside a cap at 1920px`).toBeLessThanOrEqual(1);
 		});
 	}
 
