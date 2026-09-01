@@ -5051,3 +5051,61 @@ It now says so and exits non-zero. Any bound that ends work early belongs in the
 same category as D138: the number of things done and the reason for stopping are
 two different facts, and reporting only the first lets an incomplete run be read
 as a complete one.
+
+### D186: the write-capable path audit, and what it found
+
+Every outbound call this app makes, enumerated, and for each the question the
+Asana push failed: is it off by decision, or only by missing configuration?
+
+Six external hosts appear in the server code. `app.asana.com`,
+`api.resend.com`, `accounts.google.com`, `oauth2.googleapis.com`,
+`gmail.googleapis.com`, `www.googleapis.com`, plus the Anthropic SDK.
+
+**Asana, `createTask`.** The only call that creates anything in Asana. Off by
+decision as of D184, and that switch is checked before the token and the
+workspace. This is the path the audit was ordered because of.
+
+**Google, everything.** No write path exists. The two POSTs are an OAuth token
+exchange and a free/busy query, which Google models as a POST and which reads.
+The scopes are read-only, and a test pins them by name against an allowlist plus
+a count, so adding a write scope fails the suite rather than shipping. Off by
+decision, and the decision is structural: the capability was never granted.
+D70.
+
+**Anthropic.** Spends money rather than mutating anything. Every one of the five
+call sites checks the budget first, and a refusal carries its reason rather than
+returning success with zeros. Off by decision, and the decision is the ceiling.
+D165, D166.
+
+**Dropbox.** No write surface exists at all, and four tests assert that the
+route names no upload, delete, move, share or download. Nothing to switch off,
+which is the strongest form of the answer.
+
+**Resend, the digests.** The one that needs stating carefully, because it sends
+real mail to a real person.
+
+The cron path is gated by `morning_digest` and `evening_digest`, which are read,
+and a skip is logged rather than silent. Those default to **on**, which is
+unlike the Asana push and is correct: a start-of-day and end-of-day email to
+Paul's own inbox is the ruled MVP feature, and setting `RESEND_API_KEY` is a
+deliberate act that turns on a thing that was asked for. On by design is not the
+same as armed by omission, and the distinction is worth keeping sharp, because
+treating every default-on feature as a finding would make the rule useless.
+
+Two things about it are still worth writing down.
+
+`POST /api/digests/run` calls the sender directly and does not read the
+preference the cron reads. Defensible, since sending now on purpose is a
+different act from a schedule, but the settings screen says digests are off
+while that route will still send one.
+
+`DIGEST_TO` falls back to a hard-coded address. If the variable were ever unset
+on production while the key was set, mail would go to a compiled-in destination
+rather than the send failing loudly. The impact is nil today, because the
+address is Paul's own, but the shape is the one D108 and D111 are about: a
+destination that survives a configuration mistake by defaulting is a destination
+nobody chose.
+
+**Result: one path was armed by omission, it is closed, and no others are.**
+Neither of the two Resend observations was changed, because tonight's
+authorisation was the audit and the report.
