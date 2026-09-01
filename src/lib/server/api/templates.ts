@@ -6,6 +6,8 @@ import { ApiError, oneOf, optionalText, readJsonObject, requiredText } from './v
 import { AiError, draftFromTemplate } from '../ai';
 import { TEMPLATE_STATUSES, TEMPLATE_TYPES } from '$lib/types';
 import type { TemplateStatus, TemplateType } from '$lib/types';
+import { checkAiBudget } from '../ai-budget';
+import { recordUsage } from '../ai-usage';
 
 /**
  * Templates, and AI drafting from them.
@@ -261,6 +263,18 @@ templates.get('/:id/uses', async (c) => {
 });
 
 templates.post('/:id/draft', async (c) => {
+	/**
+	 * The spend stop, first, before anything else this route does.
+	 *
+	 * First on purpose. It is a gate on the whole operation, it costs one query,
+	 * and putting it after a lookup means a reader hits a downstream detail,
+	 * fixes it, and only then meets the ceiling that was always going to refuse
+	 * them. A refusal is a 402 carrying both numbers, never a 500 and never a
+	 * silent success. D138.
+	 */
+	const verdict = await checkAiBudget(c.env.DB);
+	if (!verdict.ok) throw new ApiError(402, verdict.reason);
+
 	const id = c.req.param('id');
 	const body = await readJsonObject(c.req.raw);
 
@@ -292,7 +306,7 @@ templates.post('/:id/draft', async (c) => {
 	}
 
 	try {
-		const { draft, model } = await draftFromTemplate(key, {
+		const { draft, model, usage } = await draftFromTemplate(key, {
 			templateName: template.name,
 			scenario: template.scenario,
 			exemplar: template.body,
@@ -300,6 +314,9 @@ templates.post('/:id/draft', async (c) => {
 			situation,
 			recipient: optionalText(body.recipient, 'Recipient', 200) ?? undefined
 		});
+		// The template library's own record of the use, and the spend meter's
+		// record of the cost. Different questions, both answered.
+		await recordUsage(c.env.DB, 'draft', usage, null, null);
 		await recordUse(c.env.DB, id, situation, draft.length, model);
 		return c.json({ draft, model, template_id: id });
 	} catch (err) {

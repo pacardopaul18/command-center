@@ -3,6 +3,8 @@ import type { ApiEnv } from './env';
 import { nowUtc } from '../dates';
 import { ApiError, optionalDate, optionalText, readJsonObject, requiredText } from './validate';
 import { AiError, extractActionItems, summariseTranscript } from '../ai';
+import { checkAiBudget } from '../ai-budget';
+import { recordUsage } from '../ai-usage';
 
 /**
  * AI summary and extraction, with the human in the loop.
@@ -53,10 +55,20 @@ async function loadTranscript(
 /** Generates a summary and stores it unreviewed. */
 meetingAi.post('/:id/summarize', async (c) => {
 	const id = c.req.param('id');
+	/**
+	 * The spend stop, before the call rather than after it.
+	 *
+	 * A refusal is a 402, not a 500 and not a silent success: the reader is told
+	 * the ceiling was reached and by how much, which is a sentence they can act
+	 * on. D138 applies to routes as much as to jobs.
+	 */
+	const verdict = await checkAiBudget(c.env.DB);
+	if (!verdict.ok) throw new ApiError(402, verdict.reason);
+
 	const meeting = await loadTranscript(c, id);
 
 	try {
-		const { summary, model } = await summariseTranscript(
+		const { summary, model, usage } = await summariseTranscript(
 			apiKey(c),
 			meeting.transcript_text,
 			meeting.title
@@ -67,6 +79,14 @@ meetingAi.post('/:id/summarize', async (c) => {
 		)
 			.bind(summary, nowUtc(), id)
 			.run();
+
+		/**
+		 * Recorded, because a cost the meter cannot see is a cost the stop
+		 * cannot stop. These two routes spent money and wrote nothing to
+		 * `ai_usage`, so summarising a transcript was invisible to the ceiling
+		 * that reads it.
+		 */
+		await recordUsage(c.env.DB, 'summary', usage, null, null);
 
 		return c.json({ summary, model, reviewed: false });
 	} catch (err) {
@@ -102,10 +122,20 @@ meetingAi.post('/:id/summary/review', async (c) => {
  */
 meetingAi.post('/:id/extract', async (c) => {
 	const id = c.req.param('id');
+	/**
+	 * The spend stop, before the call rather than after it.
+	 *
+	 * A refusal is a 402, not a 500 and not a silent success: the reader is told
+	 * the ceiling was reached and by how much, which is a sentence they can act
+	 * on. D138 applies to routes as much as to jobs.
+	 */
+	const verdict = await checkAiBudget(c.env.DB);
+	if (!verdict.ok) throw new ApiError(402, verdict.reason);
+
 	const meeting = await loadTranscript(c, id);
 
 	try {
-		const { items, model } = await extractActionItems(
+		const { items, model, usage } = await extractActionItems(
 			apiKey(c),
 			meeting.transcript_text,
 			meeting.title,
@@ -146,6 +176,10 @@ meetingAi.post('/:id/extract', async (c) => {
 		)
 			.bind(id)
 			.all();
+
+		// Recorded for the same reason the summary is: an unmetered cost is a
+		// cost the ceiling cannot stop.
+		await recordUsage(c.env.DB, 'summary', usage, null, null);
 
 		return c.json({ proposals: results ?? [], model, extracted: items.length });
 	} catch (err) {

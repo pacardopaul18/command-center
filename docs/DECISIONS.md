@@ -4546,3 +4546,64 @@ are preferences, not records, nothing joins to them, and a table would mean a
 migration every time one is added. `readSettings` narrows on the way in and on
 the way out, so a value written by an older version or by hand cannot hand the
 code a shape it does not expect.
+
+### D165: the spend stop, and the two allowances that must not mix
+
+There was no spend stop. `costCents` had been written, tested and exported, and
+had no caller outside its own test. The only dollar figure in the running app
+was `ceiling_usd_per_month: 30`, a display constant the meter returned, which
+nothing read to decide anything. Exposure on the day was twenty-nine cents. The
+problem was never the money: it was that a control everybody believed existed
+did not, and belief in a control is what stops people looking.
+
+**Two allowances, and the separation is the design.** The monthly ceiling is 30
+USD hard and covers the ongoing cost of the app running. A backfill run gets its
+own allowance, 50 USD by default, keyed to a name. Usage attributed to a run is
+excluded from the monthly figure.
+
+Both directions of that exclusion matter. Without it a corpus pass would consume
+the month and every ordinary call afterwards would be refused, which is a stop
+firing on exactly the wrong thing. And the month would silently absorb a pass
+that was never separately accountable, so nobody could say afterwards what the
+backfill had cost.
+
+Attribution, not a time window. A run defined as "everything between these two
+timestamps" would sweep up every ordinary call made while a backfill happened to
+be running, which is the mixing this exists to prevent. Each usage row is
+attributed explicitly at the moment it is recorded, or to nothing, and the
+primary key on the attribution table is the usage row, so a call cannot belong
+to two runs.
+
+**One source for both the control and the display.** `src/lib/ai-budget.ts`
+holds the ceilings; the check reads it and the meter route reads it. Two numbers
+that come from different places are two numbers, and they disagree the first
+time one is edited. That is precisely how the old ceiling became decorative.
+
+**Refusals carry the reason, never zeros.** The cron path returns through the
+`stopped` field the triage outcome already had; the context pass returns through
+`stopped_early`; the four routes return 402 with both figures in a sentence. A
+run refused on budget and a run with nothing to do both return zeros, and only
+the reason separates them. D138.
+
+**The gate is first in every route.** Not after the resource lookup: a reader
+who hits a downstream 404, fixes it, and only then meets the ceiling has been
+told the wrong thing twice.
+
+Two holes were found while building it, and both were the same shape as the
+original finding.
+
+`context.ts` counted its own tokens into its outcome and wrote nothing to
+`ai_usage`. The most expensive pass in the app was invisible to the meter and
+therefore to any ceiling reading it. A cost the meter cannot see is a cost the
+stop cannot stop.
+
+`UsageKind` named six kinds; migration 0015 constrains the column to three. The
+three extra names had no caller, so nothing had ever hit the constraint, and
+`recordUsage` swallows a failed write on purpose. The first code to use one
+would have had its insert refused and its spend gone unrecorded. The union is
+narrowed to the truth rather than the table rebuilt tonight; `profile`, `digest`
+and `voice` join the Thursday ALTER queue.
+
+Both are asserted now: the guarantee test walks every file that calls a function
+in `ai.ts` and requires it to call the stop and to record what it spent.
+</DOC

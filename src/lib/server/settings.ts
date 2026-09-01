@@ -1,5 +1,5 @@
 import type { KVNamespace } from '@cloudflare/workers-types';
-import { DEFAULT_SETTINGS, readSettings, type Settings } from '$lib/settings';
+import { DEFAULT_SETTINGS, readSettings, type Settings } from '../settings';
 
 /**
  * Reading and writing the settings object.
