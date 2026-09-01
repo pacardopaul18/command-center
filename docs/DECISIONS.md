@@ -5415,3 +5415,94 @@ had gone. Two of the apparent faults turned out to be side-by-side columns,
 which a bottom-to-top comparison across a grid reports as negative space and
 which are not a defect at all: measuring found the real one and stopped three
 imaginary ones being fixed.
+
+### D200: there is no real mail in either local environment
+
+Pillar 4 was ordered as the context pass against real mail. It has not run,
+because the mail is not here.
+
+The evidence, gathered before spending anything. The real-data environment has
+zero connections and zero threads: it was created for the Asana and Dropbox
+mirror and no mailbox has ever been connected to it. The fixture environment has
+two connections and 21 threads, and both accounts are on `.invalid` domains,
+which is the reserved TLD for exactly this purpose. They are synthetic.
+
+The 775-thread corpus that the earlier post-reset diagnosis measured is on
+production, which Stage C holds.
+
+An earlier check for a `v-` prefix on the thread ids found none and I nearly
+concluded the mail was real on the strength of it. The prefix is the volume
+seed's convention and the mail fixture does not use it, so the absence of a
+prefix said nothing. The account domain settled it. Checklist item 8: the
+diagnosis that fits is not the diagnosis that was verified.
+
+Running the pass over 19 synthetic threads would have produced counts, a spend
+line and a report that all looked like Pillar 4 and were about nothing. So it
+did not run, and no money was spent.
+
+Two ways forward, both Paul's to choose. Connect a mailbox to the real-data
+environment, which needs his Google account and is an outward-facing act. Or
+lift Stage C and run against production, which is the ruling that is already
+waiting on the partner conversation.
+
+### D201: the cost is projected before the run, not reported after it
+
+`POST /api/email/context/build` now refuses to start when the projection exceeds
+the allowance, and returns the projection with the outcome when it proceeds.
+
+A stop that only fires part way through has already spent the money it was
+protecting. The existing budget check was exactly that: correct, and evaluated
+per call, so a run that would cost four times the allowance began, spent the
+allowance, and stopped. That is a smaller loss than no stop at all and it is not
+the same as not starting.
+
+The estimate counts from the same predicates the pass uses, so it projects the
+work that would actually happen rather than the size of the mailbox. Automated,
+newsletter and notification mail never reach the context AI, and an estimate
+that counted them would overstate the bill and then look broken when the real
+run came in under it.
+
+The per-thread token figures are averages from the 2026-09-01 measurement, and
+are labelled as averages. A forty-message thread costs more than a two-message
+one, and an estimate that pretended otherwise would be precise and wrong. What
+it has to do is answer "does this fit in fifty dollars", and it does that.
+
+The pass also takes a run name now and draws on the backfill allowance rather
+than the month, which is what a corpus pass is for. D165.
+
+### D202: a commitment becomes a proposal, and a person makes it work
+
+The Action items screen is empty because nothing generates them, and the obvious
+fix is to write extracted commitments into it. That is the move this design
+exists to prevent.
+
+A commitment is a model's reading of a sentence in an email. Some readings are
+wrong. Action items are the one screen that says what Paul owes people, and
+filling it with things he may not owe anybody would make it stop being believed
+within a week; once that happens no amount of later accuracy brings it back.
+
+So the chain is commitment, proposal, person, action item. `mail_action_proposals`
+takes the shape `meeting_action_proposals` already proved: evidence attached, a
+pending state, and a CHECK that refuses an accepted proposal pointing at
+nothing. That CHECK fired during test teardown, which deleted the action item
+first and left a proposal claiming it became work that no longer existed. The
+constraint was right and the teardown was wrong.
+
+Four refusals, each counted rather than silent. A commitment `owed_by: 'them'`
+is somebody else's promise and belongs on a waiting-on view, not in Paul's list.
+A commitment with no evidence is not offered at all, because a reviewer cannot
+judge a claim they cannot check. A client is matched only on an exact domain,
+never a free mail domain, since one gmail.com contact would file every personal
+correspondent under that client. A project is chosen only where the client has
+exactly one live one, because choosing between two is a guess and an unfiled
+proposal is a question answered in a second.
+
+No AI in the generator. The model did its reading when it extracted the
+commitment; a second call to judge the first would be paying twice for the same
+guess.
+
+`commitments` gained an `evidence` column in 0040. Its `source_message_id` was
+described as the provenance and it is, but provenance says where a claim came
+from and evidence is the thing somebody reads to decide whether it is true. A
+reviewer holding a four-paragraph email and a one-line claim was being asked to
+find the sentence themselves.

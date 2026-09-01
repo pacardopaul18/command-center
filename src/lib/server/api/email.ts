@@ -17,6 +17,8 @@ import { recordUsage } from '../ai-usage';
 import { runContextPass, seedContacts } from '../context';
 import { stripHtml } from '../google';
 import { checkAiBudget } from '../ai-budget';
+import { estimateContextPass } from '../context-estimate';
+import { acceptProposal, proposeFromCommitments, rejectProposal } from '../mail-proposals';
 import { monthToDateCents } from '../ai-budget';
 import { AI_CEILINGS_USD } from '../../ai-budget';
 
@@ -1042,12 +1044,113 @@ email.post('/context/build', async (c) => {
 	const account = await resolveAccount(c.env.DB, c.req.query('account'));
 	const maxCalls = Math.min(Math.max(Number(c.req.query('max_calls') ?? 60), 1), 400);
 
+	/*
+	 * A corpus pass names its run, so it draws on the backfill allowance rather
+	 * than on the month.
+	 *
+	 * Not optional by default. A pass over existing mail that charged the
+	 * monthly ceiling would eat it in one go and every ordinary call afterwards
+	 * would be refused, which is a stop firing on exactly the wrong thing. D165.
+	 */
+	const runName = c.req.query('run')?.trim() || null;
+
+	/*
+	 * The projection, before anything is spent.
+	 *
+	 * A budget stop that only fires part way through has already spent the money
+	 * it was protecting. This one refuses to start, and says what it would have
+	 * cost, which is the number somebody needs in order to decide what to do
+	 * about it.
+	 */
+	const estimate = await estimateContextPass(c.env.DB, account.id);
+	if (!estimate.within_allowance) {
+		throw new ApiError(409, estimate.verdict);
+	}
+
 	try {
-		const outcome = await runContextPass(c.env, account.id, account.account_email, maxCalls);
-		return c.json({ ok: true, account: account.id, max_calls: maxCalls, ...outcome });
+		const outcome = await runContextPass(
+			c.env,
+			account.id,
+			account.account_email,
+			maxCalls,
+			runName
+		);
+		return c.json({
+			ok: true,
+			account: account.id,
+			max_calls: maxCalls,
+			run: runName,
+			estimate,
+			...outcome
+		});
 	} catch (err) {
 		throw asApiError(err);
 	}
+});
+
+/**
+ * What a full pass would cost, without spending anything.
+ *
+ * Separate from the run on purpose: the number has to be readable before
+ * somebody decides to spend it, and a projection that only appears alongside
+ * the charge is a receipt.
+ */
+email.get('/context/estimate', async (c) => {
+	const account = await resolveAccount(c.env.DB, c.req.query('account'));
+	return c.json(await estimateContextPass(c.env.DB, account.id));
+});
+
+/**
+ * Commitments become proposals, and a person turns proposals into work.
+ *
+ * No AI. The model did its reading when it extracted the commitment; this is
+ * bookkeeping on that answer, and a second call to judge the first would be
+ * paying twice for the same guess.
+ */
+email.post('/context/proposals', async (c) => {
+	return c.json({ ok: true, ...(await proposeFromCommitments(c.env.DB)) });
+});
+
+email.get('/context/proposals', async (c) => {
+	const status = c.req.query('status') ?? 'pending';
+	if (!['pending', 'accepted', 'rejected', 'all'].includes(status)) {
+		throw new ApiError(400, 'status must be one of: pending, accepted, rejected, all.');
+	}
+
+	const { results } = await c.env.DB.prepare(
+		`SELECT p.*, cl.name AS client_name, pr.name AS project_name, t.subject
+     FROM mail_action_proposals p
+     LEFT JOIN clients cl ON cl.id = p.client_id
+     LEFT JOIN projects pr ON pr.id = p.project_id
+     LEFT JOIN email_threads t ON t.id = p.thread_id
+     ${status === 'all' ? '' : 'WHERE p.status = ?1'}
+     ORDER BY p.created_at DESC, p.id`
+	)
+		.bind(...(status === 'all' ? [] : [status]))
+		.all();
+
+	const counts = await c.env.DB.prepare(
+		`SELECT
+       SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pending,
+       SUM(CASE WHEN status = 'accepted' THEN 1 ELSE 0 END) AS accepted,
+       SUM(CASE WHEN status = 'rejected' THEN 1 ELSE 0 END) AS rejected
+     FROM mail_action_proposals`
+	).first();
+
+	return c.json({ proposals: results ?? [], status, counts });
+});
+
+email.post('/context/proposals/:id/accept', async (c) => {
+	const done = await acceptProposal(c.env.DB, c.req.param('id'));
+	// D108: a thing that is not there is refused, never quietly ignored.
+	if (!done) throw new ApiError(404, 'No pending proposal with that id.');
+	return c.json({ ok: true, ...done });
+});
+
+email.post('/context/proposals/:id/reject', async (c) => {
+	const done = await rejectProposal(c.env.DB, c.req.param('id'));
+	if (!done) throw new ApiError(404, 'No pending proposal with that id.');
+	return c.json({ ok: true });
 });
 
 /** The derived contact graph, and how much of it the AI passes still owe. */
