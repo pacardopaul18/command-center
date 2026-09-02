@@ -109,15 +109,29 @@ describe('layer 2: a busy block reads as busy, not as a failure', () => {
 	it('is the only thing the calendar views call', () => {
 		// One function, because the interesting case is the one that is easy to
 		// get right in some views and forget in others.
+		/*
+		 * Every screen that renders an event, not only the calendar ones.
+		 *
+		 * The meetings page and the meeting detail rendered the raw summary, so a
+		 * partner's block appeared there as "Untitled call" and "(no title)"
+		 * while the calendar showed it correctly as busy. One rule, applied in
+		 * two of four places, is a rule that looks broken wherever it was missed:
+		 * every event in the current window is on a non-owned calendar, so every
+		 * one of them read as a call whose name had failed to load.
+		 */
 		for (const file of [
 			['src', 'routes', 'calendar', '+page.svelte'],
-			['src', 'lib', 'components', 'CalendarWeek.svelte']
+			['src', 'lib', 'components', 'CalendarWeek.svelte'],
+			['src', 'routes', 'meetings', '+page.svelte'],
+			['src', 'routes', 'meetings', '[id]', '+page.svelte']
 		]) {
 			const view = readFileSync(join(ROOT, ...file), 'utf8');
-			expect(
-				view.includes("summary ?? '(no title)'"),
-				`${file.join('/')} still renders a raw summary fallback instead of label().`
-			).toBe(false);
+			for (const fallback of ["summary ?? '(no title)'", "summary ?? 'Untitled call'", "summary ?? 'Untitled'"]) {
+				expect(
+					view.includes(fallback),
+					`${file.join('/')} still renders a raw summary fallback instead of label().`
+				).toBe(false);
+			}
 			expect(view).toMatch(/import \{ label \} from '\$lib\/calendar-label'/);
 		}
 	});

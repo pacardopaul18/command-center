@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { label } from '$lib/calendar-label';
 	import { apiWrite } from '$lib/http';
 	import { invalidateAll } from '$app/navigation';
 	import { STATUS_LABELS } from '$lib/types';
@@ -501,7 +502,7 @@
 		-->
 		<Card title="The call">
 			{#if data.call}
-				<p class="call-name">{data.call.summary ?? '(no title)'}</p>
+				<p class="call-name">{label(data.call)}</p>
 				<p class="fine mono">{data.call.account_email ?? data.call.account_id}</p>
 				{#if data.call.location}<p class="fine">{data.call.location}</p>{/if}
 				<div class="call-actions">

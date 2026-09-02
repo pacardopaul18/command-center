@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { label } from '$lib/calendar-label';
+	import CalendarGrid from '$lib/components/CalendarGrid.svelte';
 	import { apiWrite } from '$lib/http';
 	import { goto, invalidateAll } from '$app/navigation';
 	import { formatDay } from '$lib/format';
@@ -108,7 +110,9 @@
 	function fileAgainst(event: UpcomingEvent) {
 		draft = {
 			...blankDraft(),
-			title: event.summary ?? 'Untitled call',
+			// Through the shared label, so a partner's block reads as busy rather
+			// than as a call whose name failed to load. D206.
+			title: label(event),
 			meeting_date: event.starts_at.slice(0, 10),
 			attendees: ''
 		};
@@ -283,7 +287,7 @@
 			day: 'numeric',
 			timeZone: zone
 		});
-		return `${day}: ${pair.a.summary ?? 'Untitled'} overlaps ${pair.b.summary ?? 'Untitled'}.`;
+		return `${day}: ${label(pair.a)} overlaps ${label(pair.b)}.`;
 	}
 </script>
 
@@ -407,6 +411,18 @@
 			{:else if !data.calendarConnected}
 				<p class="empty">Connect a Google account in Settings to see what is coming up.</p>
 			{:else}
+				<!--
+					The week against the clock, above the list.
+
+					The two answer different questions and both are worth asking. The
+					grid answers "where is there an hour on Thursday", which a list
+					cannot: five blocks in a list say nothing about the gaps between
+					them, and the gaps are the whole question when somebody is placing
+					a call. The list below answers "what do I do about this", which the
+					grid cannot, because a block that size has no room for an action.
+				-->
+				<CalendarGrid events={data.calendar.events} />
+
 				{#each clashes as pair (pair.a.id + pair.b.id)}
 					<div class="clash">
 						<p class="clash-label mono">Two calls overlap</p>
@@ -417,7 +433,7 @@
 						</p>
 						{#if pair.b.html_link}
 							<a class="ghost" href={pair.b.html_link} target="_blank" rel="noopener noreferrer">
-								Open {pair.b.summary ?? 'the later call'} in Google Calendar
+								Open {label(pair.b)} in Google Calendar
 							</a>
 						{/if}
 					</div>
@@ -439,7 +455,7 @@
 							{#each day.events as event (event.id)}
 								<li>
 									<span class="when mono">{timeLabel(event)}</span>
-									<span class="what">{event.summary ?? '(no title)'}</span>
+									<span class="what">{label(event)}</span>
 									{#if event.meeting_id}
 										<a class="ghost" href="/meetings/{event.meeting_id}">Open record</a>
 									{:else}

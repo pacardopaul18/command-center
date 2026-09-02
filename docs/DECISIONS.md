@@ -5905,3 +5905,89 @@ Found on the way, and worth its own line: `/proposals` was declared after
 unreachable and answered "Action item not found" for a route that existed and
 was correct. Nothing failed at build time and the handler was simply never
 called. Asserted now rather than remembered.
+
+### D216: the titles were not missing, the rule was applied in half the places
+
+P5's first half. Declared and upcoming meetings rendered without titles, which
+looked like data failing to load and was not.
+
+Every event in the current window is on a calendar Paul does not own, so every
+one of them carries no title by rule. The calendar views already routed through
+the shared label and showed them correctly as busy. The meetings page and the
+meeting detail did not: they rendered the raw summary, so the same events read
+there as "Untitled call" and "(no title)".
+
+One rule applied in two of four places is a rule that looks broken wherever it
+was missed, and it looked broken everywhere because on this data every event is
+non-owned. All four now go through `label()`, and the test that checked two
+files checks all four.
+
+The general form is worth keeping: when a rule has a single shared
+implementation, the test should assert every call site uses it, not that the
+implementation exists. The implementation was never the part at risk.
+
+### D217: a week against the clock, and the packing proved separately
+
+P5's second half. The upcoming list answers "what is coming up" and cannot
+answer "where is there an hour on Thursday": five blocks in a list say nothing
+about the gaps between them, and the gaps are the whole question when somebody
+is placing a call.
+
+So a grid. Seven columns, hours down the side, blocks positioned and sized by
+their real times, an all-day row of its own because placing all-day events at
+midnight would claim they occupy the small hours. Colour by calendar. Non-owned
+blocks drawn with a hatch and quieter, because they carry less information by
+rule and looking identical to a titled event invites the reader to wonder what
+happened to the title.
+
+The hour range is not a fixed nine to five. It covers the working day and then
+stretches to whatever the week actually contains, because an event outside a
+fixed window would be invisible on the one screen meant to show everything.
+
+The grid scrolls inside its own box at 412px. Seven columns cannot fit a phone
+and squeezing them produces columns too narrow to read; what matters is that the
+page never scrolls sideways. D22.
+
+**The overlap packing is a pure module with its own tests, and that is the
+point.** A real week often has no overlaps, so live data does not exercise it:
+the packing could be wrong for weeks and fail only on the day two calls actually
+clash, which is the day it matters. Nine cases, including the ones live data
+will never produce — a zero-length event, an event ending before it starts, and
+two events starting in the same minute, which must not swap places between
+renders.
+
+A block drawn over another hides it, and a hidden meeting is worse than no
+calendar: the reader believes the slot is free and books over it.
+
+### D218: extraction on two real transcripts
+
+Run on the 09-02 onboarding meeting and the 09-02 workflow automation meeting,
+under the monthly ceiling.
+
+| | onboarding | workflow automation |
+|---|---|---|
+| transcript | 40,129 chars | 21,704 chars |
+| extracted | 14 | 10 |
+| offered for review | 14 | 10 |
+| skipped for want of evidence | 0 | 0 |
+| carrying a stated deadline | 4 | 1 |
+| flagged ambiguous | 11 | 10 |
+| naming an owner | 12 | 9 |
+
+Both on Sonnet. Nothing was skipped, which says the model produced a supporting
+sentence for every item it proposed rather than that the refusal is inert: the
+refusal is asserted separately in the suite.
+
+Five of twenty-four carry a real date and nineteen do not, which is the
+behaviour the design wants. A transcript is full of "next week" and "before the
+board meeting", and turning those into dates would fabricate deadlines that
+become facts the moment somebody accepts.
+
+**Neither meeting was attributed to a client or a project, and neither should
+have been.** They were created with no client link and nothing infers one from a
+transcript. An unattributed meeting is a question Paul answers in a second; a
+meeting filed against the wrong client is invisible and gets believed. D175 in
+another place.
+
+The unified queue now holds 27 pending, 24 from meetings and 3 from mail, every
+one carrying its evidence. Month-to-date AI spend is $0.48 of the $30 ceiling.

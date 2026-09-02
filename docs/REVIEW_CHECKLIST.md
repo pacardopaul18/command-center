@@ -139,6 +139,10 @@ directory open. The first was read, the fixture was regenerated and reloaded,
 and the push failed again for the reason that had been sitting in the second
 half of the same sentence. The gate was right both times.
 
+- A literal route declared after a parameterised one is unreachable, with no
+  build-time failure and a plausible error message. D215: `/proposals` was
+  shadowed by `/:id` and answered "Action item not found", which was true of the
+  record and false of the route. Assert the order rather than remember it.
 - Read to the end of the message before acting on the start of it.
 - Confirm the branch: run the narrower check, read the actual failing test, look
   at the state the message describes.
