@@ -63,6 +63,20 @@ const MIN_GAP_MS = 420;
 /** A budget in requests, so one invocation cannot run for an unbounded time. */
 const DEFAULT_CALL_BUDGET = 120;
 
+/**
+ * How far a refresh window reaches back beyond the last watermark.
+ *
+ * Asana's `modified_since` is exclusive and two writes can land in the same
+ * second, so a watermark set exactly at a finish time can skip a task modified
+ * during the run that produced it. Overlapping costs nothing, because every
+ * write is an upsert keyed on the gid: re-reading an unchanged row wastes a few
+ * bytes, and missing one puts a wrong number on a screen with no sign of it.
+ *
+ * Ten minutes rather than seconds, so a late cron firing or a drifting clock
+ * does not open a hole either.
+ */
+const REFRESH_OVERLAP_MS = 10 * 60 * 1000;
+
 class Pacer {
 	private last = 0;
 	spent = 0;
@@ -986,5 +1000,217 @@ export async function mirrorStep(
 			stopped: `Stopped in ${phase}: ${message}`,
 			done: false
 		};
+	}
+}
+
+export interface RefreshOutcome {
+	/** Tasks Asana reported as changed, and therefore rewritten. */
+	tasks_changed: number;
+	subtasks_changed: number;
+	projects_seen: number;
+	projects_added: number;
+	calls: number;
+	since: string | null;
+	refreshed_at: string | null;
+	/**
+	 * Present whether or not anything changed. A quiet refresh and a refused one
+	 * both return zeros, and only the reason separates them. D138.
+	 */
+	detail: string;
+}
+
+/**
+ * Catches the mirror up, rather than walking it again.
+ *
+ * The full pull is a snapshot: correct when it ran and steadily less true
+ * afterwards, which the accuracy audit measured at eleven tasks and one status
+ * over two days. This is what keeps it current.
+ *
+ * IT ASKS ASANA WHAT CHANGED. That is a query filter and not a cursor, and the
+ * difference is D169's whole point. Identity and upsert stay entirely on the
+ * gid; `modified_since` only narrows what comes back, and nothing here uses a
+ * timestamp to decide where a walk resumes. A bulk edit returning every task is
+ * then the right answer rather than a fault, because every task did change.
+ *
+ * ARCHIVED PROJECTS ARE REFRESHED TOO. Twenty-four of the sixty-six here are
+ * archived, so a live-only refresh would let a third of the workspace drift
+ * while reporting itself current. D172 applies to staying current, not only to
+ * the first pull.
+ */
+export async function refreshMirror(
+	env: { DB: D1Database; ASANA_TOKEN?: string },
+	workspaceGid: string,
+	callBudget = 90
+): Promise<RefreshOutcome> {
+	const token = env.ASANA_TOKEN;
+	const out: RefreshOutcome = {
+		tasks_changed: 0,
+		subtasks_changed: 0,
+		projects_seen: 0,
+		projects_added: 0,
+		calls: 0,
+		since: null,
+		refreshed_at: null,
+		detail: ''
+	};
+
+	if (!token) {
+		out.detail = 'No Asana token is configured, so nothing was refreshed.';
+		return out;
+	}
+
+	const state = await env.DB.prepare(
+		`SELECT phase, finished_at, refresh_watermark
+     FROM asana_sync_state WHERE workspace_gid = ?`
+	)
+		.bind(workspaceGid)
+		.first<{ phase: string; finished_at: string | null; refresh_watermark: string | null }>();
+
+	if (!state) {
+		out.detail = 'This workspace has never been pulled, so there is nothing to refresh.';
+		return out;
+	}
+
+	if (state.phase !== 'done') {
+		// A refresh on top of a half-finished pull would interleave two walks over
+		// the same rows and make both sets of counts unreadable. The pull finishes.
+		out.detail = `The full pull is still in its ${state.phase} phase, so the refresh stood down.`;
+		return out;
+	}
+
+	const base = state.refresh_watermark ?? state.finished_at;
+	if (!base) {
+		out.detail = 'No watermark and no finish time, so there is nothing to measure changes against.';
+		return out;
+	}
+
+	const since = new Date(Date.parse(base) - REFRESH_OVERLAP_MS)
+		.toISOString()
+		.replace(/\.\d{3}Z$/, 'Z');
+	out.since = since;
+
+	// The moment the refresh began, not the moment it ended. Anything modified
+	// while it runs must be caught next time rather than fall through the gap.
+	const startedAt = nowUtc();
+	const pacer = new Pacer(callBudget);
+	const counts = { ...EMPTY_COUNTS };
+	const seen: Seen = { users: new Set(), tags: new Set(), fields: new Set() };
+
+	try {
+		// Projects first, live and archived, so a project created since the last
+		// refresh has somewhere to hang its tasks.
+		for (const archived of [false, true]) {
+			let next: string | null = null;
+			do {
+				if (!pacer.canAfford()) break;
+				const res: Chunk<{
+					gid: string;
+					name: string;
+					archived?: boolean;
+					notes?: string;
+					created_at?: string;
+					modified_at?: string;
+					team?: { gid: string } | null;
+				}> = await page(
+					token,
+					pacer,
+					`/projects?workspace=${workspaceGid}&archived=${archived}&opt_fields=name,archived,notes,created_at,modified_at,team.gid`,
+					next
+				);
+
+				for (const project of res.rows) {
+					const existed = await env.DB.prepare('SELECT gid FROM asana_projects WHERE gid = ?')
+						.bind(project.gid)
+						.first();
+					if (!existed) out.projects_added += 1;
+
+					await env.DB.prepare(
+						`INSERT INTO asana_projects
+             (gid, workspace_gid, team_gid, name, notes, archived, created_at, modified_at, synced_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+             ON CONFLICT(gid) DO UPDATE SET
+               team_gid = ?3, name = ?4, notes = ?5, archived = ?6,
+               created_at = ?7, modified_at = ?8, synced_at = ?9`
+					)
+						.bind(
+							project.gid,
+							workspaceGid,
+							project.team?.gid ?? null,
+							project.name,
+							project.notes ?? null,
+							project.archived ? 1 : 0,
+							project.created_at ?? null,
+							project.modified_at ?? null,
+							nowUtc()
+						)
+						.run();
+					out.projects_seen += 1;
+				}
+				next = res.next;
+			} while (next && pacer.canAfford());
+		}
+
+		// Then what changed on each, asked of Asana rather than re-read wholesale.
+		const { results: projects } = await env.DB.prepare(
+			'SELECT gid FROM asana_projects WHERE workspace_gid = ? ORDER BY gid'
+		)
+			.bind(workspaceGid)
+			.all<{ gid: string }>();
+
+		for (const project of projects ?? []) {
+			if (!pacer.canAfford()) {
+				out.calls = pacer.spent;
+				out.detail =
+					`Budget spent part way through. The watermark was not moved, so the next ` +
+					`run covers the same window and nothing is skipped.`;
+				return out;
+			}
+
+			let next: string | null = null;
+			do {
+				const res: Chunk<RawTask> = await page(
+					token,
+					pacer,
+					`/tasks?project=${project.gid}&modified_since=${encodeURIComponent(since)}&opt_fields=${TASK_FIELDS}`,
+					next
+				);
+				if (res.rows.length) {
+					await runAll(
+						env.DB,
+						res.rows.flatMap((task) =>
+							taskStatements(env.DB, workspaceGid, project.gid, task, counts, seen)
+						)
+					);
+				}
+				next = res.next;
+			} while (next && pacer.canAfford());
+		}
+
+		out.tasks_changed = counts.tasks;
+		out.subtasks_changed = counts.subtasks;
+		out.calls = pacer.spent;
+		out.refreshed_at = startedAt;
+
+		// Only now. A watermark moved before the work finished would open a hole
+		// exactly the size of whatever failed.
+		await env.DB.prepare(
+			`UPDATE asana_sync_state
+       SET refreshed_at = ?, refresh_watermark = ?, updated_at = ?
+       WHERE workspace_gid = ?`
+		)
+			.bind(startedAt, startedAt, nowUtc(), workspaceGid)
+			.run();
+
+		out.detail =
+			out.tasks_changed + out.subtasks_changed === 0
+				? `Nothing has changed in Asana since ${since}.`
+				: `${out.tasks_changed} tasks and ${out.subtasks_changed} subtasks changed since ${since}.`;
+
+		return out;
+	} catch (err) {
+		const message = err instanceof Error ? err.message : String(err);
+		out.calls = pacer.spent;
+		out.detail = `Refresh stopped: ${message}. The watermark was not moved, so nothing was skipped.`;
+		return out;
 	}
 }

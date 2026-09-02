@@ -1,4 +1,5 @@
 <script lang="ts">
+	import MirrorFreshness from '$lib/components/MirrorFreshness.svelte';
 	import { apiWrite } from '$lib/http';
 	import { invalidateAll } from '$app/navigation';
 	import {
@@ -149,6 +150,8 @@
 		{showForm ? 'Cancel' : 'New project'}
 	</Button>
 </header>
+
+<MirrorFreshness freshness={data.freshness} />
 
 <!--
 	The archived view, offered only when there is one.

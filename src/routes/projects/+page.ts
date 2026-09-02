@@ -11,9 +11,12 @@ export const load: PageLoad = async ({ fetch, url }) => {
 	 */
 	const archived = url.searchParams.get('archived') ?? 'no';
 
-	const [projectsRes, clientsRes] = await Promise.all([
+	const [projectsRes, clientsRes, freshnessRes] = await Promise.all([
 		fetch(`/api/projects?archived=${encodeURIComponent(archived)}`),
-		fetch('/api/clients')
+		fetch('/api/clients'),
+		// How old the mirrored data is. Supporting detail: a failure must not
+		// stop the page, so it degrades to showing no claim rather than a wrong one.
+		fetch('/api/asana/freshness')
 	]);
 
 	if (!projectsRes.ok) {
@@ -30,5 +33,13 @@ export const load: PageLoad = async ({ fetch, url }) => {
 		? ((await clientsRes.json()) as { clients: Client[] }).clients
 		: [];
 
-	return { projects: body.projects, clients, archived: body.archived, counts: body.counts };
+	const freshness = freshnessRes.ok ? await freshnessRes.json() : null;
+
+	return {
+		projects: body.projects,
+		clients,
+		archived: body.archived,
+		counts: body.counts,
+		freshness
+	};
 };

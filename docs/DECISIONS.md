@@ -5734,3 +5734,54 @@ first.
    assumes is current, and this one is not.
 3. The audit kept as an instrument. It found the answer in one run and it will
    answer the same question after any future change to either hop.
+
+### D210: the mirror catches up, and says how far behind it is
+
+P4b, closing what the audit found. Two halves, and the second is the one that
+would have been easy to skip.
+
+**It asks Asana what changed.** `modified_since`, per project, live and archived
+alike, on the cron firings. That is a query filter and not a cursor, and the
+distinction is D169's entire point: identity and upsert stay on the gid, and
+nothing uses a timestamp to decide where a walk resumes. A bulk edit returning
+every task is then the right answer rather than a fault, because every task did
+change.
+
+The guarantee test that banned the string `modified_since` outright has been
+narrowed rather than deleted. It now asserts what D169 actually meant, that no
+cursor is a timestamp, and the reasoning is written next to it so the next
+person does not have to reconstruct why a rule was relaxed.
+
+The window overlaps the watermark by ten minutes. `modified_since` is exclusive
+and two writes can land in the same second, so a watermark set exactly at a
+finish time can skip a task modified during the run that produced it.
+Overlapping is free because every write is an upsert keyed on the gid: re-reading
+an unchanged row wastes bytes, missing one puts a wrong number on a screen.
+
+The watermark moves only when a sweep completes, and it records when the sweep
+*started* rather than when it ended. A watermark moved early opens a hole
+exactly the size of whatever failed; one stamped at the end skips anything
+modified while the sweep ran.
+
+**It is a passenger, behind mail.** D107 was about a dispatcher starving the
+work it exists for, and the answer is the same shape: digests and backups first,
+mail second, this third, forty-five calls of a firing rather than all of it.
+A full sweep needs sixty-eight, so one firing does not finish one, and that is
+deliberate: an unfinished sweep leaves the watermark alone and covers the same
+window again. It cannot throw, because a refresh that failed must not take a
+digest with it.
+
+**And staleness is shown.** Every screen fed by the mirror carries how old the
+data is, in words rather than minutes, with a Sync now button. That was half the
+original finding and the half with no numbers in it: the app was two days behind
+and nothing anywhere said so. A number with no date is read as current. Gold
+rather than red, because old data is worth noticing and is not an error, and D20
+keeps red for overdue.
+
+Measured on the real workspace: 68 calls, 24 changed tasks, and a re-audit of
+twelve projects went from ten agreeing to **twelve of twelve, zero gaps**.
+
+**One thing this does not cover.** Dropbox cannot be re-walked from a Worker,
+which has no filesystem, so the daily re-walk is `scripts/dropbox-scan.mjs` run
+on a schedule on this machine until the OAuth connector exists. Saying so rather
+than implying the same mechanism covers both.

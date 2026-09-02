@@ -220,12 +220,42 @@ describe('layer 2: the mirror is resumable by gid, never by timestamp', () => {
 		expect(mirror).toMatch(/gid > \?2/);
 	});
 
-	it('never asks Asana for what changed since a time', () => {
-		expect(
-			/modified_since|modified_at\.after|since=/.test(mirror),
-			'The mirror is paging by a timestamp. A timestamp cursor re-syncs everything ' +
-				'the first time somebody bulk edits, and ties on writes in the same second.'
-		).toBe(false);
+	it('never resumes a walk from a timestamp', () => {
+		/*
+		 * This test used to ban the string `modified_since` outright, and that was
+		 * too blunt once an incremental refresh was ruled. The two uses are not
+		 * the same thing and D169 was only ever about one of them.
+		 *
+		 *   A CURSOR says where a walk got to. A timestamp cursor loses rows on
+		 *   ties and re-reads the world after a bulk edit, so the full pull
+		 *   resumes on a gid and nothing else. That rule is unchanged and is what
+		 *   the assertions below check.
+		 *
+		 *   A QUERY FILTER asks Asana what has changed. Identity and upsert stay
+		 *   entirely on the gid; the timestamp only narrows what comes back. A
+		 *   bulk edit returning everything is then correct rather than a fault,
+		 *   because everything did change.
+		 *
+		 * So what is banned is a timestamp deciding position, not a timestamp
+		 * appearing in a query.
+		 */
+		expect(mirror).not.toMatch(/cursor\s*=\s*[^;]*modified/);
+		expect(mirror).not.toMatch(/gid > \?2[\s\S]{0,80}modified_at/);
+
+		// The full pull's cursor is still a gid, and the resume still compares one.
+		expect(mirror).toMatch(/gid > \?2/);
+		expect(mirror).toMatch(/cursor = project\.gid/);
+	});
+
+	it('overlaps the refresh window rather than trusting an exact watermark', () => {
+		/*
+		 * `modified_since` is exclusive and two writes can land in the same
+		 * second, so a watermark set exactly at the finish time can skip a task
+		 * modified during the run. Overlapping costs nothing, because every write
+		 * is an upsert keyed on gid: re-reading an unchanged row wastes bytes,
+		 * missing one puts a wrong number on a screen.
+		 */
+		expect(mirror).toMatch(/REFRESH_OVERLAP/);
 	});
 
 	it('sweeps again when the set grew under the walk', () => {

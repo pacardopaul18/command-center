@@ -1,4 +1,5 @@
 import { digestDueAt, runDigest } from './digest';
+import { refreshMirror } from './asana-mirror';
 import type { DigestEnv } from './digest';
 import { backupDueAt, runBackup } from './backup';
 import { runMailMaintenance } from './mail-jobs';
@@ -44,6 +45,18 @@ import { getSettingsOrDefaults } from './settings';
  * observable through its own logs, the outcome of the firing needs to be the
  * outcome of the send. Awaiting makes them the same thing.
  */
+/**
+ * The share of a firing the mirror refresh may spend.
+ *
+ * Forty-five calls is about twenty seconds at the pacing the mirror keeps, and
+ * a full sweep of sixty-six projects needs sixty-eight. So one firing does not
+ * finish a sweep, and that is deliberate: the watermark only moves when a sweep
+ * completes, so a partial run covers the same window again next time and
+ * nothing is skipped. Six firings a day, and the mirror is never more than a
+ * few hours behind.
+ */
+const MIRROR_CALL_SHARE = 45;
+
 export async function handleScheduled(
 	event: { scheduledTime: number; cron: string },
 	env: DigestEnv & MailEnv
@@ -57,6 +70,52 @@ export async function handleScheduled(
 	async function mailWork() {
 		const outcome = await runMailMaintenance(env);
 		console.log(`cron ${event.cron}: mail ${outcome.ran}, ${outcome.detail}`);
+	}
+
+	/**
+	 * Catching the Asana mirror up, as a second passenger.
+	 *
+	 * The accuracy audit found the app faithful to the mirror and the mirror two
+	 * days behind Asana, because the full pull was a snapshot and nothing
+	 * re-pulled. This is what closes that.
+	 *
+	 * AFTER MAIL, AND NEVER INSTEAD OF IT. D107 is about a dispatcher starving
+	 * the work it was built for, and the answer there was the same as here: the
+	 * job the firing exists for runs first, mail is a passenger, and this is a
+	 * passenger behind that one. A budget of 45 calls is roughly twenty seconds
+	 * of pacing, which is a share of a firing rather than the whole of it.
+	 *
+	 * It never throws for the same reason mail never does. A refresh that fails
+	 * must not take a digest or a backup with it, and `refreshMirror` already
+	 * returns its reason rather than raising; the catch is for anything it did
+	 * not anticipate.
+	 */
+	async function mirrorWork() {
+		try {
+			const state = await env.DB.prepare(
+				'SELECT workspace_gid FROM asana_sync_state ORDER BY updated_at DESC LIMIT 1'
+			).first<{ workspace_gid: string }>();
+
+			if (!state) {
+				console.log(`cron ${event.cron}: mirror skipped, no workspace has been pulled`);
+				return;
+			}
+
+			const outcome = await refreshMirror(env, state.workspace_gid, MIRROR_CALL_SHARE);
+			console.log(
+				`cron ${event.cron}: mirror ${outcome.calls} calls, ` +
+					`${outcome.tasks_changed} tasks changed, ${outcome.detail}`
+			);
+		} catch (err) {
+			// Logged, not thrown. A passenger does not get to fail the firing.
+			console.error(`cron ${event.cron}: mirror refresh threw`, String(err));
+		}
+	}
+
+	/** Both passengers, in the order that decides which one starves. */
+	async function passengers() {
+		await mailWork();
+		await mirrorWork();
 	}
 
 	// Every firing logs, including the ones that do nothing. An absent job and a
@@ -75,7 +134,7 @@ export async function handleScheduled(
 			console.error(`cron ${event.cron}: backup threw`, String(err));
 			throw err;
 		}
-		await mailWork();
+		await passengers();
 		return;
 	}
 
@@ -87,7 +146,7 @@ export async function handleScheduled(
 		);
 		// The quiet firings are the useful ones for mail: nothing else is
 		// competing for the invocation's budget.
-		await mailWork();
+		await passengers();
 		return;
 	}
 
@@ -165,5 +224,5 @@ export async function handleScheduled(
 		throw err;
 	}
 
-	await mailWork();
+	await passengers();
 }

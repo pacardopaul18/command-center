@@ -11,7 +11,7 @@ import {
 } from '../asana';
 import type { AsanaSettings } from '../asana';
 import { CURSOR_KEY, STALE_DAYS, syncFromAsana } from '../asana-sync';
-import { mirrorStep, mirrorTotals } from '../asana-mirror';
+import { mirrorStep, mirrorTotals, refreshMirror } from '../asana-mirror';
 import { projectMirror } from '../projection';
 import { auditProjects } from '../asana-audit';
 
@@ -334,3 +334,82 @@ asana.get('/audit', async (c) => {
 		throw asApiError(err);
 	}
 });
+
+/**
+ * Catches the mirror up. The manual half of what the cron does on a timer.
+ *
+ * Exists because Paul needs current state before a call, and a screen that is
+ * six hours old with no way to refresh it is a screen he stops trusting rather
+ * than one he waits on.
+ */
+asana.post('/refresh', async (c) => {
+	requireToken(c.env.ASANA_TOKEN);
+	const workspace = await workspaceFor(c);
+	if (!workspace) throw new ApiError(400, 'There is no mirrored workspace to refresh.');
+
+	const budget = Math.min(Math.max(Number(c.req.query('budget') ?? 90), 1), 400);
+	return c.json(await refreshMirror(c.env, workspace, budget));
+});
+
+/**
+ * How old the mirror is, for any screen that reads from it.
+ *
+ * A number with no date is a number the reader assumes is current. The accuracy
+ * audit found the app two days behind Asana and nothing on any screen said so,
+ * which is the half of that finding that was not about counts at all.
+ */
+asana.get('/freshness', async (c) => {
+	const workspace = await workspaceFor(c);
+	if (!workspace) return c.json({ synced: false, reason: 'No workspace has been mirrored.' });
+
+	const state = await c.env.DB.prepare(
+		`SELECT phase, finished_at, refreshed_at, last_error
+     FROM asana_sync_state WHERE workspace_gid = ?`
+	)
+		.bind(workspace)
+		.first<{
+			phase: string;
+			finished_at: string | null;
+			refreshed_at: string | null;
+			last_error: string | null;
+		}>();
+
+	if (!state) return c.json({ synced: false, reason: 'No workspace has been mirrored.' });
+
+	// The later of the two, because either counts as the mirror being current.
+	const at =
+		state.refreshed_at && state.finished_at
+			? state.refreshed_at > state.finished_at
+				? state.refreshed_at
+				: state.finished_at
+			: (state.refreshed_at ?? state.finished_at);
+
+	const ageMinutes = at ? Math.round((Date.now() - Date.parse(at)) / 60000) : null;
+
+	return c.json({
+		synced: Boolean(at),
+		as_of: at,
+		age_minutes: ageMinutes,
+		full_pull_finished_at: state.finished_at,
+		last_refreshed_at: state.refreshed_at,
+		phase: state.phase,
+		last_error: state.last_error
+	});
+});
+
+/** The workspace this app mirrors, from settings or from what was pulled. */
+async function workspaceFor(c: {
+	req: { query: (k: string) => string | undefined };
+	env: ApiEnv['Bindings'];
+}): Promise<string | null> {
+	return (
+		c.req.query('workspace') ??
+		(await readSettings(c.env.SESSIONS)).workspace_gid ??
+		(
+			await c.env.DB.prepare(
+				'SELECT workspace_gid FROM asana_sync_state ORDER BY updated_at DESC LIMIT 1'
+			).first<{ workspace_gid: string }>()
+		)?.workspace_gid ??
+		null
+	);
+}
