@@ -81,6 +81,16 @@ reported "55 written", and lost ten Asana gids with no failing number anywhere.
 - Read the table back rather than trusting the loop's tally.
 - Report both the attempt and the outcome when they can differ.
 - Record the counts as a row, not a log line: the question is asked weeks later.
+- **Does anything write this table?** D207. `ai_budget_runs` had three readers
+  and no writer, so it was always empty, and every reader silently took its
+  fallback: a named backfill run did not exist, the monthly ceiling was charged
+  instead, and the response echoed the run name back as though it had been used.
+  No test failed, because each piece behaved correctly on the input it was
+  given. For any table a feature depends on, find the insert before trusting the
+  read.
+- **Does the response report what happened, or what was asked for?** Echoing the
+  request back as the outcome is how an inert parameter looks like a working
+  one. Return the row that exists, not the string that came in.
 
 ## 5. Is the answer derived, or guessed?
 

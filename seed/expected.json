@@ -42,7 +42,7 @@
   "time_entries": 3200,
   "users": 7
  },
- "fingerprint": "7a851f9e66024cd7",
+ "fingerprint": "03a1b7293980da1b",
  "invoice_bands": {
   "b0_30": 114,
   "b0_30_cents": 137129589,
@@ -256,7 +256,7 @@
   "v-sop-98": 2,
   "v-sop-99": 3
  },
- "today_mt": "2026-09-01",
+ "today_mt": "2026-09-02",
  "totals": {
   "action_items_open": 2543,
   "ledger_cost_cents": 5272400,

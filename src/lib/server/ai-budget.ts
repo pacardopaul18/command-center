@@ -59,6 +59,50 @@ export interface BudgetRun {
 	closed_at: string | null;
 }
 
+/**
+ * Finds an open run by name, or starts one.
+ *
+ * `ai_budget_runs` was created in 0031, read by `openRun`, consulted by the
+ * budget check and attributed to by the recorder, and written by nothing. So a
+ * pass given a run name found no run, fell back to the monthly ceiling, and
+ * reported the name back in its response as though it had been used. The
+ * parameter was accepted, echoed, and inert.
+ *
+ * That is worse than an error: it looked like the backfill allowance was in
+ * effect while the month was being charged, which is exactly the mixing D165
+ * exists to prevent. A named run now exists because it was named.
+ *
+ * The allowance is per run and defaults to the ruled figure. Reopening by name
+ * returns the existing run rather than starting a second one, so a resumed pass
+ * draws on the allowance it has already been spending.
+ */
+export async function openOrCreateRun(
+	db: D1Database,
+	name: string,
+	allowanceCents: number = AI_CEILINGS.backfill_cents,
+	note: string | null = null
+): Promise<BudgetRun> {
+	const existing = await openRun(db, name);
+	if (existing) return existing;
+
+	const id = crypto.randomUUID();
+	await db
+		.prepare(
+			`INSERT INTO ai_budget_runs (id, name, allowance_cents, started_at, note)
+       VALUES (?, ?, ?, ?, ?)`
+		)
+		.bind(id, name, allowanceCents, nowUtc(), note)
+		.run();
+
+	const made = await openRun(db, name);
+	if (!made) {
+		// A run that cannot be read back after being written is not a run, and
+		// carrying on would charge the month while claiming otherwise.
+		throw new Error(`The backfill run "${name}" could not be started.`);
+	}
+	return made;
+}
+
 /** An open run by name, or null. A closed run is not found on purpose. */
 export async function openRun(db: D1Database, name: string): Promise<BudgetRun | null> {
 	return db

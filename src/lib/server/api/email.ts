@@ -16,7 +16,7 @@ import { draftReply } from '../ai';
 import { recordUsage } from '../ai-usage';
 import { runContextPass, seedContacts } from '../context';
 import { stripHtml } from '../google';
-import { checkAiBudget } from '../ai-budget';
+import { checkAiBudget, openOrCreateRun } from '../ai-budget';
 import { estimateContextPass } from '../context-estimate';
 import { acceptProposal, proposeFromCommitments, rejectProposal } from '../mail-proposals';
 import { monthToDateCents } from '../ai-budget';
@@ -1055,6 +1055,18 @@ email.post('/context/build', async (c) => {
 	const runName = c.req.query('run')?.trim() || null;
 
 	/*
+	 * The run has to exist before the pass names it.
+	 *
+	 * Nothing created these rows, so a named run silently did not exist: the
+	 * budget check fell through to the monthly ceiling and the recorder
+	 * attributed nothing, while the response echoed the name back as though it
+	 * had been used. A parameter that is accepted, echoed and inert is worse
+	 * than one that errors, because the report reads as though the backfill
+	 * allowance were in effect.
+	 */
+	const run = runName ? await openOrCreateRun(c.env.DB, runName) : null;
+
+	/*
 	 * The projection, before anything is spent.
 	 *
 	 * A budget stop that only fires part way through has already spent the money
@@ -1079,7 +1091,9 @@ email.post('/context/build', async (c) => {
 			ok: true,
 			account: account.id,
 			max_calls: maxCalls,
-			run: runName,
+			// The run as it exists, not the name that was asked for. An id here
+			// means the spend was attributed to it; a null means the month paid.
+			run: run ? { id: run.id, name: run.name, allowance_cents: run.allowance_cents } : null,
 			estimate,
 			...outcome
 		});

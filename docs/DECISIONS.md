@@ -5602,3 +5602,67 @@ stale the moment a share is narrowed.
 
 No scope widened to make any of this possible. Still `calendar.readonly` and
 `gmail.readonly`, and a test asserts it alongside the rest.
+
+### D207: a table with three readers and no writer
+
+`ai_budget_runs` was created in migration 0031. `openRun` read it, `checkAiBudget`
+consulted it, `recordUsage` attributed to it. Nothing anywhere inserted into it.
+
+So passing `run=pillar4-macgray-2026-09-02` to the context pass found no run,
+fell through to the monthly ceiling, and returned `"run": "pillar4-..."` in the
+response. Nothing errored. The parameter was accepted, echoed back, and inert,
+and the report read as though the backfill allowance were in effect while the
+month was being charged. That is exactly the mixing D165 exists to prevent, and
+D165's own machinery was what failed to prevent it.
+
+It cost sixteen cents to find. On the 775-thread corpus it would have consumed
+the monthly ceiling and every ordinary call for the rest of the month would have
+been refused, with the run reporting all the while that it was drawing on the
+backfill allowance.
+
+`openOrCreateRun` now starts a run when one is named, reopens by name rather
+than starting a second so a resumed pass draws on the allowance it has already
+been spending, and throws rather than continuing if the row cannot be read back:
+carrying on would charge the month while claiming otherwise.
+
+The response now returns the run that exists rather than the name that was
+asked for. An id means the spend was attributed; a null means the month paid.
+`run: runName` was true about the request and false about what happened.
+
+**The sixteen cents from the first pass stay on the monthly ceiling and are not
+re-attributed.** Retro-attribution would rewrite the record of what actually
+occurred, and the record is that the run did not exist when the money was spent.
+
+The generalisation for the checklist: **a table that is read in three places and
+written in none is always empty, and every reader of an always-empty table
+silently takes its fallback.** No test failed, because every individual piece
+behaved correctly on the input it was given.
+
+### D208: what the first real-mail pass proved, and what it could not
+
+Run `pillar4-macgray-2026-09-02` against the MacGray work mailbox. Every store
+written, nothing skipped, nothing failed.
+
+Proved: the chain runs end to end on real firm mail. Contact seeding from
+headers with no AI. The projection reported before spending, and matching what
+was spent closely enough to trust. The two-tier routing sending digests and
+commitments to Haiku and profiles and voice to Sonnet. Extraction producing
+commitments, and commitments becoming proposals with evidence rather than action
+items. Exclusion holding: sixteen of seventeen threads were automated or
+notification and never reached the context AI.
+
+Not proved, and worth saying so plainly before a thin result is read as a broken
+pass: nothing about accuracy at volume, nothing about how the passes behave over
+hundreds of threads, and nothing about the voice profile's real quality. The
+mailbox holds two days of mail because it was provisioned two days ago.
+
+The voice profile did build, from two sent messages. I had predicted the
+short-input refusal would fire and it did not: the guard rejects samples under
+100 characters and refuses only when every sample is too short, which two real
+messages passed. That is the guard behaving as written rather than as I
+described it, and a profile drawn from two messages should be treated as a
+placeholder. Worth revisiting once the corpus is real; not worth changing on a
+sample of two.
+
+Ongoing context building on this account runs on the firings within the monthly
+ceiling, ruled and needing no further decision. The corpus builds as Paul works.
