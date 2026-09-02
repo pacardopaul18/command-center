@@ -191,6 +191,37 @@ for something else has not been tested.
 - For any flag, credential or mode: is it read in the same process that does the
   dangerous thing? If not, the property is asserted about the wrong system.
 
+## 10. Does anything write this?
+
+**D207, F-EMPTY-WRITER.** For every table a control reads, name the writer and
+name the test that exercises it. If you cannot name both, the control is not
+wired.
+
+`ai_budget_runs` gated the backfill allowance. `openRun` read it, the budget
+check consulted it, the usage recorder attributed to it, and **nothing anywhere
+inserted into it**. So the table was always empty, every reader correctly
+reported nothing, and the absence read as a benign default: a named backfill run
+did not exist, the monthly ceiling was charged instead, and the response echoed
+the run name back as though it had been used.
+
+Nothing errored. No test failed. Every component behaved correctly on the input
+it was given.
+
+**This is a distinct family.** D193 is a property asserted in the wrong place.
+D203 is an observation that cannot discriminate between the two answers. This is
+a control whose state was never created, so the absence itself was the failure
+and it looked like a default.
+
+- Name the writer. A table with readers and no writer is always empty.
+- Exercise the writer in the same test that exercises the readers. A test that
+  only reads passes against an empty table for ever.
+- **A control asked about a named entity that does not exist must refuse, not
+  fall through to a default.** Falling through is how a missing thing becomes a
+  silent substitution.
+- **A response must not name something it did not use.** Echoing the request
+  back as the outcome is what made an inert parameter look like a working one;
+  that echo is part of the defect, not incidental to it.
+
 ---
 
 ## A note on revising a finding

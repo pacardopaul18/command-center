@@ -5638,6 +5638,34 @@ written in none is always empty, and every reader of an always-empty table
 silently takes its fallback.** No test failed, because every individual piece
 behaved correctly on the input it was given.
 
+#### F-EMPTY-WRITER, named as its own family
+
+Distinct from the two reasoning-error entries already in the read-first list,
+and worth separating rather than filing under either.
+
+- **D193** is a property asserted in the wrong place: the guarantee was checked
+  in the process that asks rather than about the system that answers.
+- **D203** is an observation that cannot discriminate: the check would have come
+  out the same whichever way the answer went.
+- **This** is a control whose state was never created. Every reader was in the
+  right place and every observation discriminated correctly. The absence itself
+  was the failure, and an absence reads as a default.
+
+The rule, in three parts:
+
+1. **Any table that gates a control must have its writer exercised by the same
+   test that exercises its readers.** A test that only reads passes against an
+   empty table for ever.
+2. **A control asked about a named entity that does not exist must refuse rather
+   than fall through to a default.** Falling through is how a missing thing
+   becomes a silent substitution, which is D108 arriving from a new direction.
+3. **A response must not name something it did not use.** `run: runName` was
+   true about the request and false about what happened. That echo is part of
+   the defect rather than incidental to it: without it somebody reading the
+   report would have seen no run and asked why.
+
+Checklist item 10.
+
 ### D208: what the first real-mail pass proved, and what it could not
 
 Run `pillar4-macgray-2026-09-02` against the MacGray work mailbox. Every store
