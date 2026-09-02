@@ -143,11 +143,29 @@ meetingAi.post('/:id/extract', async (c) => {
 		);
 
 		const now = nowUtc();
+
+		/*
+		 * No evidence, no proposal. The same refusal the mail path keeps.
+		 *
+		 * A reviewer cannot judge a claim they cannot check, and a proposal with
+		 * nothing behind it asks them to trust the model rather than review it,
+		 * which is the whole point of there being a reviewer. The mail path
+		 * refused these from the start; this one stored them with a null and
+		 * offered them anyway, so the two queues asked different things of the
+		 * person reading them.
+		 *
+		 * Counted rather than dropped: a run that extracted eight and offered six
+		 * has to say so, or the two missing ones look like the model finding
+		 * nothing. D138.
+		 */
+		const usable = items.filter((item) => Boolean(item.evidence && item.evidence.trim()));
+		const withoutEvidence = items.length - usable.length;
+
 		const statements = [
 			c.env.DB.prepare(
 				"DELETE FROM meeting_action_proposals WHERE meeting_id = ? AND status = 'pending'"
 			).bind(id),
-			...items.map((item) =>
+			...usable.map((item) =>
 				c.env.DB.prepare(
 					`INSERT INTO meeting_action_proposals
              (id, meeting_id, title, context, owner, deadline, ambiguous, ambiguity_note,
@@ -181,7 +199,15 @@ meetingAi.post('/:id/extract', async (c) => {
 		// cost the ceiling cannot stop.
 		await recordUsage(c.env.DB, 'summary', usage, null, null);
 
-		return c.json({ proposals: results ?? [], model, extracted: items.length });
+		return c.json({
+			proposals: results ?? [],
+			model,
+			extracted: items.length,
+			offered: usable.length,
+			// Named, so "the model found nothing" and "the model found things it
+			// could not show its working for" are different sentences.
+			skipped_no_evidence: withoutEvidence
+		});
 	} catch (err) {
 		if (err instanceof AiError) throw new ApiError(err.status, err.message);
 		throw err;

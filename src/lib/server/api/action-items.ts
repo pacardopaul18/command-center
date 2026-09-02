@@ -6,6 +6,7 @@ import type { ActionSource, ActionStatus, ActionView } from '$lib/types';
 import { daysAgoUtc, nowUtc, todayInWorkingZone } from '../dates';
 import { createTask, effectiveAssignee, readSettings } from '../asana';
 import { asApiError } from './asana';
+import { acceptProposal, rejectProposal } from '../mail-proposals';
 import {
 	ApiError,
 	oneOf,
@@ -396,6 +397,178 @@ actionItems.post('/bulk', async (c) => {
 
 	const missing = ids.filter((id) => !found.some((r) => r.id === id));
 	return c.json({ changed: found.length, missing, trail_error: trailError });
+});
+
+/*
+ * The proposal routes are defined ABOVE `/:id`, and that is load bearing.
+ *
+ * Hono matches in definition order, so a literal path declared after a
+ * parameterised one is unreachable: `/proposals` was being caught by `/:id` and
+ * answering "Action item not found" for a route that existed and was correct.
+ * Nothing errored at build time and the handler was simply never called.
+ */
+/**
+ * Everything waiting to become an action item, from wherever it came.
+ *
+ * Two extraction paths produce proposals: mail, from commitments read out of
+ * correspondence, and meetings, from transcripts. They were reviewable only on
+ * their own screens, which meant the review loop was invisible from the one
+ * page that exists to say what Paul owes people. A queue nobody passes is a
+ * queue nobody empties.
+ *
+ * A union rather than a third table. Both already carry a title, evidence, a
+ * pending state and a link to whatever they became; a shared table would mean
+ * making the provenance columns nullable and losing the NOT NULL that makes
+ * provenance real on each side. D202.
+ */
+actionItems.get('/proposals', async (c) => {
+	const status = c.req.query('status') ?? 'pending';
+	if (!['pending', 'accepted', 'rejected', 'all'].includes(status)) {
+		throw new ApiError(400, 'status must be one of: pending, accepted, rejected, all.');
+	}
+	const filter = status === 'all' ? '' : 'WHERE p.status = ?1';
+	const binds = status === 'all' ? [] : [status];
+
+	const { results: fromMail } = await c.env.DB.prepare(
+		`SELECT 'mail' AS source, p.id, p.title, p.context, p.owner, p.deadline, p.due_signal,
+            p.ambiguous, p.ambiguity_note, p.evidence, p.status, p.created_at,
+            p.client_id, p.project_id, cl.name AS client_name, pr.name AS project_name,
+            t.subject AS origin
+     FROM mail_action_proposals p
+     LEFT JOIN clients cl ON cl.id = p.client_id
+     LEFT JOIN projects pr ON pr.id = p.project_id
+     LEFT JOIN email_threads t ON t.id = p.thread_id
+     ${filter}`
+	)
+		.bind(...(binds as never[]))
+		.all();
+
+	const { results: fromMeetings } = await c.env.DB.prepare(
+		`SELECT 'meeting' AS source, p.id, p.title, p.context, p.owner, p.deadline, NULL AS due_signal,
+            p.ambiguous, p.ambiguity_note, p.evidence, p.status, p.created_at,
+            NULL AS client_id, NULL AS project_id, NULL AS client_name, NULL AS project_name,
+            m.title AS origin, p.meeting_id
+     FROM meeting_action_proposals p
+     LEFT JOIN meetings m ON m.id = p.meeting_id
+     ${filter}`
+	)
+		.bind(...(binds as never[]))
+		.all();
+
+	const proposals = [...(fromMail ?? []), ...(fromMeetings ?? [])].sort((a, b) =>
+		String((b as { created_at: string }).created_at).localeCompare(
+			String((a as { created_at: string }).created_at)
+		)
+	);
+
+	const counts = await c.env.DB.prepare(
+		`SELECT
+       (SELECT COUNT(*) FROM mail_action_proposals WHERE status = 'pending') +
+       (SELECT COUNT(*) FROM meeting_action_proposals WHERE status = 'pending') AS pending,
+       (SELECT COUNT(*) FROM mail_action_proposals WHERE status = 'accepted') +
+       (SELECT COUNT(*) FROM meeting_action_proposals WHERE status = 'accepted') AS accepted,
+       (SELECT COUNT(*) FROM mail_action_proposals WHERE status = 'rejected') +
+       (SELECT COUNT(*) FROM meeting_action_proposals WHERE status = 'rejected') AS rejected`
+	).first();
+
+	return c.json({ proposals, status, counts });
+});
+
+/**
+ * Accepts or rejects a proposal, whichever queue it came from.
+ *
+ * One route, because the reviewer is doing one thing and should not have to
+ * know which extraction produced the row in front of them. It dispatches on the
+ * source rather than making the screen choose an endpoint, so a future third
+ * source changes this file and not the page.
+ */
+actionItems.post('/proposals/:source/:id/:decision', async (c) => {
+	const source = c.req.param('source');
+	const decision = c.req.param('decision');
+	const id = c.req.param('id');
+
+	if (source !== 'mail' && source !== 'meeting') {
+		throw new ApiError(400, 'The source must be mail or meeting.');
+	}
+	if (decision !== 'accept' && decision !== 'reject') {
+		throw new ApiError(400, 'The decision must be accept or reject.');
+	}
+
+	if (source === 'mail') {
+		if (decision === 'accept') {
+			const done = await acceptProposal(c.env.DB, id);
+			if (!done) throw new ApiError(404, 'No pending proposal with that id.');
+			return c.json({ ok: true, ...done });
+		}
+		const done = await rejectProposal(c.env.DB, id);
+		if (!done) throw new ApiError(404, 'No pending proposal with that id.');
+		return c.json({ ok: true });
+	}
+
+	const proposal = await c.env.DB.prepare(
+		`SELECT id, meeting_id, title, context, owner, deadline, status
+     FROM meeting_action_proposals WHERE id = ?`
+	)
+		.bind(id)
+		.first<{
+			id: string;
+			meeting_id: string;
+			title: string;
+			context: string | null;
+			owner: string | null;
+			deadline: string | null;
+			status: string;
+		}>();
+
+	if (!proposal || proposal.status !== 'pending') {
+		throw new ApiError(404, 'No pending proposal with that id.');
+	}
+
+	const at = nowUtc();
+
+	if (decision === 'reject') {
+		await c.env.DB.prepare(
+			"UPDATE meeting_action_proposals SET status = 'rejected', reviewed_at = ? WHERE id = ?"
+		)
+			.bind(at, id)
+			.run();
+		return c.json({ ok: true });
+	}
+
+	// The meeting's project, where it has one. Never guessed: a meeting with no
+	// project produces an unfiled action item, which is a question somebody
+	// answers rather than a wrong answer nobody spots.
+	const meeting = await c.env.DB.prepare('SELECT project_id FROM meetings WHERE id = ?')
+		.bind(proposal.meeting_id)
+		.first<{ project_id: string | null }>();
+
+	const actionId = crypto.randomUUID();
+	await c.env.DB.prepare(
+		`INSERT INTO action_items
+     (id, title, context, owner, deadline, status, project_id, meeting_id, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, 'open', ?, ?, ?, ?)`
+	)
+		.bind(
+			actionId,
+			proposal.title,
+			proposal.context,
+			proposal.owner,
+			proposal.deadline,
+			meeting?.project_id ?? null,
+			proposal.meeting_id,
+			at,
+			at
+		)
+		.run();
+
+	await c.env.DB.prepare(
+		`UPDATE meeting_action_proposals
+     SET status = 'accepted', action_item_id = ?, reviewed_at = ? WHERE id = ?`
+	)
+		.bind(actionId, at, id)
+		.run();
+
+	return c.json({ ok: true, action_item_id: actionId });
 });
 
 actionItems.get('/:id', async (c) => {

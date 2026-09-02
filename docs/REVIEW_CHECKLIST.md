@@ -222,6 +222,31 @@ and it looked like a default.
   back as the outcome is what made an inert parameter look like a working one;
   that echo is part of the defect, not incidental to it.
 
+## 11. Does a zero on this screen mean measured-and-none, or never-loaded?
+
+**D214.** A figure with no source renders as no-data, never as zero, and never
+raises an alarm.
+
+The dashboard showed 0 overdue items, 0 due today, 0 awaiting a decision and no
+money past due. Every number was accurate. Every one was misleading: those
+stores had never been loaded, while the project and ticket tiles beside them
+were reporting real work. One screen, two meanings of zero, no way to tell them
+apart.
+
+"0 overdue" is good news. "0 overdue because no action item exists" is a gap,
+and a tile that spells them the same way tells the reader the good news either
+way. That is D138 wearing a different hat: the number was true and the claim it
+made was not.
+
+- Zero means measured and none. No-data means never loaded. The screen must say
+  which.
+- An unsourced figure never raises an alarm. An alarm on a number that does not
+  exist is the loudest possible way to report nothing.
+- Show it anyway, quieter. Hiding the tile answers "why is this missing" with
+  silence, which is the same failure one step further along.
+- This matters most on the screen people look at first, which is exactly where
+  it was.
+
 ---
 
 ## A note on revising a finding

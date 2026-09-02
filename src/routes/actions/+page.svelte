@@ -14,6 +14,7 @@
 	import { apiWrite } from '$lib/http';
 	import { asanaTaskUrl } from '$lib/types';
 	import Button from '$lib/components/Button.svelte';
+	import Card from '$lib/components/Card.svelte';
 	import Modal from '$lib/components/Modal.svelte';
 	import Pager from '$lib/components/Pager.svelte';
 	import FormField from '$lib/components/FormField.svelte';
@@ -58,6 +59,37 @@
 	}
 
 	let busy = $state(false);
+
+	/** Which proposal is mid-decision, so only its own buttons disable. */
+	let reviewing = $state('');
+
+	/**
+	 * Accepts or rejects, through one route that dispatches on the source.
+	 *
+	 * The reviewer is doing one thing and should not have to know which
+	 * extraction produced the row in front of them.
+	 */
+	async function decide(proposal: { source: string; id: string }, decision: 'accept' | 'reject') {
+		reviewing = proposal.id;
+		errorMessage = '';
+		try {
+			const res = await fetch(
+				`/api/action-items/proposals/${proposal.source}/${proposal.id}/${decision}`,
+				{ method: 'POST' }
+			);
+			if (!res.ok) {
+				const body = (await res.json().catch(() => ({}))) as { error?: string };
+				errorMessage = body.error ?? 'That decision did not go through.';
+				return;
+			}
+			notice = decision === 'accept' ? 'Added to your action items.' : 'Rejected.';
+			await invalidateAll();
+		} catch {
+			errorMessage = 'Could not reach the server.';
+		} finally {
+			reviewing = '';
+		}
+	}
 	let notice = $state('');
 	let errorMessage = $state('');
 
@@ -527,6 +559,77 @@
 		</Button>
 		<Button variant="ghost" size="sm" onclick={() => (selected = {})}>Clear selection</Button>
 	</div>
+{/if}
+
+<!--
+	The review queue, on the page the reviewing is for.
+
+	Evidence is shown at the point of decision, not behind a click. A reviewer
+	deciding whether Paul really promised something needs the sentence in front
+	of them; making them open something first is how a queue gets cleared by
+	accepting everything.
+-->
+{#if data.proposals.counts.pending > 0}
+	<Card
+		title="Waiting for your decision"
+		subtitle="{data.proposals.counts.pending} extracted from mail and meetings"
+	>
+		<p class="queue-note">
+			Read out of a message or a transcript by a model. Nothing here is an action item
+			until you accept it.
+		</p>
+
+		<ul class="queue">
+			{#each data.proposals.proposals as proposal (proposal.source + proposal.id)}
+				<li class="proposal">
+					<div class="proposal-head">
+						<span class="proposal-title">{proposal.title}</span>
+						<span class="proposal-from">
+							{proposal.source === 'mail' ? 'Email' : 'Meeting'}{proposal.origin
+								? ` · ${proposal.origin}`
+								: ''}
+						</span>
+					</div>
+
+					{#if proposal.evidence}
+						<blockquote class="evidence">{proposal.evidence}</blockquote>
+					{/if}
+
+					<div class="proposal-meta">
+						{#if proposal.owner}<span>{proposal.owner}</span>{/if}
+						{#if proposal.deadline}
+							<span>due {proposal.deadline}</span>
+						{:else if proposal.due_signal}
+							<!--
+								The words the message used, not a date nobody stated. An
+								inferred deadline becomes fact the moment somebody accepts.
+							-->
+							<span class="signal">said "{proposal.due_signal}", no date given</span>
+						{/if}
+						{#if proposal.client_name}<span>{proposal.client_name}</span>{/if}
+						{#if proposal.project_name}<span>{proposal.project_name}</span>{/if}
+					</div>
+
+					<div class="proposal-actions">
+						<Button
+							variant="secondary"
+							disabled={reviewing === proposal.id}
+							onclick={() => decide(proposal, 'accept')}
+						>
+							{reviewing === proposal.id ? 'Working' : 'Accept'}
+						</Button>
+						<Button
+							variant="ghost"
+							disabled={reviewing === proposal.id}
+							onclick={() => decide(proposal, 'reject')}
+						>
+							Reject
+						</Button>
+					</div>
+				</li>
+			{/each}
+		</ul>
+	</Card>
 {/if}
 
 {#if data.items.length === 0}
@@ -1057,6 +1160,73 @@
 	.bulk-count {
 		font-size: var(--text-sm);
 		font-weight: var(--weight-medium);
+	}
+
+	.queue-note {
+		margin: 0 0 var(--space-4);
+		color: var(--text-secondary);
+		font-size: 0.875rem;
+		max-width: 70ch;
+	}
+
+	.queue {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+		display: grid;
+		gap: var(--space-4);
+	}
+
+	.proposal {
+		padding: var(--space-4);
+		border: 1px solid var(--border-thin);
+		border-radius: var(--radius-2);
+		background: var(--surface-card);
+	}
+
+	.proposal-head {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--space-2) var(--space-3);
+		align-items: baseline;
+		justify-content: space-between;
+	}
+
+	.proposal-title {
+		font-weight: 600;
+	}
+
+	.proposal-from {
+		color: var(--text-secondary);
+		font-size: 0.8125rem;
+	}
+
+	/* The sentence it was read from, quoted so it reads as somebody else's words. */
+	.evidence {
+		margin: var(--space-3) 0;
+		padding-left: var(--space-3);
+		border-left: 3px solid var(--border-strong);
+		color: var(--text-secondary);
+		font-size: 0.9375rem;
+		line-height: 1.6;
+	}
+
+	.proposal-meta {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--space-3);
+		color: var(--text-secondary);
+		font-size: 0.8125rem;
+		margin-bottom: var(--space-3);
+	}
+
+	.proposal-meta .signal {
+		font-style: italic;
+	}
+
+	.proposal-actions {
+		display: flex;
+		gap: var(--space-2);
 	}
 
 	.empty-state {

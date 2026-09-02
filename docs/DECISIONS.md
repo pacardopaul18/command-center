@@ -5850,3 +5850,58 @@ The component takes the refresh path as a prop and draws no button when it is
 null. That is the small version of a rule worth keeping: where two halves of a
 ruling are not equally done, the screen says which half it is looking at rather
 than presenting both as finished.
+
+### D214: no-data is not zero, and it never alarms
+
+The rule the dashboard finding produced, stated on its own because it applies
+to every figure on every screen and not only to the six tiles that revealed it.
+
+**A figure with no source renders as no-data, never as zero, and never raises an
+alarm.** Zero means measured and none. No-data means never loaded. A screen that
+spells them the same way is lying quietly in the one place people look first.
+
+The alarm half is the part that would have been easy to leave: an alarm on a
+number that does not exist is the loudest possible way to report nothing, and it
+trains the reader to distrust every alarm on the screen.
+
+The tile is still drawn, quieter, still naming what it would measure and still
+linking to the page that would fill it. Hiding it answers "why is this missing"
+with silence, which is the same failure one step further along.
+
+Checklist item 11.
+
+### D215: one review queue, on the page the reviewing is for
+
+P3. Two extraction paths produce proposals, mail from correspondence and
+meetings from transcripts, and each was reviewable only on the screen that made
+it. So the review loop was invisible from the one page that exists to say what
+Paul owes people, and a queue nobody passes is a queue nobody empties.
+
+A union, not a third table. Both sides already carry a title, evidence, a
+pending state and a link to whatever they became, and a shared table would mean
+making the provenance columns nullable on both, losing the NOT NULL that makes
+provenance real on each. D202.
+
+One accept-and-reject route that dispatches on the source, because the reviewer
+is doing one thing and should not have to know which extraction produced the row
+in front of them. A future third source changes that file and not the page.
+
+**Evidence is shown at the point of decision, not behind a click.** Somebody
+deciding whether Paul really promised something needs the sentence in front of
+them; making them open something first is how a queue gets cleared by accepting
+everything. Where the message gave words rather than a date, the words are shown
+as words: "said Wednesday, no date given". An inferred deadline becomes a fact
+the moment somebody accepts.
+
+**The two paths now refuse the same things.** The mail path had always declined
+a proposal with no evidence; the meeting path stored a null and offered it
+anyway, so the two queues asked different things of the same reader. It now
+declines too, and reports how many it dropped, because a run that extracted
+eight and offered six must be able to say so rather than looking like a model
+that found less.
+
+Found on the way, and worth its own line: `/proposals` was declared after
+`/:id`, and Hono matches in definition order, so the literal path was
+unreachable and answered "Action item not found" for a route that existed and
+was correct. Nothing failed at build time and the handler was simply never
+called. Asserted now rather than remembered.

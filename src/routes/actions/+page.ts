@@ -2,6 +2,33 @@ import type { PageLoad } from './$types';
 import { ACTION_VIEWS } from '$lib/types';
 import type { ActionItem, ActionItemCounts, ActionView, Paging, Project } from '$lib/types';
 
+/**
+ * Something a model read out of a transcript or an email, offered for review.
+ *
+ * Never an action item until a person says so. A commitment is a reading of a
+ * sentence and some readings are wrong; the screen that says what Paul owes
+ * people stops being believed the first week it fills with things he does not.
+ */
+export interface Proposal {
+	source: 'mail' | 'meeting';
+	id: string;
+	title: string;
+	context: string | null;
+	owner: string | null;
+	deadline: string | null;
+	due_signal: string | null;
+	ambiguous: number;
+	ambiguity_note: string | null;
+	/** The sentence it was read from. Without this there is nothing to review. */
+	evidence: string | null;
+	status: string;
+	created_at: string;
+	client_name: string | null;
+	project_name: string | null;
+	/** The thread subject or meeting title it came from. */
+	origin: string | null;
+}
+
 export const load: PageLoad = async ({ fetch, url }) => {
 	const raw = url.searchParams.get('view') ?? 'open';
 	const view: ActionView = (ACTION_VIEWS as readonly string[]).includes(raw)
@@ -47,6 +74,23 @@ export const load: PageLoad = async ({ fetch, url }) => {
 		paging: Paging;
 	};
 
+	/*
+	 * The review queue, on the page the reviewing is for.
+	 *
+	 * Proposals were reviewable only on the screen that produced them, so the
+	 * loop was invisible from the one page that says what Paul owes people. A
+	 * queue nobody passes is a queue nobody empties.
+	 *
+	 * Supporting detail: a failure must not stop the action items loading.
+	 */
+	const proposalsRes = await fetch('/api/action-items/proposals?status=pending');
+	const proposals = proposalsRes.ok
+		? ((await proposalsRes.json()) as {
+				proposals: Proposal[];
+				counts: { pending: number; accepted: number; rejected: number };
+			})
+		: { proposals: [] as Proposal[], counts: { pending: 0, accepted: 0, rejected: 0 } };
+
 	const projects = projectsRes.ok
 		? ((await projectsRes.json()) as { projects: Project[] }).projects
 		: [];
@@ -75,5 +119,5 @@ export const load: PageLoad = async ({ fetch, url }) => {
 		a.localeCompare(b, 'en', { sensitivity: 'base' })
 	);
 
-	return { ...data, view, q, projectId, owner, sort, projects, asana, owners };
+	return { ...data, view, q, projectId, owner, sort, projects, asana, owners, proposals };
 };
