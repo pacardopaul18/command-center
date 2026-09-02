@@ -1,4 +1,5 @@
 <script lang="ts">
+	import MirrorFreshness from '$lib/components/MirrorFreshness.svelte';
 	import Card from '$lib/components/Card.svelte';
 	import Input from '$lib/components/Input.svelte';
 	import Select from '$lib/components/Select.svelte';
@@ -54,6 +55,21 @@
 </header>
 
 {#if data.summary}
+	<!--
+		How old the file list is, and how to make it newer.
+
+		No Sync now button here, deliberately. A Worker has no filesystem and
+		cannot re-walk Dropbox, so a button would be an affordance that does
+		nothing, which is worse on a control whose whole purpose is to fix the
+		thing it names. The hint says what actually works instead. D27.
+	-->
+	<MirrorFreshness
+		freshness={data.summary.freshness}
+		source="Dropbox"
+		refreshPath={null}
+		refreshHint="Re-walked by scripts/dropbox-scan.mjs on this machine, not from the app."
+	/>
+
 	<Card title="What is there" subtitle="By file kind, largest groups first">
 		<ul class="kinds">
 			{#each data.summary.kinds as kind (kind.extension)}

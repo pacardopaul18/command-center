@@ -15,7 +15,19 @@
 	 * they wait on.
 	 */
 	let {
-		freshness
+		freshness,
+		source = 'Asana',
+		/**
+		 * How to bring this source current, when the app can.
+		 *
+		 * Null means it cannot, and then no button is drawn. The app has no
+		 * filesystem in a Worker and cannot re-walk Dropbox, so offering a Sync
+		 * now there would be an affordance that does nothing: D27, and the more
+		 * so on a control whose whole purpose is to fix the thing it names.
+		 */
+		refreshPath = '/api/asana/refresh',
+		/** What to say instead, when there is no button to offer. */
+		refreshHint = ''
 	}: {
 		freshness: {
 			synced: boolean;
@@ -24,6 +36,9 @@
 			reason?: string;
 			last_error?: string | null;
 		} | null;
+		source?: string;
+		refreshPath?: string | null;
+		refreshHint?: string;
 	} = $props();
 
 	let busy = $state(false);
@@ -49,7 +64,7 @@
 		busy = true;
 		failed = '';
 		try {
-			const res = await fetch('/api/asana/refresh', { method: 'POST' });
+			const res = await fetch(refreshPath!, { method: 'POST' });
 			if (!res.ok) {
 				const body = (await res.json().catch(() => ({}))) as { error?: string };
 				failed = body.error ?? 'The refresh did not run.';
@@ -67,7 +82,7 @@
 {#if freshness}
 	<p class="freshness" class:stale>
 		{#if freshness.synced && freshness.age_minutes != null}
-			<span>Asana data as of <strong>{age(freshness.age_minutes)}</strong></span>
+			<span>{source} data as of <strong>{age(freshness.age_minutes)}</strong></span>
 		{:else}
 			<span>{freshness.reason ?? 'Asana has not been mirrored yet.'}</span>
 		{/if}
@@ -76,9 +91,13 @@
 			<span class="bad">Last sync reported: {freshness.last_error}</span>
 		{/if}
 
-		<Button variant="ghost" size="sm" disabled={busy} onclick={refresh}>
-			{busy ? 'Syncing' : 'Sync now'}
-		</Button>
+		{#if refreshPath}
+			<Button variant="ghost" size="sm" disabled={busy} onclick={refresh}>
+				{busy ? 'Syncing' : 'Sync now'}
+			</Button>
+		{:else if refreshHint}
+			<span class="hint">{refreshHint}</span>
+		{/if}
 
 		{#if failed}<span class="bad">{failed}</span>{/if}
 	</p>
@@ -113,5 +132,9 @@
 
 	.bad {
 		color: var(--red);
+	}
+
+	.hint {
+		font-style: italic;
 	}
 </style>

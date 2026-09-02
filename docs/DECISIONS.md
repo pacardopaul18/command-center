@@ -5785,3 +5785,68 @@ twelve projects went from ten agreeing to **twelve of twelve, zero gaps**.
 which has no filesystem, so the daily re-walk is `scripts/dropbox-scan.mjs` run
 on a schedule on this machine until the OAuth connector exists. Saying so rather
 than implying the same mechanism covers both.
+
+### D211: the dashboard counted a different kind of project
+
+P8. The dashboard said 37 active projects. The Projects page, one click away,
+said 42 live. Both numbers were right.
+
+The dashboard counted projects whose status was not `done`; the page counted
+projects Asana has not archived. Five projects are live in Asana with every
+ticket finished, so the projection derives their status as done and they are
+active by one definition and not by the other.
+
+F15 in a second place, so the same fix: one expression in `project-state.ts`,
+imported by both, with a test that fails if either spelling reappears anywhere
+in the server code. Active means not archived, because archived is a decision
+somebody made in Asana while status is derived from ticket completion and is a
+health signal. A project whose work is finished and which nobody has archived is
+still a live engagement, and calling it inactive would hide it from the one
+screen that exists to show what is going on.
+
+A cross-check test now compares the dashboard's active count, at-risk count and
+open-ticket count against what the Projects page reports for the same things, so
+the two cannot drift apart again without the suite saying so.
+
+### D212: a zero with nothing behind it is not a zero
+
+The other half of P8, and the half with no wrong number in it.
+
+On the real data the dashboard showed 0 overdue items, 0 due today, 0 awaiting a
+decision and no money past due. Every one of those was accurate and every one
+was misleading: those stores are empty because nothing has ever been loaded into
+them, while the project and ticket tiles beside them were reporting real work.
+Same screen, two meanings of zero, no way to tell them apart.
+
+"0 overdue" is good news. "0 overdue because no action item exists" is a gap. A
+tile that says the same thing for both tells the reader the good news either
+way, which is the failure D138 describes wearing a different hat: the number was
+true and the claim it made was not.
+
+So the cockpit now reports which stores hold anything, and a tile with no source
+shows an em dash and "no data yet" rather than a number it cannot stand behind.
+It is drawn quieter and it is not hidden: it still names what it would measure
+and still links to the page that would fill it, because hiding it answers "why
+is this missing" with silence, which is the same failure one step further along.
+And a tile with no source never raises an alarm, since an alarm on a number that
+does not exist is the loudest possible way to report nothing.
+
+Four of the six tiles are currently unsourced on the real data. That is the true
+picture, and it is the first time the screen has said so.
+
+### D213: the weaker half of a ruling is labelled, not smoothed over
+
+The staleness signal was ruled for every screen fed by a mirror, and the two
+mirrors are not equally served. Asana refreshes itself on the cron firings.
+Dropbox cannot: a Worker has no filesystem, so the re-walk is a local script
+until the OAuth connector exists.
+
+Both screens carry the age. Only the Asana one carries a Sync now button, and
+the Dropbox one says what actually works instead. Rendering a button there would
+be an affordance that does nothing, and D27 matters most on a control whose
+whole purpose is to fix the thing it names.
+
+The component takes the refresh path as a prop and draws no button when it is
+null. That is the small version of a rule worth keeping: where two halves of a
+ruling are not equally done, the screen says which half it is looking at rather
+than presenting both as finished.

@@ -146,10 +146,37 @@ files.get('/summary', async (c) => {
 		.bind(CLIENT_DEPTH)
 		.first<{ n: number }>();
 
+	/*
+	 * How old the Dropbox mirror is.
+	 *
+	 * The same signal the Asana screens carry, and it matters more here: the
+	 * Asana mirror refreshes itself on the cron firings, and this one does not.
+	 * A Worker has no filesystem, so the re-walk is a local script until the
+	 * OAuth connector exists. Showing the age is the only thing standing between
+	 * that gap and a reader assuming the file list is current.
+	 */
+	const scan = await c.env.DB.prepare(
+		'SELECT started_at, finished_at FROM dropbox_scans ORDER BY started_at DESC LIMIT 1'
+	).first<{ started_at: string; finished_at: string | null }>();
+
+	const at = scan?.finished_at ?? null;
+
 	return c.json({
 		totals,
 		kinds: kinds ?? [],
 		filing,
-		files_not_under_a_matched_client: unassignedFiles?.n ?? 0
+		files_not_under_a_matched_client: unassignedFiles?.n ?? 0,
+		freshness: at
+			? {
+					synced: true,
+					as_of: at,
+					age_minutes: Math.round((Date.now() - Date.parse(at)) / 60000)
+				}
+			: {
+					synced: false,
+					reason: scan
+						? 'A scan started and has not finished.'
+						: 'Dropbox has never been scanned.'
+				}
 	});
 });

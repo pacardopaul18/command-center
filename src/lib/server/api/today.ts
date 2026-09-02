@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import type { ApiEnv } from './env';
 import { daysAgoUtc, todayInWorkingZone, workingDayStartUtc } from '../dates';
 import { openTicket } from '../ticket-state';
+import { activeProject, projectNeedsAttention } from '../project-state';
 
 /**
  * The Today cockpit.
@@ -284,14 +285,31 @@ today.get('/', async (c) => {
            WHERE status = 'done' AND deadline = ?1) AS done_due_today,
          (SELECT COUNT(*) FROM action_items
            WHERE status = 'waiting' AND updated_at < ?3) AS stalled,
-         (SELECT COUNT(*) FROM projects WHERE status != 'done') AS projects_active,
+         /*
+          * Active means not archived, the same expression the Projects page
+          * uses. This used to count projects whose status was not done, which
+          * gave 37 where the page showed 42: five projects are live in Asana
+          * with every ticket finished, so they were done by one definition and
+          * live by the other. Both were right and the two screens disagreed.
+          * F15.
+          */
+         (SELECT COUNT(*) FROM projects p WHERE ${activeProject('p')}) AS projects_active,
          (SELECT COUNT(*) FROM projects
-           WHERE status IN ('at_risk', 'blocked')) AS projects_at_risk,
+           p WHERE ${projectNeedsAttention('p')}) AS projects_at_risk,
          (SELECT COUNT(*) FROM tickets
            WHERE ${openTicket('tickets')}) AS tickets_open,
          (SELECT COUNT(*) FROM tickets
            WHERE ${openTicket('tickets')}
-             AND due_date IS NOT NULL AND due_date <= ?1) AS tickets_breaching`
+             AND due_date IS NOT NULL AND due_date <= ?1) AS tickets_breaching,
+         /*
+          * Whether each store holds anything, as opposed to holding nothing
+          * that matches. The tiles need to tell "none overdue" apart from
+          * "never loaded", and only the totals can answer that.
+          */
+         (SELECT COUNT(*) FROM action_items) AS total_action_items,
+         (SELECT COUNT(*) FROM meetings) AS total_meetings,
+         (SELECT COUNT(*) FROM invoices) AS total_invoices,
+         (SELECT COUNT(*) FROM tickets) AS total_tickets`
 		)
 		.bind(day, soon, stale)
 		.first<Record<string, number | string | null>>();
@@ -324,6 +342,27 @@ today.get('/', async (c) => {
 			tickets_open: Number(sizes?.tickets_open ?? 0),
 			tickets_breaching: Number(sizes?.tickets_breaching ?? 0)
 		},
+		/*
+		 * Which underlying stores hold anything at all.
+		 *
+		 * A zero on this screen means one of two very different things: nothing
+		 * is overdue, or nothing has ever been loaded. The first is good news and
+		 * the second is a gap, and a tile showing "0" for both tells the reader
+		 * the good news either way.
+		 *
+		 * On the real-data environment right now the action items, meetings and
+		 * invoice tiles are all zero because those stores are empty, while the
+		 * project and ticket tiles are zero-free and real. Same screen, two
+		 * meanings, no way to tell them apart until now. D138 on a dashboard.
+		 */
+		sources: {
+			action_items: Number(sizes?.total_action_items ?? 0) > 0,
+			meetings: Number(sizes?.total_meetings ?? 0) > 0,
+			invoices: Number(sizes?.total_invoices ?? 0) > 0,
+			projects: Number(sizes?.projects_active ?? 0) > 0,
+			tickets: Number(sizes?.total_tickets ?? 0) > 0
+		},
+
 		// Null when nothing is overdue, which the tile reads as "nothing to
 		// date" rather than printing an empty string where a date belongs.
 		oldest_overdue: (sizes?.oldest_overdue as string | null) ?? null,

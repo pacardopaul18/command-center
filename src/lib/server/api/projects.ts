@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import type { ApiEnv } from './env';
 import { nowUtc, todayInWorkingZone } from '../dates';
 import { openTicket, overdueTicket } from '../ticket-state';
+import { activeProject, archivedProject } from '../project-state';
 import {
 	ApiError,
 	oneOf,
@@ -162,11 +163,8 @@ projects.get('/', async (c) => {
 	// number rather than a link into a page that might be empty. D27.
 	const counts = await c.env.DB.prepare(
 		`SELECT
-       SUM(CASE WHEN ap.archived = 1 THEN 1 ELSE 0 END) AS archived,
-       SUM(CASE WHEN ap.archived = 1 THEN 0 ELSE 1 END) AS live
-     FROM projects p
-     LEFT JOIN asana_project_links al ON al.project_id = p.id
-     LEFT JOIN asana_projects ap ON ap.gid = al.asana_gid`
+       (SELECT COUNT(*) FROM projects p WHERE ${archivedProject('p')}) AS archived,
+       (SELECT COUNT(*) FROM projects p WHERE ${activeProject('p')}) AS live`
 	).first<{ archived: number; live: number }>();
 
 	return c.json({

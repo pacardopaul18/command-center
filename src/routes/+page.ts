@@ -135,6 +135,20 @@ export const load: PageLoad = async ({ fetch, url }) => {
 			tickets_open: number;
 			tickets_breaching: number;
 		};
+		/**
+		 * Whether each store holds anything at all.
+		 *
+		 * A tile showing zero means one of two things: nothing matched, or
+		 * nothing was ever loaded. The first is good news, the second is a gap,
+		 * and the tile said the same thing for both.
+		 */
+		sources: {
+			action_items: boolean;
+			meetings: boolean;
+			invoices: boolean;
+			projects: boolean;
+			tickets: boolean;
+		};
 		totals: { open: number; done_today: number };
 	};
 

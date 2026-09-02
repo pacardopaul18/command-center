@@ -77,41 +77,79 @@
 	 * subline says how bad. Each is a link: a number you cannot act on is
 	 * decoration.
 	 */
+	/*
+	 * A zero with nothing behind it is not the same as a zero.
+	 *
+	 * "0 overdue" is good news. "0 overdue because no action item has ever been
+	 * loaded" is a gap, and the tile said the same thing for both. On the real
+	 * data right now three of these stores are empty and two are full, on one
+	 * screen, with no way to tell which was which.
+	 *
+	 * So a tile whose source holds nothing says so instead of showing a number
+	 * it cannot stand behind. D138 on a dashboard.
+	 */
+	const NOT_LOADED = 'no data yet';
+
+	function tile(
+		hasSource: boolean,
+		value: string,
+		sub: string
+	): { value: string; sub: string; muted: boolean } {
+		return hasSource ? { value, sub, muted: false } : { value: '—', sub: NOT_LOADED, muted: true };
+	}
+
 	const tiles = $derived([
 		{
 			label: 'Overdue items',
-			value: String(data.counts.overdue),
-			sub: data.oldest_overdue ? `oldest ${formatDayShort(data.oldest_overdue)}` : 'nothing late',
+			...tile(
+				data.sources.action_items,
+				String(data.counts.overdue),
+				data.oldest_overdue ? `oldest ${formatDayShort(data.oldest_overdue)}` : 'nothing late'
+			),
 			href: '/actions?view=overdue',
-			alarm: data.counts.overdue > 0
+			alarm: data.sources.action_items && data.counts.overdue > 0
 		},
 		{
 			label: 'Due today',
-			value: String(data.counts.due_today),
-			sub: `${data.counts.done_due_today} done already`,
+			...tile(
+				data.sources.action_items,
+				String(data.counts.due_today),
+				`${data.counts.done_due_today} done already`
+			),
 			href: '/actions?view=today',
 			alarm: false
 		},
 		{
 			label: 'Awaiting a decision',
-			value: String(data.counts.awaiting_decision),
-			sub: `${data.counts.stalled} stalled`,
+			...tile(
+				data.sources.action_items,
+				String(data.counts.awaiting_decision),
+				`${data.counts.stalled} stalled`
+			),
 			href: '/reports/slipping',
 			alarm: false
 		},
 		{
 			label: 'Projects at risk',
-			value: String(data.counts.projects_at_risk),
-			sub: `of ${data.counts.projects_active} active`,
+			// `projects_active` is the same expression the Projects page counts
+			// with, so this tile and the page it links to cannot disagree. F15.
+			...tile(
+				data.sources.projects,
+				String(data.counts.projects_at_risk),
+				`of ${data.counts.projects_active} active`
+			),
 			href: '/projects',
-			alarm: data.counts.projects_at_risk > 0
+			alarm: data.sources.projects && data.counts.projects_at_risk > 0
 		},
 		{
 			label: 'Tickets breaching',
-			value: String(data.counts.tickets_breaching),
-			sub: `of ${data.counts.tickets_open} open`,
+			...tile(
+				data.sources.tickets,
+				String(data.counts.tickets_breaching),
+				`of ${data.counts.tickets_open} open`
+			),
 			href: '/projects',
-			alarm: data.counts.tickets_breaching > 0
+			alarm: data.sources.tickets && data.counts.tickets_breaching > 0
 		},
 		{
 			label: 'Past due',
@@ -119,10 +157,13 @@
 			// amount at a glance, and on the one screen meant to be read at a
 			// glance the difference between "no money is late" and "0.00 is late"
 			// matters.
-			value: data.counts.past_due_cents > 0 ? formatUsd(data.counts.past_due_cents) : 'None',
-			sub: `${data.counts.invoice_alerts} invoices`,
+			...tile(
+				data.sources.invoices,
+				data.counts.past_due_cents > 0 ? formatUsd(data.counts.past_due_cents) : 'None',
+				`${data.counts.invoice_alerts} invoices`
+			),
 			href: '/invoices',
-			alarm: data.counts.past_due_cents > 0
+			alarm: data.sources.invoices && data.counts.past_due_cents > 0
 		}
 	]);
 
@@ -212,7 +253,7 @@
 
 <div class="tiles">
 	{#each tiles as tile (tile.label)}
-		<a class="tile" class:alarm={tile.alarm} href={tile.href}>
+		<a class="tile" class:alarm={tile.alarm} class:unsourced={tile.muted} href={tile.href}>
 			<span class="tile-value" class:mono={tile.value !== 'None'}>{tile.value}</span>
 			<span class="tile-label">{tile.label}</span>
 			<span class="tile-sub mono">{tile.sub}</span>
@@ -845,6 +886,21 @@
 
 	.bar-fill.tone-done {
 		background: var(--green);
+	}
+
+	/*
+	 * A tile with nothing behind it, drawn quieter than one reporting zero.
+	 *
+	 * Not hidden: the tile still says what it would measure, and still links to
+	 * the page that would fill it. Hiding it would answer "why is this missing"
+	 * with silence, which is the failure one step further along.
+	 */
+	.tile.unsourced {
+		opacity: 0.55;
+	}
+
+	.tile.unsourced .tile-value {
+		color: var(--text-secondary);
 	}
 
 	.muted {

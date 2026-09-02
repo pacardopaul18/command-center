@@ -51,6 +51,12 @@ export const load: PageLoad = async ({ fetch, url }) => {
 				kinds: FileKind[];
 				filing: { client_folders: number; filed: number; unassigned: number };
 				files_not_under_a_matched_client: number;
+				freshness: {
+					synced: boolean;
+					as_of?: string | null;
+					age_minutes?: number | null;
+					reason?: string;
+				};
 			})
 		: null;
 
