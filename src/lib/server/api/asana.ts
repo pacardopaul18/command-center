@@ -13,6 +13,7 @@ import type { AsanaSettings } from '../asana';
 import { CURSOR_KEY, STALE_DAYS, syncFromAsana } from '../asana-sync';
 import { mirrorStep, mirrorTotals } from '../asana-mirror';
 import { projectMirror } from '../projection';
+import { auditProjects } from '../asana-audit';
 
 /**
  * Asana configuration.
@@ -302,4 +303,34 @@ asana.get('/project', async (c) => {
 		'SELECT * FROM projection_runs ORDER BY started_at DESC LIMIT 1'
 	).first();
 	return c.json({ last_run: run ?? null });
+});
+
+/**
+ * Compares the app against live Asana, and corrects nothing.
+ *
+ * Read only on both sides, deliberately. An audit that repaired as it went
+ * would leave nobody able to say how wrong things had been, and the size of the
+ * gap is the finding.
+ */
+asana.get('/audit', async (c) => {
+	requireToken(c.env.ASANA_TOKEN);
+
+	const workspace =
+		c.req.query('workspace') ??
+		(await readSettings(c.env.SESSIONS)).workspace_gid ??
+		(
+			await c.env.DB.prepare(
+				'SELECT workspace_gid FROM asana_sync_state ORDER BY updated_at DESC LIMIT 1'
+			).first<{ workspace_gid: string }>()
+		)?.workspace_gid;
+
+	if (!workspace) throw new ApiError(400, 'There is no mirrored workspace to audit.');
+
+	const sample = Math.min(Math.max(Number(c.req.query('sample') ?? 10), 1), 40);
+
+	try {
+		return c.json(await auditProjects(c.env, workspace, sample));
+	} catch (err) {
+		throw asApiError(err);
+	}
 });

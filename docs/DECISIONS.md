@@ -5694,3 +5694,43 @@ sample of two.
 
 Ongoing context building on this account runs on the firings within the monthly
 ceiling, ruled and needing no further decision. The corpus builds as Paul works.
+
+### D209: the accuracy audit, and the finding it actually produced
+
+P4 asked whether the numbers can be trusted, with Asana as the tiebreaker. A
+read-only audit compares three sides for a sample spread across size bands:
+what Asana returns live, what the mirror holds, and what the app's own tickets
+say. It corrects nothing, deliberately, because an audit that repaired as it
+went would leave nobody able to say how wrong things had been.
+
+Twelve projects, 953 live tasks. Ten agreed exactly on every field checked. Two
+disagreed, both in the same direction: Asana had tasks the mirror did not.
+
+**The projection is faithful.** In every one of the twelve, the app's ticket
+count equalled the mirror's task count and the app's open count equalled the
+mirror's open count, including in the two that disagreed with Asana. Not one
+field-level discrepancy exists between mirror and app across 942 tasks. Whatever
+is wrong, the projection is not it.
+
+**The pull was accurate when it ran.** All eleven missing tasks were created
+after the pull finished at `2026-09-01T16:23:10Z`, and none pre-dated it. The
+single field disagreement is a task completed since. That check is the point:
+"the mirror is missing tasks" looks identical whether the pull is lossy or the
+tasks are new, so the observation could not discriminate until `created_at` was
+compared against the pull's finish time. D203.
+
+**So the real finding is that nothing re-pulls.** The mirror is a one-time
+snapshot and the app is as stale as the time since it was taken, which after two
+days is eleven tasks and one status across twelve projects. That is not a
+correctness defect and it is not nothing: a project screen that is two days
+behind will be wrong about anything decided in those two days, and it gives no
+sign of it.
+
+Three things follow, none of them done here because the ruling was to report
+first.
+
+1. An incremental re-pull on the cron firings, keyed on gid as the full pull is.
+2. The staleness shown on screen. A number with no date is a number the reader
+   assumes is current, and this one is not.
+3. The audit kept as an instrument. It found the answer in one run and it will
+   answer the same question after any future change to either hop.
