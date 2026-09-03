@@ -135,6 +135,29 @@ non-owned, so it read as broken everywhere.
 - The same applies to a new field: `conference_url` had to join the privacy
   boundary at the moment it was introduced, not be remembered later.
 
+## 6c. Does a rule make most of this view empty?
+
+**D220.** Where a privacy or scoping rule empties most of a screen, the correct
+state is indistinguishable from a failure to anyone who does not know the rule.
+**The remedy is always the label, never relaxing the rule.**
+
+Three times in one evening, on the same data. Almost every calendar event
+belongs to a calendar Paul does not own, so almost every event correctly has no
+title, no attendees and no link. Each time it was reported as missing data:
+titles gone, attendees gone, detail thin. Nothing was missing and nothing had
+failed.
+
+- Say what the reader is looking at: `Busy · calendar name`, not `(no title)`.
+- An empty state names why it is empty: "no source of client contacts exists",
+  not "no contacts yet".
+- A figure with no source says no-data, never zero. Item 11.
+- Ask before shipping a rule that hides things: **what will this screen look like
+  to somebody who does not know the rule?** If the answer is "broken", the
+  labelling is not finished.
+
+The tell is a report of missing data that arrives three times about three
+different fields on the same screen. One rule is emptying all of them.
+
 ## 7. Was it looked at, at both widths?
 
 **D128, D167, D183.** Rendered verification at 1920 and 412, never 1440 alone.

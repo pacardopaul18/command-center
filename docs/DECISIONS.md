@@ -6029,3 +6029,66 @@ one carrying any of the seven forbidden fields.
 The general form went to the checklist as item 6b: when a rule has one shared
 implementation, test that every call site uses it. The implementation was never
 the part at risk.
+
+### D220: a correct absence reads as a failure, and the fix is the label
+
+Named because it happened three times in one evening, on three different fields,
+from one cause.
+
+Almost every calendar event in view belongs to a calendar Paul does not own. By
+rule those carry no title, no attendees, no location and no link. So: titles
+looked missing, then attendees looked missing, then the detail looked thin.
+Every report was reasonable and none of them was a defect.
+
+**Where a privacy or scoping rule empties most of a view, the correct state is
+indistinguishable from a failure to anyone who does not know the rule.** And the
+remedy is always the label, never relaxing the rule. `Busy · calendar name`
+rather than `(no title)`. An empty state that names why it is empty rather than
+one that implies a sync failed. A figure with no source that says no-data rather
+than zero.
+
+The question to ask before shipping a rule that hides things: **what will this
+screen look like to somebody who does not know the rule?** If the answer is
+"broken", the labelling is not finished, and the rule will come back as a bug
+report every time somebody new looks at it.
+
+The tell is a run of missing-data reports about different fields on the same
+screen. One rule is emptying all of them.
+
+Checklist item 6c.
+
+### D221: the Quick Add audit, and the one thing it found
+
+P1, reported before building as ruled.
+
+**One defect.** Quick Add's Meeting form has a Notes textarea. The value is
+posted as `notes`, `/api/meetings` does not accept it, and the meetings table
+has no column for it. The request returns 200 with the meeting, and the note is
+gone. Verified empirically rather than by reading: a probe row created through
+the API came back with the field absent from every text column, and the probe
+was removed afterwards. A field that takes input and silently discards it is
+worse than a field that is missing, because the person believes they wrote
+something down.
+
+**Coverage gaps, where the page offers a field and Quick Add does not.**
+
+| Kind | Missing against its destination |
+|---|---|
+| Ticket | `start_date`, `estimate_hours`, `status`, `reporter` |
+| Project | `owner_id`, `start_date` |
+| Meeting | `recording_url`, and Notes goes nowhere |
+| Action item | `meeting_id` |
+| Client, Ledger, SOP, Template, Invoice | none found |
+
+**Two things checked and found not to be defects**, recorded because both looked
+like one on first inspection. The Client form's `rate` field is converted to
+`default_rate_cents` rather than dropped, and its contact fields are handled by
+`invoicing-clients.ts`, which creates a contact row. The Template form's fields
+are sent; an earlier reading that said otherwise was an artifact of splitting the
+file on a key that also appears nested inside `fields`, which shifted every save
+block by one kind. Parsing by object boundary fixed it, and the empirical check
+is what settled the rest.
+
+That misparse is worth its own line: a source-reading audit can be wrong in a way
+that produces a confident, plausible, entirely fictional table. Two of the three
+"findings" it produced were artifacts.
