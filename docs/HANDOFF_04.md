@@ -881,3 +881,50 @@ top-level task has a section; 412 subtasks do not. See D228.
 
 *Session 06. Nothing in this section alters sections 1 to 12, which stand as
 written.*
+
+---
+
+## 14. Standing constraints, added by session 06
+
+Section 10's constraints all still hold. These are additions, and the first is
+the one most likely to be reasoned past.
+
+### The Asana mirror flattens a task to one project
+
+**`asana_tasks` holds one `project_gid` and one `section_gid` per task. Asana
+allows a task in several projects, and in several sections.** The mirror records
+the one it was pulled under. `asana_task_projects` exists to hold the full
+membership and currently holds exactly one row per task.
+
+This is a **lossy transform living undocumented in the mirror**, and it is
+recorded here as well as in D228 because the next person to reason about project
+membership will reason from the table, not from the decision log. The table
+looks complete. It is complete about one project per task.
+
+What follows from it:
+
+- **Any count of tasks per project is a count under the pulled project**, not a
+  count of every project the task appears in. Today those are the same number
+  because no task spans two projects. That is a fact about this workspace on
+  this date, not a property of the schema.
+- **The section crosswalk depends on it.** One task, one section, so a task
+  cannot resolve to two section statuses and the `conflicted` rule ruled in D228
+  was not built. A test watches `asana_task_projects` and fails the day a task
+  spans two projects, which is the day that changes.
+- **Do not add a second section column to "fix" it.** The fix, if it is ever
+  needed, is to carry membership in the join table and to teach the resolver
+  which membership it is answering about. A second column on the task would make
+  the flattening invisible again while looking like a repair.
+
+### A caption is a claim
+
+`ai_usage` gave HANDOFF_04 section 4.3 its numbers and memory gave it its window
+labels. The values were right and the captions were recall: the twenty-call
+window was named the context pass and was the mail triage drain. A reader would
+have used the labels, and one downstream objection was built entirely on one.
+
+**Derive the label from the same place as the number, or say which is which.**
+`kind = 'triage'` distinguishes `mail-jobs.ts` from `context.ts` in one query,
+and asking it would have taken less time than writing the caption did.
+
+*Session 06. Nothing in this section alters sections 1 to 13.*

@@ -6564,3 +6564,53 @@ non-breaking spaces, tabs, newlines, doubled spaces and invisible format
 characters: **zero need attention**. So exact match stays, and no normalisation
 was added, because a normaliser nothing needs is a fuzzy match waiting for a
 future name to reach it.
+
+### D230: a figure known to be wrong says so where it is read
+
+Asked for, not delivered, and reported here as such: the correction shipped a
+day after the finding, and in the interval the meter rendered a number known to
+be high as though it were right.
+
+D226 found the double-write, quantified it at six rows and $0.0749, and ruled
+that the rows stay because a spend ledger should not be edited by the thing that
+got it wrong. All of that was correct. It put the correction **in the decision
+log only**, which is not where anybody reading the meter looks. Being right in a
+document does not fix a screen, and D214 is precisely about a figure that cannot
+be told apart from a correct one.
+
+**What ships.** `src/lib/server/spend-delta.ts` detects the duplicate pairs and
+renders a sentence beside the figures on Settings:
+
+> These figures are high. 6 of the calls counted here happened once and were
+> recorded twice, by a second writer that has since been removed, which adds
+> $0.0749 and 6 calls that never happened. The last one was on 2026-09-03 and no
+> more can be added; the rows are kept rather than deleted, because a spend
+> ledger should not be edited by the thing that got it wrong.
+
+In words, with the date it stopped, because a known error with no end reads as
+an ongoing one.
+
+**Derived, never written down.** The count, the amount and the date are computed
+from the rows on every read, and a test asserts the module contains no hardcoded
+figure. Writing "6" and "$0.0749" into the correction would have reproduced
+F-VERIFIED-FIGURE-UNVERIFIED-LABEL inside its own remedy: a caption from memory
+beside a number from storage. Checklist item 15.
+
+**Two scopes, one detector.** The monthly figure excludes run-attributed rows,
+so its delta must too, or the correction is wrong in the other direction. The
+Settings meter counts every row, so its delta counts every duplicate. Same
+function, a scope flag, because two detectors would disagree about the same rows
+one day. The month sees four of the six; the meter sees all six.
+
+**Bounded at the fix.** The detector stops at `DOUBLE_WRITE_FIXED_AT`. Without
+an upper bound it would report any future coincidence as a known error, turning
+a closed correction into a permanent alarm and training the reader to ignore it.
+
+**Silent when there is nothing to say.** The fixture has no duplicates and shows
+no banner. A standing "no known errors" notice is noise, and noise is what makes
+a real notice invisible.
+
+Proved by breaking it: a detector that always returns null fails two tests, a
+hardcoded amount fails two, and removing the upper bound fails one. The
+duplicate it detects in the fixture is one this test wrote, so the detector has
+been seen to find something that was not there before.

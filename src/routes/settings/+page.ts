@@ -73,6 +73,9 @@ export const load: PageLoad = async ({ fetch, url }) => {
 				triaged: number;
 				summarised: number;
 				remaining?: number;
+				month_to_date_usd?: number;
+				/* The part of the figure known to be wrong, in words. Null when none. */
+				known_delta_note?: string | null;
 			})
 		: null;
 

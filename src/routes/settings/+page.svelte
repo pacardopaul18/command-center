@@ -951,6 +951,19 @@
 	{:else if !data.spend}
 		<p class="hint">Could not read usage.</p>
 	{:else}
+		<!--
+			The correction travels with the figure.
+
+			A number known to be high that renders as if right is the thing D214
+			exists to prevent, and D226 first recorded this only in the decision
+			log, where nobody reading the meter would find it. Shown here, in
+			words, with the date it stopped, because a known error with no end
+			reads as an ongoing one. Absent entirely when there is nothing wrong.
+		-->
+		{#if data.spend.known_delta_note}
+			<p class="delta">{data.spend.known_delta_note}</p>
+		{/if}
+
 		<dl class="facts">
 			<div>
 				<dt>Calls, last 24h</dt>
@@ -1013,6 +1026,16 @@
 </Card>
 
 <style>
+	.delta {
+		margin: 0 0 var(--space-4);
+		padding: var(--space-3);
+		border-left: 3px solid var(--gold-600, var(--navy));
+		background: var(--surface-hover);
+		border-radius: var(--radius-sm);
+		font-size: var(--text-sm);
+		max-width: 74ch;
+	}
+
 
 	.fields {
 		display: grid;

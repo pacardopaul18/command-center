@@ -546,3 +546,33 @@ The questions:
   became something makes finished work look unfinished.
 - **Do the two states read differently?** Same rule as items 6c and 11: they
   produce the same emptiness and must not produce the same words.
+
+---
+
+## 15. The caption is a claim. Was it read, or recalled?
+
+F-VERIFIED-FIGURE-UNVERIFIED-LABEL. A table whose values are derived from
+storage and whose captions are not. It reads as fully evidenced, because the
+hard part visibly was, and the unverified half borrows the authority of the
+verified half beside it.
+
+HANDOFF_04's spend table computed four windows from `ai_usage` and named them
+from memory. The numbers were right. "Context pass, 20 calls" was the mail
+triage drain, and `context.ts` only ever writes `kind = 'summary'`, so one query
+would have said so. The mislabel then propagated: an objection was raised on the
+arithmetic of a twenty-call context pass that never existed.
+
+This is D220 inverted. There, a correct state read as a failure. Here, an
+unverified claim reads as a measurement.
+
+- **Derive the caption from the same query as the number** where anything in the
+  data distinguishes them. Kind, source, connection, table.
+- **Where it cannot be derived, mark it.** "Believed to be the context pass" is
+  honest and takes four words.
+- **Watch for this in anything that groups by time.** A window is chosen by the
+  writer and named by the writer, and neither act leaves a trace in the figures.
+
+The same rule applies to the fix for it: the spend correction on the meter
+computes its own count, amount and date every time, and a test asserts the
+module contains no hardcoded figure, because writing "6 rows, $0.0749" into the
+correction would have reproduced the defect inside its own remedy.

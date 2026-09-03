@@ -21,6 +21,7 @@ import { estimateContextPass } from '../context-estimate';
 import { acceptProposal, proposeFromCommitments, rejectProposal } from '../mail-proposals';
 import { monthToDateCents } from '../ai-budget';
 import { AI_CEILINGS_USD } from '../../ai-budget';
+import { knownSpendDelta, spendDeltaSentence } from '../spend-delta';
 
 /**
  * Gmail ingestion, browsing, and the state of the ingestion itself.
@@ -584,7 +585,18 @@ email.get('/summarise', async (c) => {
 		.bind(new Date(Date.now() - 86_400_000).toISOString())
 		.first<Record<string, number | null>>();
 
+	/*
+	 * The correction, beside the counts it is about.
+	 *
+	 * This meter counts every ai_usage row, so its delta counts every duplicate,
+	 * unlike the monthly figure which excludes run-attributed rows and therefore
+	 * excludes half of some pairs. One detector, two scopes.
+	 */
+	const delta = await knownSpendDelta(c.env.DB);
+
 	return c.json({
+		known_delta: delta,
+		known_delta_note: spendDeltaSentence(delta),
 		usage: usage.results ?? [],
 		last_24h: {
 			calls: Number(today?.calls ?? 0),
@@ -1234,6 +1246,16 @@ email.get('/context/spend', async (c) => {
 	 */
 	const monthCents = await monthToDateCents(c.env.DB);
 
+	/*
+	 * The part of that figure known to be wrong, at the point it is read.
+	 *
+	 * D226 recorded the double-write and left the rows in place, which was
+	 * right, and put the correction only in the decision log, which was not: a
+	 * figure known to be high rendered as if it were right. Derived here rather
+	 * than written down, so the sentence cannot drift from the rows it is about.
+	 */
+	const delta = await knownSpendDelta(c.env.DB, { excludeRunAttributed: true });
+
 	const { results: runRows } = await c.env.DB.prepare(
 		`SELECT r.name, r.allowance_cents, r.started_at, r.closed_at,
         COALESCE((SELECT SUM(u.cost_cents) FROM ai_run_usage u WHERE u.run_id = r.id), 0)
@@ -1243,6 +1265,8 @@ email.get('/context/spend', async (c) => {
 
 	return c.json({
 		by_account: results ?? [],
+		known_delta: delta,
+		known_delta_note: spendDeltaSentence(delta, monthCents),
 		last_30_days: {
 			calls: Number(month?.calls ?? 0),
 			input_tokens: Number(month?.input_tokens ?? 0),
