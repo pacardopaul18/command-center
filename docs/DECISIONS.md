@@ -6399,3 +6399,168 @@ concluding the fix did not work.
 
 **Verified after the fix**, on real data: one forced call, exactly one `ai_usage`
 row, attributed to the run, and `month_to_date_usd` did not move.
+
+### D227: sections become status by decision, and the survey is why that matters
+
+Pillar 2, under the ruling that the 281 verbatim sections map to coarse status
+through an editable crosswalk with provenance on every row, never through
+inferred logic, and that an unmapped section renders as unmapped and never falls
+into a default bucket.
+
+**The survey came first, and it changed what the feature is for.** MacGray's
+sections are not workflow status. Across 103 distinct names:
+
+| What they are | Examples | Tasks |
+|---|---|---|
+| Business function | Sales, Finance, Operations, Marketing | 1,362 |
+| Engagement phase | "Phase 2 - Weeks 1-3 - Instacart Next Steps", 39 names | ~150 |
+| Ad-hoc grouping | Costco Launch, 2500 Can Trial, Sprouts Demo Event 1/22 | rest |
+| Asana's default | "Untitled section", across 60 projects | 203 |
+
+A status-vocabulary match found three names and **all three were false
+positives**: the word "Review" inside a phase title. So on this data essentially
+no section carries a status, and the crosswalk starts fully unmapped and will
+stay mostly unmapped.
+
+That does not weaken the ruling, it is the argument for its hardest part. A
+feature built on the assumption that sections mostly are statuses would have
+made "unmapped" a rare edge case and rendered it as a gap. Here it is the normal
+state, and it has to read as a question nobody has answered rather than as
+something broken.
+
+**`not_a_status` is a mapping, not an absence.** The addition, and it is the
+load-bearing one. "Sales is a business function and carries no status" is a
+decision somebody made. "Nobody has looked at Sales" is not. Both produce no
+status for the task, and collapsing them would leave no way to mark a section as
+considered, which makes the reconciliation impossible to finish: the screen would
+show 103 outstanding items forever. Fourth appearance of the D214 and D220
+shape.
+
+**The answer does not go in `tickets.status`.** That column is NOT NULL with a
+CHECK, so writing a section-derived status into it would force every unmapped
+section to pick one, and `open` would become exactly the default bucket the
+ruling forbids: 2,400 tasks claiming a status nobody assigned, on a screen that
+then looks finished. Migration 0047 gives it its own nullable column with
+`section_status_via` beside it, and the app's own status keeps meaning what it
+has always meant.
+
+**Precedence in one place**, the same chain as the client crosswalk in D181:
+section gid, then verbatim name, then unmapped. Exact match including case,
+because Asana treats "sales" and "Sales" as two sections and so must this.
+
+**Provenance is required and is not defaulted.** `mapped_by` has no server-side
+fallback. A field the server fills in says nothing, and the point of the record
+is that a year from now somebody can tell a decision from an inference. The
+`source` column admits only `manual` and is a column rather than a constant, so
+adding an inferred mapping later is a schema change somebody has to justify.
+
+**Refusals proved by breaking them.** Defaulting unmapped to `open` fails five
+tests; case-insensitive matching fails two; collapsing `not_a_status` into
+unmapped fails two; accepting a status outside the vocabulary and defaulting
+`mapped_by` each fail one.
+
+The precedence break is worth recording as a D223 case. Flipping the `??` alone
+changed nothing, because a short-circuit in the name lookup already enforced the
+order. Only removing both guards fails the test. Two guards, one property, and
+the single break was ambiguous exactly as D223 says.
+
+**Deleting a mapping is allowed**, unlike a SOP verification. A mapping is a
+working judgement about somebody else's vocabulary, not a record that something
+happened, and being wrong about it should be correctable rather than only
+overwritable.
+
+**Nothing was decided on Paul's behalf.** The write path was exercised against
+the real database and every test row removed. `section_status_map` on the real
+data holds zero rows, and all 103 names are undecided with 2,185 tasks under
+them. Those rulings are Paul's, and a crosswalk seeded with this session's
+guesses would be the inference the whole design refuses, wearing a person's name.
+
+### D228: the conflicted case was ruled, and then found unreachable
+
+Ruled: where a ticket resolves to more than one mapped section status,
+`section_status` reads `conflicted`, never a pick, and conflicted is visible and
+countable. The reasoning was right and the case does not exist here.
+
+**The hypothesis, and its disproof.** The concern was that 2,185 counts section
+memberships rather than tasks, so a task in two projects carries two, and two
+mapped sections could then disagree. Checked against the mirror rather than
+argued:
+
+```
+asana_tasks rows                     2597   all distinct gids, no duplicates
+  top-level                          2183
+  subtasks                            414
+tasks carrying a section             2185
+  top-level, sectioned               2183
+  top-level, no section                 0
+  subtask, sectioned                    2
+  subtask, no section                 412
+tasks with more than one section        0
+task gids appearing twice               0
+tasks in more than one project          0
+```
+
+2,185 is distinct tasks. It exceeds 2,183 because **two subtasks carry a
+section**, which Asana permits. The figure and the mirror do not disagree; the
+comparison used top-level tasks as the denominator and the count is of sectioned
+tasks, which spans both populations.
+
+**Why nothing was built.** `asana_tasks.gid` is the PRIMARY KEY and `section_gid`
+is one column on that row, so one task is one row is one section. The conflicted
+branch is not rare, it is unreachable, and a branch that cannot execute carries a
+test that cannot fail. That is the D222 family in the form that looks most like
+diligence: dead code with a green test beside it.
+
+**What was built instead.** Three assertions that the case stays unreachable, so
+the day it becomes reachable is the day the suite says so:
+
+- the schema declares one section column, counted by line
+- neither database holds a task with two sections, or a gid twice
+- no task sits in more than one project
+
+The third is the real one. Asana genuinely allows a task in several projects and
+`asana_task_projects` exists to hold that; the mirror records the one project and
+section it was pulled under, which is a lossy flattening nobody had written down.
+If a future pull carries full membership, a task gains two sections, that test
+fails, and the conflicted rule has to be built then. The ruling stands, held
+against the condition that makes it necessary.
+
+Proved by breaking it: a second section column in the migration fails the schema
+assertion.
+
+### D229: a name-keyed ruling reaches every project that uses the name
+
+Produced by "Untitled section", which appears in **60 projects** and means
+nothing in any of them.
+
+Keying the crosswalk on the verbatim name is right for the firm's own words:
+"Finance" is one function and one ruling should cover its 26 projects. It is
+wrong for Asana's defaults and for generic words, where a "To Do" in one
+engagement and a "To Do" in another are two agreements that share four
+characters. The per-section key already existed for that case and **nothing on
+the screen said when to reach for it**.
+
+The spread, measured rather than assumed: **22 of 103 names appear in more than
+one project.**
+
+| Name | Projects |
+|---|---|
+| Untitled section | 60 |
+| Finance | 26 |
+| Sales | 19 |
+| Operations | 19 |
+| Marketing | 14 |
+| Hours | 11 |
+
+So the screen shows the project count on every row, and where it is greater than
+one the ruling cannot be recorded until the reach is acknowledged. The
+acknowledgement sits beside the count rather than in a dialog, because the
+number is the reason for the question.
+
+**Byte-identity confirmed rather than assumed.** Exact matching means a trailing
+space or a non-breaking space would render as permanently unmapped with no
+explanation. All 103 names were checked for leading and trailing whitespace,
+non-breaking spaces, tabs, newlines, doubled spaces and invisible format
+characters: **zero need attention**. So exact match stays, and no normalisation
+was added, because a normaliser nothing needs is a fuzzy match waiting for a
+future name to reach it.

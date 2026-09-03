@@ -476,3 +476,73 @@ Ask it of anything that records, meters, logs or queues:
 Related: item 10 asks whether anything writes a table at all. This is its
 mirror, and the two failures are opposite: a table with no writer is inert, and a
 table with two is wrong in a way that looks like it is working.
+
+---
+
+## 13. Does the data have the property the design assumes?
+
+Pillar 2 was ruled as "the 281 verbatim sections map to coarse status through an
+editable crosswalk". Every word of that is right, and the survey that ran before
+the first line of code changed which half of the feature mattered.
+
+MacGray's sections are business functions, engagement phases and ad-hoc
+groupings. Sales, Finance, Operations and Marketing hold 1,362 tasks between
+them and none is a workflow stage. A status-vocabulary match found three names
+and all three were the word "Review" inside a phase title. So the crosswalk
+starts fully unmapped and mostly stays that way.
+
+Built on the unexamined assumption, "unmapped" would have been a rare edge case
+rendered as a gap, and the screen would have shown 103 things wrong with the
+data. Built on the survey, unmapped is the normal state, "carries no status" is a
+first-class answer, and the reconciliation can be finished.
+
+So, before building anything whose shape depends on what the data looks like:
+
+- **Count the cases the design treats as exceptional.** If the exception is the
+  majority, the design is inside out. It is a five-minute query and it decides
+  the whole layout.
+- **Check the matches you expect to find, one by one.** Three names matched a
+  status vocabulary here and all three were false positives. A count of matches
+  would have said "3 sections look like statuses" and been wrong three times.
+- **Say what the survey found in the migration and the module**, because the
+  next person will read a mostly-empty table as work nobody did rather than as
+  the answer.
+
+This is not the same as item 8, which asks which of several causes produced an
+observation. This one asks whether the thing being built is shaped like the data
+it will hold.
+
+---
+
+## 14. Can this reconciliation ever be finished?
+
+The fifth appearance of one shape, which is why it is an item and not another
+decision. A screen shows work outstanding. Ask whether every row on it has a
+reachable end state, and whether "considered and there is nothing to do" is one
+of them.
+
+Where it has appeared:
+
+| Where | The two things that looked alike |
+|---|---|
+| Meetings | a partner's private event, and a title that failed to load |
+| Dashboard | a measured zero, and nothing loaded |
+| SOP fault rate | never fails, and never checked |
+| Projection freshness | up to date, and never synced |
+| Section crosswalk | carries no status, and nobody has looked |
+
+The section crosswalk is the clearest case because the consequence is
+structural rather than cosmetic. Sales is a business function and carries no
+workflow status. If the only answers on offer are the six statuses, there is no
+way to record that, so Sales stays outstanding forever and the reconciliation
+can never reach zero. **`not_a_status` is a mapping, not an absence**, and a
+section marked so has been ruled on while an unmapped one has not.
+
+The questions:
+
+- **Is "nothing to do here" recordable?** If not, every such row is permanent
+  work in progress and the screen becomes noise people stop reading.
+- **Does the progress count treat it as done?** Counting only the rows that
+  became something makes finished work look unfinished.
+- **Do the two states read differently?** Same rule as items 6c and 11: they
+  produce the same emptiness and must not produce the same words.

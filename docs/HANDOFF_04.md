@@ -827,3 +827,57 @@ verdicts exist**, because tuning against no verdicts is tuning against a guess.
 
 *Session 06. Nothing in this section alters sections 1 to 11, which stand as
 written, or anything this document inherits.*
+
+---
+
+## 13. AMENDED 2026-09-03, section 4.3 corrected
+
+Section 4.3 stands as written and this states the correction. It was wrong in
+two ways, and the second was found only because the first was chased.
+
+**The gate, answered plainly.** Pillar 2 was cleared to start on this
+reconciliation landing first. **It did not land.** The phantom rows were found,
+quantified and ruled on in D226, and that was committed and pushed in `5cccf7e`.
+The reconciliation of section 4.3 against them was not done, and Pillar 2 began
+without it. Reported here rather than left to surface later.
+
+**Correction 1: the window labels were wrong.** Section 4.3 attributed 20 calls
+at 14:02 to the context pass. They were the mail triage drain in `mail-jobs.ts`:
+17 of the 20 are `kind = triage`, and `context.ts` only ever records `summary`.
+The context pass ran at 14:21 and made four calls.
+
+That also answers the arithmetic objection, which was correct to raise. Four
+`record()` sites against a twenty-call context pass should indeed have produced
+far more than six twins. There was no twenty-call context pass. There was a
+four-call one, and `mail-jobs.ts` and `meeting-ai.ts` never had a private
+writer, so nothing they did was doubled.
+
+**Correction 2: the corrected table.**
+
+| Window | What it actually was | Rows | Phantoms | Real calls | Reported | True |
+|---|---|---|---|---|---|---|
+| 14:02 to 14:04 | mail triage drain, `mail-jobs.ts` | 20 | 0 | 20 | $0.0584 | $0.0584 |
+| 14:21 | context pass, `context.ts` | 8 | **4** | 4 | $0.1087 | $0.0543 |
+| 23:20 | transcript summaries, `meeting-ai.ts` | 2 | 0 | 2 | $0.3155 | $0.3155 |
+| 2026-09-03 20:xx | session 06 attribution proof | 5 | **2** | 3 | $0.0524 | $0.0318 |
+| **Total** | | **35** | **6** | **29** | **$0.5349** | **$0.4599** |
+
+Four phantoms from the context pass and two from the attribution proof before
+the fix landed. **Six, and the arithmetic closes exactly.**
+
+Section 4.3's totals of 30 calls and $0.4825 were the figures at the time it was
+written, before the session 06 calls existed. Against today's rows the
+comparable numbers are 35 rows, 29 real calls, $0.4599 truly spent and $0.5349
+apparently spent.
+
+**The phantom rows still stay**, per D226. A spend ledger should not be edited by
+the thing that got it wrong, and the overstatement errs towards stopping sooner.
+What changes is that the state of record now says so.
+
+**Also corrected, from Pillar 2's own survey**: section 2.1 reports 2,597 mirror
+rows of which 414 are subtask links. The count of tasks carrying a section is
+**2,185**, which is 2,183 top-level plus two subtasks that carry one. Every
+top-level task has a section; 412 subtasks do not. See D228.
+
+*Session 06. Nothing in this section alters sections 1 to 12, which stand as
+written.*

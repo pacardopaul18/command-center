@@ -146,9 +146,21 @@
 		<h1>Projects</h1>
 		<p class="sub">Engagements from initiation to closing.</p>
 	</div>
-	<Button onclick={() => (showForm = !showForm)}>
-		{showForm ? 'Cancel' : 'New project'}
-	</Button>
+	<div class="head-actions">
+		<!--
+			Shown only when something is undecided. D27: an affordance that leads
+			to an empty screen is a promise the app cannot keep, and a permanent
+			link would train Paul to ignore it on the day it matters.
+		-->
+		{#if data.sections_undecided && data.sections_undecided > 0}
+			<a class="pending" href="/projects/sections">
+				{data.sections_undecided} sections undecided
+			</a>
+		{/if}
+		<Button onclick={() => (showForm = !showForm)}>
+			{showForm ? 'Cancel' : 'New project'}
+		</Button>
+	</div>
 </header>
 
 <MirrorFreshness freshness={data.freshness} />
@@ -373,6 +385,23 @@
 {/if}
 
 <style>
+	.head-actions {
+		display: flex;
+		gap: var(--space-3);
+		align-items: center;
+		flex-wrap: wrap;
+	}
+
+	.pending {
+		font-size: var(--text-sm);
+		color: var(--text-secondary);
+		/* D22: 44px tap floor on a real control. */
+		display: inline-flex;
+		align-items: center;
+		min-height: var(--tap);
+		padding: 0 var(--space-2);
+	}
+
 	.progress-from {
 		color: var(--text-secondary);
 		font-size: 0.6875rem;

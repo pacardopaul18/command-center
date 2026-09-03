@@ -1,5 +1,6 @@
 import type { D1Database, D1PreparedStatement } from '@cloudflare/workers-types';
 import { nowUtc, todayInWorkingZone } from './dates';
+import { resolveSection, type SectionStatusRow } from '$lib/section-status';
 
 /**
  * Putting the mirror onto the app's own screens.
@@ -76,6 +77,7 @@ interface MirrorTask {
 	project_gid: string | null;
 	parent_gid: string | null;
 	section_name: string | null;
+	section_gid: string | null;
 	name: string;
 	notes: string | null;
 	assignee_gid: string | null;
@@ -194,6 +196,36 @@ export async function projectMirror(
 		.bind(runId, at)
 		.run();
 
+	/*
+	 * The section crosswalk, loaded once.
+	 *
+	 * 103 names and 281 sections, so the whole table fits in memory many times
+	 * over and every task resolves against the same snapshot. Loading it per
+	 * task would also mean a mapping edited mid-run applied to some tasks and
+	 * not others, which is a projection that depends on when a row was read.
+	 */
+	const { results: sectionRows } = await db
+		.prepare(
+			`SELECT id, section_name, section_gid, status, source, mapped_by, mapped_at, note
+       FROM section_status_map`
+		)
+		.all<SectionStatusRow>();
+	const crosswalk = sectionRows ?? [];
+	/* How many sections anybody has ruled on, for the projection's own report. */
+	const sectionsDecided = crosswalk.length;
+
+	/** One task's section verdict, resolved once and reused for both columns. */
+	const verdicts = new Map<string, ReturnType<typeof resolveSection>>();
+	const sectionVerdict = (task: MirrorTask) => {
+		const key = `${task.section_gid ?? ''}|${task.section_name ?? ''}`;
+		let v = verdicts.get(key);
+		if (!v) {
+			v = resolveSection({ gid: task.section_gid, name: task.section_name }, crosswalk);
+			verdicts.set(key, v);
+		}
+		return v;
+	};
+
 	const skippedBecause: string[] = [];
 	let skipped = 0;
 	const skip = (why: string) => {
@@ -210,7 +242,7 @@ export async function projectMirror(
 
 	const { results: mirrorTasks } = await db
 		.prepare(
-			`SELECT t.gid, t.project_gid, t.parent_gid, t.section_name, t.name, t.notes,
+			`SELECT t.gid, t.project_gid, t.parent_gid, t.section_name, t.section_gid, t.name, t.notes,
               t.assignee_gid, u.name AS assignee_name,
               t.completed, t.completed_at, t.start_on, t.due_on, t.created_at, t.modified_at
        FROM asana_tasks t
@@ -356,13 +388,15 @@ export async function projectMirror(
 					`INSERT INTO tickets
            (id, project_id, title, description, start_date, due_date, status,
             assignee, completed_at, created_at, updated_at,
-            asana_section, asana_assignee_gid, asana_modified_at, asana_url)
-           VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
+            asana_section, asana_assignee_gid, asana_modified_at, asana_url,
+            section_status, section_status_via)
+           VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)
            ON CONFLICT(id) DO UPDATE SET
              project_id = ?2, title = ?3, description = ?4, start_date = ?5,
              due_date = ?6, status = ?7, assignee = ?8, completed_at = ?9,
              updated_at = ?11, asana_section = ?12, asana_assignee_gid = ?13,
-             asana_modified_at = ?14, asana_url = ?15`
+             asana_modified_at = ?14, asana_url = ?15,
+             section_status = ?16, section_status_via = ?17`
 				)
 				.bind(
 					id,
@@ -379,7 +413,22 @@ export async function projectMirror(
 					task.section_name,
 					task.assignee_gid,
 					task.modified_at,
-					`https://app.asana.com/0/0/${task.gid}`
+					`https://app.asana.com/0/0/${task.gid}`,
+					/*
+					 * What the crosswalk says, or nothing at all.
+					 *
+					 * Null when nobody has mapped this section, and null when
+					 * somebody decided it carries no status. `section_status_via`
+					 * is what tells those two apart, and the screen must too: an
+					 * unmapped section is a question still open and a section
+					 * marked not_a_status is an answer. D220.
+					 *
+					 * Never written into `status`, which stays the app's own and
+					 * keeps meaning completed or not. Putting it there would make
+					 * `open` the default bucket the ruling forbids.
+					 */
+					sectionVerdict(task).status,
+					sectionVerdict(task).via
 				)
 		);
 
@@ -544,8 +593,13 @@ export async function projectMirror(
 		},
 		{
 			field: 'ticket status detail',
-			why: 'Only completed or not. The real vocabulary is the section name, 103 of them, and mapping those now would guess the answer Thursday reconciles. The section is shown on the ticket.',
+			why: "The app's own status is still only completed or not. The section is the firm's real vocabulary, 103 names, and it becomes a status only where somebody has said so in the crosswalk: section_status carries that answer and is null everywhere nobody has decided. Nothing infers it, and an unmapped section does not fall into a bucket.",
 			rows: tasks.length
+		},
+		{
+			field: 'section_status',
+			why: 'Set from the section crosswalk, which is edited by hand and carries who decided and when. Null where the section is unmapped, and also null where somebody decided the section carries no status; section_status_via separates the two.',
+			rows: sectionsDecided
 		},
 		{
 			field: 'assignee_id',

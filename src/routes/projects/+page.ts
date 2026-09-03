@@ -11,12 +11,15 @@ export const load: PageLoad = async ({ fetch, url }) => {
 	 */
 	const archived = url.searchParams.get('archived') ?? 'no';
 
-	const [projectsRes, clientsRes, freshnessRes] = await Promise.all([
+	const [projectsRes, clientsRes, freshnessRes, sectionsRes] = await Promise.all([
 		fetch(`/api/projects?archived=${encodeURIComponent(archived)}`),
 		fetch('/api/clients'),
 		// How old the mirrored data is. Supporting detail: a failure must not
 		// stop the page, so it degrades to showing no claim rather than a wrong one.
-		fetch('/api/asana/freshness')
+		fetch('/api/asana/freshness'),
+		// How much of the section reconciliation is left. Supporting detail on the
+		// same terms: no claim rather than a wrong one.
+		fetch('/api/sections')
 	]);
 
 	if (!projectsRes.ok) {
@@ -35,7 +38,19 @@ export const load: PageLoad = async ({ fetch, url }) => {
 
 	const freshness = freshnessRes.ok ? await freshnessRes.json() : null;
 
+	/*
+	 * Undefined, not zero, when the count could not be read.
+	 *
+	 * Zero here would draw no link, which is the same thing the screen does when
+	 * everything is decided. The two are different facts and the link is hidden
+	 * either way, so undefined is what the page carries. D214.
+	 */
+	const sectionsUndecided = sectionsRes.ok
+		? ((await sectionsRes.json()) as { progress: { unmapped: number } }).progress.unmapped
+		: undefined;
+
 	return {
+		sections_undecided: sectionsUndecided,
 		projects: body.projects,
 		clients,
 		archived: body.archived,
