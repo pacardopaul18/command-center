@@ -5991,3 +5991,41 @@ another place.
 
 The unified queue now holds 27 pending, 24 from meetings and 3 from mail, every
 one carrying its evidence. Month-to-date AI spend is $0.48 of the $30 ceiling.
+
+### D219: the join link, and what P6 actually found
+
+P6 asked for attendees, organizer, location, description and a conferencing link
+on owned events, on the report that attendees were missing.
+
+**Attendees were not missing.** The detail route already returned them and the
+panel already rendered them: the one owned event in the window carried three,
+with organizer and response status, and they displayed. Eleven of the twelve
+events in view were on calendars Paul does not own, which by rule have no
+attendees at all, so the panel he opened had none to show. Same shape as the
+title finding an hour earlier, and the same reason: on this data almost
+everything is non-owned, so a correct absence reads as a failure.
+
+Organizer, description and the meeting link were also already there. Location
+was shown on the row but not in the detail, which is now fixed.
+
+**The real gap was the join link, and it had never been read at all.** Google
+carries it as `hangoutLink` for Meet and inside `conferenceData.entryPoints` for
+Zoom, Teams and the rest. Neither was requested or stored. It is the one thing
+anybody actually clicks on a calendar entry with two minutes to go, and a screen
+showing every other detail of a call except the way into it is a screen somebody
+leaves for Google Calendar.
+
+Video entry points are preferred over the first available, because a dial-in
+number is not what somebody means when they say "the link".
+
+**It went behind the privacy boundary at the moment it was introduced.** A
+partner's join link is a door into a room, and the furthest thing from free and
+busy there is. The sync writes null for any calendar Paul does not own, the
+retroactive clear covers it, and the boundary test gained the field in the same
+change rather than later. Re-verified on the live data after a full calendar
+refresh: 360 events, 5 owned and all 5 carrying a link, 355 non-owned and not
+one carrying any of the seven forbidden fields.
+
+The general form went to the checklist as item 6b: when a rule has one shared
+implementation, test that every call site uses it. The implementation was never
+the part at risk.

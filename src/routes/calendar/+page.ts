@@ -16,6 +16,11 @@ export interface CalendarEventRow {
 	attendee_count: number | null;
 	attendees_known: number;
 	html_link: string | null;
+	/**
+	 * The way into the call. Null on any calendar Paul does not own, because a
+	 * partner's join link is a door into a room and this app holds free/busy.
+	 */
+	conference_url?: string | null;
 	calendar_name: string | null;
 	calendar_color: string | null;
 	own_response: string | null;

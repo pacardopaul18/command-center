@@ -1012,6 +1012,11 @@ export interface CalendarEventRow {
 	organizer: string | null;
 	attendee_count: number | null;
 	html_link: string | null;
+	/**
+	 * The way into the call. Null on any calendar Paul does not own, because a
+	 * partner's join link is a door into a room and this app holds free/busy.
+	 */
+	conference_url?: string | null;
 	meeting_id: string | null;
 	meeting_title: string | null;
 }

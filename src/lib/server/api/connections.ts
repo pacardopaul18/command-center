@@ -331,7 +331,8 @@ connections.post('/google/calendar/refresh', async (c) => {
 				await c.env.DB.prepare(
 					`UPDATE calendar_events
            SET summary = NULL, description = NULL, location = NULL,
-               organizer = NULL, attendee_count = NULL, html_link = NULL
+               organizer = NULL, attendee_count = NULL, html_link = NULL,
+               conference_url = NULL
            WHERE calendar_id = ?`
 				)
 					.bind(target.id)
@@ -381,9 +382,11 @@ connections.post('/google/calendar/refresh', async (c) => {
 				await c.env.DB.prepare(
 					`INSERT INTO calendar_events
              (id, connection_id, calendar_id, provider_event_id, summary, description, location,
-              starts_at, ends_at, all_day, organizer, attendee_count, html_link, fetched_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              starts_at, ends_at, all_day, organizer, attendee_count, html_link, fetched_at,
+              conference_url)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
            ON CONFLICT(connection_id, provider_event_id) DO UPDATE SET
+             conference_url = excluded.conference_url,
              calendar_id = excluded.calendar_id,
              summary = excluded.summary,
              description = excluded.description,
@@ -413,7 +416,11 @@ connections.post('/google/calendar/refresh', async (c) => {
 						ownedByPaul ? e.organizer : null,
 						ownedByPaul ? e.attendee_count : null,
 						ownedByPaul ? e.html_link : null,
-						at
+						at,
+						// A partner's meeting link is a door into a room. The app knows
+						// when they are busy and nothing about what they are doing, and
+						// a join link is the furthest thing from free/busy there is.
+						ownedByPaul ? e.conference_url : null
 					)
 					.run();
 				/**

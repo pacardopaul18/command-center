@@ -721,6 +721,9 @@
 				<div class="detail">
 					{#if event.description}<p class="prose">{event.description}</p>{/if}
 					<dl class="facts">
+						{#if event.location}
+							<div><dt>Where</dt><dd>{event.location}</dd></div>
+						{/if}
 						{#if event.calendar_name}
 							<div><dt>Calendar</dt><dd>{event.calendar_name}</dd></div>
 						{/if}
@@ -763,6 +766,23 @@
 							{event.attendee_count} people are on this, and their names have not been
 							read yet. Refresh the calendar in Settings to fetch them.
 						</p>
+					{/if}
+
+					<!--
+						The join link, first among the actions because it is the one
+						thing anybody clicks on a calendar entry with two minutes to go.
+						Owned events only: a partner's link is never stored, so there is
+						never one here to show.
+					-->
+					{#if event.conference_url}
+						<a
+							class="join"
+							href={event.conference_url}
+							target="_blank"
+							rel="noopener noreferrer"
+						>
+							Join the call
+						</a>
 					{/if}
 
 					{#if event.html_link}
@@ -1526,6 +1546,21 @@
 	.detail {
 		padding: var(--space-3) var(--space-3) var(--space-3) var(--space-4);
 		border-left: 3px solid var(--border-thin);
+	}
+
+	.join {
+		display: inline-flex;
+		align-items: center;
+		/* D22: 44px tap floor. */
+		min-height: 44px;
+		padding: 0 var(--space-4);
+		margin-right: var(--space-2);
+		border-radius: var(--radius-2);
+		background: var(--navy);
+		color: var(--text-inverse);
+		font-weight: 600;
+		font-size: 0.875rem;
+		text-decoration: none;
 	}
 
 	.facts {

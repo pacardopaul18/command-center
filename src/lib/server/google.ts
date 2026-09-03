@@ -378,6 +378,15 @@ export interface CalendarEvent {
 	organizer: string | null;
 	attendee_count: number | null;
 	html_link: string | null;
+	/**
+	 * The way into the call, when there is one.
+	 *
+	 * Meet arrives as `hangoutLink`; Zoom, Teams and the rest arrive inside
+	 * `conferenceData.entryPoints`. Both are read, because a screen that shows
+	 * every detail of a call except how to join it is a screen somebody leaves
+	 * for Google Calendar.
+	 */
+	conference_url: string | null;
 	/** Google still reports the occurrence; the app marks it rather than dropping it. */
 	cancelled: boolean;
 	/** Paul's own answer, when he is on the invitation. */
@@ -397,6 +406,10 @@ interface RawEvent {
 	description?: string;
 	location?: string;
 	htmlLink?: string;
+	hangoutLink?: string;
+	conferenceData?: {
+		entryPoints?: { entryPointType?: string; uri?: string }[];
+	};
 	status?: string;
 	attendees?: {
 		email?: string;
@@ -563,7 +576,15 @@ export async function listEvents(
 			all_day: e.start?.dateTime ? 0 : 1,
 			organizer: e.organizer?.email ?? e.organizer?.displayName ?? null,
 			attendee_count: Array.isArray(e.attendees) ? e.attendees.length : null,
-			html_link: e.htmlLink ?? null
+			html_link: e.htmlLink ?? null,
+			// Meet first, then whatever else the invitation carries. `video` is
+			// preferred over `phone` because a dial-in is not the link somebody
+			// means when they say "the link".
+			conference_url:
+				e.hangoutLink ??
+				(e.conferenceData?.entryPoints ?? []).find((p) => p.entryPointType === 'video')?.uri ??
+				(e.conferenceData?.entryPoints ?? [])[0]?.uri ??
+				null
 		}));
 }
 

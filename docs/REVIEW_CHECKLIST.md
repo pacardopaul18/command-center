@@ -116,6 +116,25 @@ was right.
 - No write surface that "will be needed later". The absence is the mechanism.
 - Provenance on every mirrored row: source id, and when it was last true.
 
+## 6b. Is the rule applied at every site, or only at some?
+
+**D216.** A rule enforced at some render sites and not others is
+indistinguishable from a defect at the sites that missed it.
+
+Non-owned calendar events carry no title by rule. The calendar views routed
+through the shared `label()` and showed them correctly as busy; the meetings
+page and the meeting detail rendered the raw summary and showed "Untitled call".
+Nothing was missing and nothing had failed, and on this data every event is
+non-owned, so it read as broken everywhere.
+
+- When a rule has one shared implementation, test that **every call site uses
+  it**, not that the implementation exists. The implementation was never the
+  part at risk.
+- Enumerate the sites in the test, so a new screen that forgets is a failure
+  rather than a discovery.
+- The same applies to a new field: `conference_url` had to join the privacy
+  boundary at the moment it was introduced, not be remembered later.
+
 ## 7. Was it looked at, at both widths?
 
 **D128, D167, D183.** Rendered verification at 1920 and 412, never 1440 alone.

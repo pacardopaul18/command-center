@@ -40,7 +40,22 @@ describe('layer 2: a calendar Paul does not own stores free and busy only', () =
 	});
 
 	it('writes null for every descriptive field on a calendar Paul does not own', () => {
-		for (const field of ['summary', 'description', 'location', 'organizer', 'attendee_count', 'html_link']) {
+		/*
+		 * `conference_url` joined this list when it was added, and that is the
+		 * test working: a new field read from Google has to be put behind the
+		 * boundary at the moment it is introduced, not remembered later. A join
+		 * link is a door into a room, and the furthest thing from free/busy
+		 * there is.
+		 */
+		for (const field of [
+			'summary',
+			'description',
+			'location',
+			'organizer',
+			'attendee_count',
+			'html_link',
+			'conference_url'
+		]) {
 			expect(
 				connections.includes(`ownedByPaul ? e.${field} : null`),
 				`${field} is stored unconditionally. A partner's meeting must reach this ` +
