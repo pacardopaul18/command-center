@@ -3,6 +3,7 @@ import type { ApiEnv } from './env';
 import { nowUtc, todayInWorkingZone } from '../dates';
 import { openTicket, overdueTicket } from '../ticket-state';
 import { activeProject, archivedProject } from '../project-state';
+import { mentionsRichField, readRichField } from '../rich-field';
 import {
 	ApiError,
 	oneOf,
@@ -178,13 +179,14 @@ projects.post('/', async (c) => {
 	const body = await readJsonObject(c.req.raw);
 	const now = nowUtc();
 	const id = crypto.randomUUID();
+	const description = readRichField(body, 'description', 'Description');
 
 	try {
 		await c.env.DB.prepare(
 			`INSERT INTO projects
        (id, client_id, name, phase, status, owner_id, start_date, target_close,
-        next_milestone, description, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        next_milestone, description, description_html, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 		)
 			.bind(
 			id,
@@ -196,7 +198,8 @@ projects.post('/', async (c) => {
 			optionalDate(body.start_date, 'Start date'),
 			optionalDate(body.target_close, 'Target close'),
 			optionalText(body.next_milestone, 'Next milestone', 300),
-			optionalText(body.description, 'Description', 4000),
+			description.plain,
+			description.html,
 				now,
 				now
 			)
@@ -256,8 +259,7 @@ const UPDATABLE = [
 	'owner_id',
 	'start_date',
 	'target_close',
-	'next_milestone',
-	'description'
+	'next_milestone'
 ] as const;
 
 projects.patch('/:id', async (c) => {
@@ -269,6 +271,14 @@ projects.patch('/:id', async (c) => {
 
 	const sets: string[] = [];
 	const binds: unknown[] = [];
+
+	// The description writes two columns from one value, so it is handled once
+	// below rather than inside a builder whose shape is one name, one bind.
+	if (mentionsRichField(body, 'description')) {
+		const description = readRichField(body, 'description', 'Description');
+		sets.push('description = ?', 'description_html = ?');
+		binds.push(description.plain, description.html);
+	}
 
 	for (const field of UPDATABLE) {
 		if (!(field in body)) continue;
@@ -293,9 +303,6 @@ projects.patch('/:id', async (c) => {
 				break;
 			case 'next_milestone':
 				value = optionalText(raw, 'Next milestone', 300);
-				break;
-			case 'description':
-				value = optionalText(raw, 'Description', 4000);
 				break;
 			default:
 				value = optionalText(raw, field, 64);

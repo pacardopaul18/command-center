@@ -9,6 +9,7 @@ import { apiWrite } from '$lib/http';
 	import Select from './Select.svelte';
 	import Textarea from './Textarea.svelte';
 	import type { DefaultDue } from '$lib/settings';
+	import RichTextEditor from './RichTextEditor.svelte';
 
 	/**
 	 * Global capture, per the architecture's UX principles: reachable from
@@ -60,6 +61,14 @@ import { apiWrite } from '$lib/http';
 		titlePlaceholder: string;
 		areaLabel: string;
 		areaPlaceholder: string;
+		/**
+		 * Whether the box holds prose that its destination stores as rich text.
+		 *
+		 * Set for the kinds whose target column has an HTML twin. The others keep
+		 * a plain textarea, because giving somebody a bold button over a field
+		 * that stores plain text is an offer the save cannot keep.
+		 */
+		richArea?: boolean;
 		fields: FieldSpec[];
 		/** Where the saved thing can be opened. */
 		href: (created: Record<string, unknown>) => string;
@@ -195,6 +204,7 @@ import { apiWrite } from '$lib/http';
 			titlePlaceholder: 'Portal login fails for the Beacon proof of concept',
 			areaLabel: 'Description',
 			areaPlaceholder: 'Steps to reproduce, expected and actual.',
+			richArea: true,
 			fields: [
 				{
 					key: 'project_id',
@@ -254,7 +264,7 @@ import { apiWrite } from '$lib/http';
 					body: {
 						project_id: v.project_id,
 						title,
-						description: area,
+						description_html: area,
 						priority: v.priority || 'normal',
 						assignee: v.assignee,
 						due_date: v.due_date,
@@ -278,6 +288,7 @@ import { apiWrite } from '$lib/http';
 			titlePlaceholder: 'Caldera scoping call',
 			areaLabel: 'Agenda or notes',
 			areaPlaceholder: 'What it needs to cover.',
+			richArea: true,
 			fields: [
 				{ key: 'meeting_date', label: 'Date', kind: 'date', mono: true },
 				{
@@ -312,7 +323,7 @@ import { apiWrite } from '$lib/http';
 				path: '/api/meetings',
 				body: {
 					title,
-					notes: area,
+					notes_html: area,
 					meeting_date: v.meeting_date || today,
 					client_id: v.client_id,
 					project_id: v.project_id,
@@ -330,6 +341,7 @@ import { apiWrite } from '$lib/http';
 			titlePlaceholder: 'Caldera systems integration',
 			areaLabel: 'Brief',
 			areaPlaceholder: 'What the engagement covers, in a paragraph.',
+			richArea: true,
 			fields: [
 				{
 					key: 'client_id',
@@ -361,7 +373,7 @@ import { apiWrite } from '$lib/http';
 				path: '/api/projects',
 				body: {
 					name: title,
-					description: area,
+					description_html: area,
 					client_id: v.client_id,
 					target_close: v.target_close,
 					next_milestone: v.next_milestone,
@@ -381,6 +393,7 @@ import { apiWrite } from '$lib/http';
 			titlePlaceholder: 'Caldera Systems',
 			areaLabel: 'Notes',
 			areaPlaceholder: 'Anything worth remembering.',
+			richArea: true,
 			fields: [
 				{ key: 'contact_name', label: 'Contact person', kind: 'text', placeholder: 'Jane Smith' },
 				{
@@ -403,7 +416,7 @@ import { apiWrite } from '$lib/http';
 				path: '/api/invoicing/clients',
 				body: {
 					name: title,
-					notes: area,
+					notes_html: area,
 					contact_name: v.contact_name,
 					contact_email: v.contact_email,
 					billing_terms: v.billing_terms || 'Net 15',
@@ -467,6 +480,7 @@ import { apiWrite } from '$lib/http';
 			titlePlaceholder: 'Weekly billing run',
 			areaLabel: 'First steps',
 			areaPlaceholder: 'Rough steps, tidied later in the editor.',
+			richArea: true,
 			fields: [
 				{
 					key: 'category',
@@ -484,7 +498,7 @@ import { apiWrite } from '$lib/http';
 					path: '/api/sops',
 					body: {
 						title,
-						body: area,
+						body_html: area,
 						category: v.category,
 						review_due: v.review_due,
 						change_note: 'Captured from quick add'
@@ -805,7 +819,24 @@ import { apiWrite } from '$lib/http';
 		</div>
 
 		<FormField label={kind.areaLabel}>
-			<Textarea bind:value={area} rows={3} placeholder={kind.areaPlaceholder} />
+			{#if kind.richArea}
+				<!--
+					Keyed on the kind so switching kinds gives a fresh editor. A
+					contenteditable is seeded once and read from thereafter, so
+					reusing it across kinds would carry the last kind's text into
+					the next one.
+				-->
+				{#key kind.label}
+					<RichTextEditor
+						bind:value={area}
+						label={kind.areaLabel}
+						rows={3}
+						placeholder={kind.areaPlaceholder}
+					/>
+				{/key}
+			{:else}
+				<Textarea bind:value={area} rows={3} placeholder={kind.areaPlaceholder} />
+			{/if}
 		</FormField>
 
 		<div class="actions">

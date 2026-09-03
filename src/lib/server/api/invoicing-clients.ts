@@ -4,6 +4,7 @@ import { nowUtc, todayInWorkingZone } from '../dates';
 import { ApiError, oneOf, optionalText, readJsonObject, requiredText } from './validate';
 import { CLIENT_STATUSES, parseMoneyToCents } from '$lib/types';
 import type { ClientStatus } from '$lib/types';
+import { mentionsRichField, readRichField } from '../rich-field';
 
 /**
  * The client side of invoicing: who is billed, what they owe, and how.
@@ -389,7 +390,11 @@ invoicingClients.patch('/clients/:id/billing', async (c) => {
 	if ('billing_schedule' in body)
 		push('billing_schedule', optionalText(body.billing_schedule, 'Billing schedule', 60));
 	if ('billing_cc' in body) push('billing_cc', optionalText(body.billing_cc, 'CC addresses', 300));
-	if ('notes' in body) push('notes', optionalText(body.notes, 'Notes', 4000));
+	if (mentionsRichField(body, 'notes')) {
+		const notes = readRichField(body, 'notes', 'Notes');
+		push('notes', notes.plain);
+		push('notes_html', notes.html);
+	}
 	if ('status' in body)
 		push('status', oneOf<ClientStatus>(body.status, CLIENT_STATUSES, 'status', 'active'));
 
@@ -515,6 +520,9 @@ invoicingClients.post('/clients', async (c) => {
 	const id = crypto.randomUUID();
 
 	const name = requiredText(body.name, 'Client name', 200);
+	// The same helper the client route uses, so a client made here and one made
+	// there store the same pair of columns.
+	const notes = readRichField(body, 'notes', 'Notes');
 	const rateRaw = body.default_rate_cents ?? body.rate;
 	let rate: number | null = null;
 	if (rateRaw !== null && rateRaw !== undefined && rateRaw !== '') {
@@ -528,15 +536,16 @@ invoicingClients.post('/clients', async (c) => {
 		await db
 			.prepare(
 				`INSERT INTO clients
-         (id, name, billing_terms, status, notes, default_rate_cents,
+         (id, name, billing_terms, status, notes, notes_html, default_rate_cents,
           billing_address, billing_schedule, billing_cc, created_at, updated_at)
-         VALUES (?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?)`
+         VALUES (?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?)`
 			)
 			.bind(
 				id,
 				name,
 				optionalText(body.billing_terms, 'Payment terms', 120),
-				optionalText(body.notes, 'Notes', 4000),
+				notes.plain,
+				notes.html,
 				rate,
 				optionalText(body.billing_address, 'Billing address', 500),
 				optionalText(body.billing_schedule, 'Billing schedule', 60),

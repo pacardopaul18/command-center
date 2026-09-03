@@ -97,6 +97,9 @@ export interface Project {
 	target_close: string | null;
 	next_milestone: string | null;
 	description: string | null;
+	/* The rich version. Null on a row nobody has edited since the editor shipped;
+	   the plain column above is what those rows have always held. See rich-text.ts. */
+	description_html?: string | null;
 	created_at: string;
 	updated_at: string;
 	// Joined or rolled up by the list and detail queries, not stored on the row.
@@ -183,6 +186,10 @@ export interface SopVersion {
 	sop_id: string;
 	version_number: number;
 	body: string;
+	/* Null on a version written before the editor shipped, which renders as the
+	   markdown it was typed as. A version is immutable, so the pair travels with
+	   it rather than with the SOP. */
+	body_html?: string | null;
 	change_note: string | null;
 	author_id: string | null;
 	created_at: string;
@@ -501,6 +508,7 @@ export interface Client {
 	default_rate_cents?: number | null;
 	status: ClientStatus;
 	notes: string | null;
+	notes_html?: string | null;
 	created_at: string;
 	updated_at: string;
 	project_count?: number;
@@ -580,6 +588,7 @@ export interface Meeting {
 	attendees: string | null;
 	recording_url: string | null;
 	notes: string | null;
+	notes_html?: string | null;
 	transcript_ref: string | null;
 	summary: string | null;
 	summary_reviewed_at: string | null;
@@ -847,6 +856,7 @@ export interface Ticket {
 	project_id: string;
 	title: string;
 	description: string | null;
+	description_html?: string | null;
 	start_date: string | null;
 	due_date: string | null;
 	estimate_hours: number | null;

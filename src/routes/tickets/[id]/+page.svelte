@@ -16,6 +16,8 @@
 	import FormField from '$lib/components/FormField.svelte';
 	import Input from '$lib/components/Input.svelte';
 	import Markdown from '$lib/components/Markdown.svelte';
+	import RichText from '$lib/components/RichText.svelte';
+	import RichTextEditor from '$lib/components/RichTextEditor.svelte';
 	import Select from '$lib/components/Select.svelte';
 	import StatusChip from '$lib/components/StatusChip.svelte';
 	import Textarea from '$lib/components/Textarea.svelte';
@@ -45,7 +47,6 @@
 	function startEdit() {
 		edit = {
 			title: ticket.title,
-			description: ticket.description ?? '',
 			start_date: ticket.start_date ?? '',
 			due_date: ticket.due_date ?? '',
 			estimate_hours: ticket.estimate_hours == null ? '' : String(ticket.estimate_hours),
@@ -101,7 +102,9 @@
 		busy = true;
 		errorMessage = '';
 		const res = await apiWrite(`/api/tickets/${ticket.id}`, 'PATCH', {
-			description: descriptionDraft.trim() || null
+			// The HTML is the value. The server derives the plain column from it,
+			// in one place, so the two cannot say different things.
+			description_html: descriptionDraft.trim() || null
 		});
 		busy = false;
 		if (res.ok) {
@@ -333,11 +336,14 @@
 				<FormField label="Due">
 					<Input type="date" bind:value={edit.due_date} mono />
 				</FormField>
-				<div class="span-all">
-					<FormField label="Description">
-						<Textarea bind:value={edit.description} rows={5} maxlength={8000} />
-					</FormField>
-				</div>
+				<!--
+					No description here.
+
+					It has its own card below with the editor in it, and two boxes
+					for one field is how the two get different content: the last
+					form saved wins, and which one that was depends on which the
+					reader happened to open.
+				-->
 			</div>
 			<div class="form-actions">
 				<Button type="submit" disabled={busy}>Save changes</Button>
@@ -362,7 +368,7 @@
 			size="sm"
 			disabled={busy}
 			onclick={() => {
-				descriptionDraft = ticket.description ?? '';
+				descriptionDraft = ticket.description_html ?? '';
 				editingDescription = !editingDescription;
 			}}
 		>
@@ -372,21 +378,30 @@
 
 	{#if editingDescription}
 		<form onsubmit={saveDescription}>
-			<Textarea
-				bind:value={descriptionDraft}
-				rows={8}
-				maxlength={8000}
-				aria-label="Description"
-				placeholder="What this ticket is, and anything the next person needs."
-			/>
+			<!--
+				Seeded from the HTML when there is any, and from the plain column
+				when there is not. A ticket written before the editor existed opens
+				as the paragraphs it was typed as rather than as one run-on block.
+			-->
+			{#key editingDescription}
+				<RichTextEditor
+					bind:value={descriptionDraft}
+					plain={ticket.description}
+					label="Description"
+					rows={8}
+					placeholder="What this ticket is, and anything the next person needs."
+				/>
+			{/key}
 			<div class="form-actions">
 				<Button type="submit" disabled={busy}>Save description</Button>
 			</div>
 		</form>
-	{:else if ticket.description}
-		<Markdown source={ticket.description} />
 	{:else}
-		<p class="empty">No description yet.</p>
+		<RichText
+			html={ticket.description_html}
+			text={ticket.description}
+			empty="No description yet."
+		/>
 	{/if}
 </Card>
 

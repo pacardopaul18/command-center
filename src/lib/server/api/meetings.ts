@@ -6,6 +6,7 @@ import { meetingAi } from './meeting-ai';
 import { PAGE_SIZES, readPaging } from './action-items';
 import { resolveAccount } from '../accounts';
 import { getSettings } from '../settings';
+import { mentionsRichField, readRichField } from '../rich-field';
 
 /**
  * Meetings, with transcript import.
@@ -22,7 +23,7 @@ import { getSettings } from '../settings';
 
 const LIST_SELECT = `
   SELECT m.id, m.client_id, m.project_id, m.title, m.meeting_date, m.attendees,
-         m.recording_url, m.notes, m.transcript_ref, m.summary, m.summary_reviewed_at,
+         m.recording_url, m.notes, m.notes_html, m.transcript_ref, m.summary, m.summary_reviewed_at,
          m.created_at, m.updated_at,
          cl.name AS client_name,
          p.name  AS project_name,
@@ -390,12 +391,14 @@ meetings.post('/', async (c) => {
 	const meetingDate = optionalDate(body.meeting_date, 'Meeting date');
 	if (!meetingDate) throw new ApiError(400, 'A meeting needs a date.');
 
+	const notes = readRichField(body, 'notes', 'Notes');
+
 	try {
 		await c.env.DB.prepare(
 			`INSERT INTO meetings
          (id, client_id, project_id, title, meeting_date, attendees, recording_url,
-          notes, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          notes, notes_html, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 		)
 			.bind(
 				id,
@@ -407,7 +410,8 @@ meetings.post('/', async (c) => {
 				optionalText(body.recording_url, 'Recording link', 1000),
 				// The Quick Add form has always sent this and it has always been
 				// dropped: no column, no route field, and a 200 either way.
-				optionalText(body.notes, 'Notes', 8000),
+				notes.plain,
+				notes.html,
 				now,
 				now
 			)
@@ -430,7 +434,6 @@ const UPDATABLE = [
 	'meeting_date',
 	'attendees',
 	'recording_url',
-	'notes',
 	'summary'
 ] as const;
 
@@ -443,6 +446,14 @@ meetings.patch('/:id', async (c) => {
 
 	const sets: string[] = [];
 	const binds: unknown[] = [];
+
+	// Notes write two columns from one value, so they are read once here rather
+	// than special cased inside a builder whose shape is one name, one bind.
+	if (mentionsRichField(body, 'notes')) {
+		const notes = readRichField(body, 'notes', 'Notes');
+		sets.push('notes = ?', 'notes_html = ?');
+		binds.push(notes.plain, notes.html);
+	}
 
 	for (const field of UPDATABLE) {
 		if (!(field in body)) continue;

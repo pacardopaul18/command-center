@@ -27,6 +27,8 @@
 	import StatusChip from '$lib/components/StatusChip.svelte';
 	import Textarea from '$lib/components/Textarea.svelte';
 	import type { PageData } from './$types';
+	import RichText from '$lib/components/RichText.svelte';
+	import RichTextEditor from '$lib/components/RichTextEditor.svelte';
 
 	let { data }: { data: PageData } = $props();
 
@@ -70,7 +72,9 @@
 			next_milestone: project.next_milestone ?? '',
 			start_date: project.start_date ?? '',
 			target_close: project.target_close ?? '',
-			description: project.description ?? ''
+			// The HTML is what the editor produces and what the save sends. The
+			// server derives the plain column from it in one place.
+			description_html: project.description_html ?? ''
 		};
 	}
 
@@ -397,7 +401,12 @@
 					</div>
 					<div class="span-all">
 						<FormField label="Description">
-							<Textarea bind:value={edit.description} />
+							<RichTextEditor
+								bind:value={edit.description_html}
+								plain={project.description}
+								label="Description"
+								rows={6}
+							/>
 						</FormField>
 					</div>
 				</div>
@@ -820,10 +829,10 @@
 	{/if}
 </Card>
 
-{#if project.description}
+{#if project.description || project.description_html}
 	<div class="block">
 		<Card title="Description">
-			<p class="description">{project.description}</p>
+			<RichText html={project.description_html} text={project.description} />
 		</Card>
 	</div>
 {/if}
@@ -1291,11 +1300,6 @@
 		padding: var(--space-5) var(--space-4);
 		text-align: center;
 		color: var(--text-secondary);
-	}
-
-	.description {
-		white-space: pre-wrap;
-		overflow-wrap: anywhere;
 	}
 
 	@media (min-width: 720px) {

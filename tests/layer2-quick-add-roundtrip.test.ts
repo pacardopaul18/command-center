@@ -239,7 +239,14 @@ describe('layer 2: the form and the route name the same fields', () => {
 		expect(orphans, 'these Quick Add fields are rendered but never sent').toEqual([]);
 	});
 
-	it('offers the meeting notes box and posts it as notes', () => {
-		expect(quickAdd).toMatch(/notes: area/);
+	it('offers the meeting notes box and posts it where the route reads it', () => {
+		/*
+		 * P2 turned this box into the shared rich-text editor, so the key moved
+		 * from `notes` to `notes_html`. The route reads either, but the form has
+		 * to send the one that matches what its box produces: sending HTML under
+		 * the plain key would store the markup as the searchable text.
+		 */
+		expect(quickAdd).toMatch(/notes_html: area/);
+		expect(quickAdd).toMatch(/richArea: true/);
 	});
 });

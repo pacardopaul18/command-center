@@ -9,6 +9,8 @@
 	import StatusChip from '$lib/components/StatusChip.svelte';
 	import Textarea from '$lib/components/Textarea.svelte';
 	import type { PageData } from './$types';
+	import RichText from '$lib/components/RichText.svelte';
+	import RichTextEditor from '$lib/components/RichTextEditor.svelte';
 
 	let { data }: { data: PageData } = $props();
 
@@ -18,7 +20,7 @@
 	let showForm = $state(false);
 	let editingId = $state<string | null>(null);
 
-	let draft = $state({ name: '', billing_terms: '', notes: '' });
+	let draft = $state({ name: '', billing_terms: '', notes_html: '' });
 	let edit = $state<Record<string, string>>({});
 
 	async function send(path: string, method: string, body: unknown, message: string) {
@@ -53,7 +55,7 @@
 			return;
 		}
 		if (await send('/api/clients', 'POST', draft, 'Client created.')) {
-			draft = { name: '', billing_terms: '', notes: '' };
+			draft = { name: '', billing_terms: '', notes_html: '' };
 			showForm = false;
 		}
 	}
@@ -64,7 +66,7 @@
 		edit = {
 			name: client.name,
 			billing_terms: client.billing_terms ?? '',
-			notes: client.notes ?? ''
+			notes_html: client.notes_html ?? ''
 		};
 	}
 
@@ -136,7 +138,7 @@
 					</FormField>
 					<div class="span-all">
 						<FormField label="Notes">
-							<Textarea bind:value={draft.notes} />
+							<RichTextEditor bind:value={draft.notes_html} label="Notes" rows={4} />
 						</FormField>
 					</div>
 				</div>
@@ -201,7 +203,12 @@
 										</FormField>
 										<div class="span-all">
 											<FormField label="Notes">
-												<Textarea bind:value={edit.notes} />
+												<RichTextEditor
+													bind:value={edit.notes_html}
+													plain={client.notes}
+													label="Notes"
+													rows={4}
+												/>
 											</FormField>
 										</div>
 									</div>

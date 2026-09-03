@@ -11,6 +11,8 @@
 	import Select from '$lib/components/Select.svelte';
 	import Textarea from '$lib/components/Textarea.svelte';
 	import type { PageData } from './$types';
+	import RichText from '$lib/components/RichText.svelte';
+	import RichTextEditor from '$lib/components/RichTextEditor.svelte';
 
 	let { data }: { data: PageData } = $props();
 
@@ -19,6 +21,8 @@
 	let errorMessage = $state('');
 	let mode = $state<'read' | 'edit' | 'meta'>('read');
 	let newBody = $state('');
+	/* The version's plain body, so an older markdown version opens as itself. */
+	let newBodyPlain = $state('');
 	let changeNote = $state('');
 	let meta = $state<Record<string, string>>({});
 
@@ -53,7 +57,11 @@
 	function startEdit() {
 		mode = 'edit';
 		errorMessage = '';
-		newBody = data.viewing?.body ?? '';
+		// Seeded from the version's HTML when it has any. A version written before
+		// the editor shipped has only markdown, and the editor converts it on
+		// open so the next version keeps the shape rather than flattening it.
+		newBody = data.viewing?.body_html ?? '';
+		newBodyPlain = data.viewing?.body ?? '';
 		changeNote = '';
 	}
 
@@ -76,7 +84,7 @@
 		const ok = await send(
 			`/api/sops/${sop.id}/versions`,
 			'POST',
-			{ body: newBody, change_note: changeNote },
+			{ body_html: newBody, change_note: changeNote },
 			'New version saved.'
 		);
 		if (ok) mode = 'read';
@@ -281,7 +289,14 @@
 			<Card title="New version" subtitle="Version {(sop.version_count ?? 0) + 1}. Nothing before it changes.">
 				<form onsubmit={saveVersion}>
 					<FormField label="Body">
-						<Textarea bind:value={newBody} rows={18} />
+						{#key mode}
+							<RichTextEditor
+								bind:value={newBody}
+								plain={newBodyPlain}
+								label="Body"
+								rows={18}
+							/>
+						{/key}
 					</FormField>
 					<div class="note-field">
 						<FormField label="Change note" hint="What changed and why. This is the audit trail.">
@@ -311,9 +326,17 @@
 					</p>
 				{/if}
 
-				<!-- Rendered through the one markdown component, which never produces
-				     an HTML string. See D36 and the Markdown component's own note. -->
-				<Markdown source={data.viewing.body} />
+				<!--
+					A version written in the editor renders as its own HTML; one
+					written before it renders as the markdown it has always been.
+					Neither path constructs an HTML string: both parse into a tree
+					and draw real elements. See D36 and rich-text.ts.
+				-->
+				{#if data.viewing.body_html}
+					<RichText html={data.viewing.body_html} text={data.viewing.body} />
+				{:else}
+					<Markdown source={data.viewing.body} />
+				{/if}
 			</Card>
 		{/if}
 	</div>

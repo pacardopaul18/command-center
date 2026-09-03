@@ -13,6 +13,7 @@
 	import StatusChip from '$lib/components/StatusChip.svelte';
 	import Textarea from '$lib/components/Textarea.svelte';
 	import type { PageData } from './$types';
+	import RichText from '$lib/components/RichText.svelte';
 
 	let { data }: { data: PageData } = $props();
 
@@ -213,10 +214,10 @@
 	Shown above the transcript because for a meeting that has not happened yet it
 	is the only thing on the page with anything in it.
 -->
-{#if meeting.notes}
+{#if meeting.notes || meeting.notes_html}
 	<div class="block">
 		<Card title="Notes" subtitle="Written by hand, not generated">
-			<p class="notes">{meeting.notes}</p>
+			<RichText html={meeting.notes_html} text={meeting.notes} />
 		</Card>
 	</div>
 {/if}
@@ -803,12 +804,6 @@
 	.note {
 		font-size: var(--text-sm);
 		color: var(--text-secondary);
-	}
-
-	.notes {
-		margin: 0;
-		white-space: pre-wrap;
-		max-width: 72ch;
 	}
 
 	/* The unreviewed banner is deliberately loud. An AI summary nobody has

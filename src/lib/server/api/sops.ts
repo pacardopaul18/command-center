@@ -12,6 +12,7 @@ import {
 } from './validate';
 import { SOP_STATUSES } from '$lib/types';
 import type { SopStatus } from '$lib/types';
+import { readRichField } from '../rich-field';
 
 /**
  * SOP library with version history.
@@ -561,7 +562,8 @@ sops.post('/', async (c) => {
 	const versionId = crypto.randomUUID();
 
 	const title = requiredText(body.title, 'Title', 300);
-	const versionBody = requiredText(body.body, 'Body', 200_000);
+	const versionBody = readRichField(body, 'body', 'Body');
+	if (!versionBody.plain) throw new ApiError(400, 'Body is required.');
 	const category = optionalText(body.category, 'Category', 120);
 	const reviewDue = optionalDate(body.review_due, 'Review due');
 	const ownerId = optionalText(body.owner_id, 'owner_id', 64);
@@ -573,9 +575,10 @@ sops.post('/', async (c) => {
        VALUES (?, ?, ?, NULL, ?, ?, 'active', ?, ?)`
 		).bind(sopId, title, category, ownerId, reviewDue, now, now),
 		c.env.DB.prepare(
-			`INSERT INTO sop_versions (id, sop_id, version_number, body, change_note, author_id, created_at)
-       VALUES (?, ?, 1, ?, ?, ?, ?)`
-		).bind(versionId, sopId, versionBody, changeNote, ownerId, now),
+			`INSERT INTO sop_versions
+         (id, sop_id, version_number, body, body_html, change_note, author_id, created_at)
+       VALUES (?, ?, 1, ?, ?, ?, ?, ?)`
+		).bind(versionId, sopId, versionBody.plain, versionBody.html, changeNote, ownerId, now),
 		c.env.DB.prepare('UPDATE sops SET current_version_id = ? WHERE id = ?').bind(versionId, sopId)
 	]);
 
@@ -650,10 +653,12 @@ sops.patch('/:id', async (c) => {
 sops.post('/:id/versions', async (c) => {
 	const id = c.req.param('id');
 	const body = await readJsonObject(c.req.raw);
+	const version = readRichField(body, 'body', 'Body');
+	if (!version.plain) throw new ApiError(400, 'Body is required.');
 	return addVersion(
 		c,
 		id,
-		requiredText(body.body, 'Body', 200_000),
+		version,
 		optionalText(body.change_note, 'Change note', 500),
 		optionalText(body.author_id, 'author_id', 64)
 	);
@@ -668,10 +673,10 @@ sops.post('/:id/versions/:versionId/restore', async (c) => {
 	const versionId = c.req.param('versionId');
 
 	const source = await c.env.DB.prepare(
-		'SELECT body, version_number FROM sop_versions WHERE id = ? AND sop_id = ?'
+		'SELECT body, body_html, version_number FROM sop_versions WHERE id = ? AND sop_id = ?'
 	)
 		.bind(versionId, id)
-		.first<{ body: string; version_number: number }>();
+		.first<{ body: string; body_html: string | null; version_number: number }>();
 	if (!source) throw new ApiError(404, 'Version not found for this SOP.');
 
 	const body = await readJsonObject(c.req.raw).catch(() => ({}) as Record<string, unknown>);
@@ -679,13 +684,24 @@ sops.post('/:id/versions/:versionId/restore', async (c) => {
 		optionalText(body.change_note, 'Change note', 500) ??
 		`Restored the content of version ${source.version_number}`;
 
-	return addVersion(c, id, source.body, note, optionalText(body.author_id, 'author_id', 64));
+	return addVersion(
+		c,
+		id,
+		{ plain: source.body, html: source.body_html },
+		note,
+		optionalText(body.author_id, 'author_id', 64)
+	);
 });
 
 async function addVersion(
 	c: Context<ApiEnv>,
 	sopId: string,
-	body: string,
+	/*
+	 * The body, as both columns. A version is immutable history, so it carries
+	 * its own HTML rather than the SOP carrying one copy: restoring version 3
+	 * has to bring back exactly what version 3 said, formatting included.
+	 */
+	body: { html: string | null; plain: string | null },
 	changeNote: string | null,
 	authorId: string | null
 ) {
@@ -709,9 +725,10 @@ async function addVersion(
 
 	await c.env.DB.batch([
 		c.env.DB.prepare(
-			`INSERT INTO sop_versions (id, sop_id, version_number, body, change_note, author_id, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`
-		).bind(versionId, sopId, nextNumber, body, changeNote, authorId, now),
+			`INSERT INTO sop_versions
+         (id, sop_id, version_number, body, body_html, change_note, author_id, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+		).bind(versionId, sopId, nextNumber, body.plain, body.html, changeNote, authorId, now),
 		c.env.DB.prepare('UPDATE sops SET current_version_id = ?, updated_at = ? WHERE id = ?').bind(
 			versionId,
 			now,

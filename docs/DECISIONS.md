@@ -6092,3 +6092,107 @@ is what settled the rest.
 That misparse is worth its own line: a source-reading audit can be wrong in a way
 that produces a confident, plausible, entirely fictional table. Two of the three
 "findings" it produced were artifacts.
+
+### D222: a guard proven only by passing is a family, and this is its third member
+
+D116 said it about tests written after the code. D80 said it about a guard whose
+dangerous path was unreachable for an unrelated reason. Naming the family now,
+because a third instance means the rule generalises past the case that produced
+it.
+
+The three:
+
+1. **D80.** A matcher that named the index rather than the column. It could not
+   have failed, because what it looked for was never present.
+2. **D116.** Guarantee tests written after the code, passing on their first run.
+   Mutation checked afterwards as the honest substitute for writing them first.
+3. **This one.** The static check that Quick Add sends every field it renders
+   passed on its first run, and passed again with a deliberately unwired field
+   injected into the form. The escaping had collapsed one level, so the regex
+   was matching a backspace character rather than a word boundary. Rewritten
+   without escapes, it failed on the injected field and passed when the field
+   was removed.
+
+The shared shape: a green run was read as evidence that a guard works, when it
+is only evidence that the guard did not object. Those are different claims, and
+the second is also what a broken guard produces.
+
+The rule, which is now general:
+
+**A new guard has demonstrated nothing until it has been seen to fail. Break the
+thing it guards, watch the failure, restore.** Writing the test before the code
+gets this for free, which is why it remains the better order. Where that did not
+happen, the deliberate break is the substitute, and skipping it leaves a green
+line standing in for a property nobody has examined.
+
+Worth saying plainly: the injected field was found by trying, not by reading.
+Re-reading the test would not have shown it. The escaping looked correct in
+every rendering of the source except the one the regex engine saw.
+
+### D223: one rich-text editor, stored as two columns
+
+P2. Ticket descriptions, project and client notes, meeting notes and SOP bodies
+were plain textareas. A description pasted out of Asana arrived as a wall of
+run-together sentences with its lists and emphasis stripped, and the structure
+was how the writer had said what mattered.
+
+**One component, not one per screen.** `RichTextEditor.svelte` is the only
+editor and `RichText.svelte` is the only reader. The interesting case is the one
+that is easy to get right in some places and forget in others, and a second
+editor written later would arrive with its own paste handling, its own idea of
+what is allowed, and its own bugs. The ticket page had two boxes for the same
+description, one in the inline edit form and one in its own card; the inline one
+is gone, because two boxes for one field is how the two get different content and
+which one wins depends on which the reader happened to open.
+
+**Two columns, not a changed one.** The HTML goes in `<field>_html` and the
+plain-text projection stays in the original column. Search, the digests, the AI
+prompts, the CSV exports and every screen that reads those fields today keep
+working untouched, and none of them had to learn about markup. The projection is
+derived from the HTML on write by one function, so the pair cannot drift. A row
+with a NULL html column is one nobody has edited since this shipped, and it
+renders as the plain text it always was.
+
+**Parsed and rebuilt, never filtered.** The same approach as `email-html.ts` and
+the markdown renderer, and it is stronger than sanitising. Nothing filters a
+hostile string and hopes it caught every vector. The input is parsed into a
+validated tree and the stored string is built back up from that tree with every
+piece of text escaped, so the output can only contain constructs `rich-text.ts`
+knows how to emit. `{@html}` appears nowhere in the feature: the renderer walks
+the tree emitting real Svelte elements.
+
+**The server is the boundary.** The editor sanitises too, but that is a courtesy
+to the writer so that what they see is what will be stored. The value that
+reaches the database is the one the route built out of a parsed tree, because a
+request can be posted by anything and a guard that lives only in the page is a
+guard an attacker skips. The tests post hostile HTML straight at the route with
+no browser involved, and one of them reads the sqlite file directly, because the
+question is what is at rest and not what a query happens to return.
+
+**The allow list is Asana's**, so a description round-trips. `h1` and `h2` are
+stored as themselves rather than demoted, because the stored value has to match
+what the workspace holds; the renderer maps them down to `h3` and `h4` at draw
+time so a page keeps its single `h1`. GOLDEN RULE unchanged: nothing is written
+back to Asana.
+
+Two things the tests found, both by being written first:
+
+- **A paragraph boundary is a blank line, a line break is one newline.** The
+  first projection collapsed both to a single newline, so converting text to
+  HTML and back lost a paragraph boundary on every pass. A note saved three
+  times would have arrived as one block.
+- **Idempotence is a property worth asserting.** A sanitiser that rewrites its
+  own output changes the stored value on every save, which moves `updated_at`
+  and makes every comparison against the mirror report a difference that is
+  really the sanitiser's fault.
+
+And one from the break exercise, which is the interesting one:
+
+**Each defence held when the other was removed.** Deleting the discard set alone
+did not let a script through, because the tag was then not in the accept map.
+Making the accept map pass unknown tags through alone did not either, because
+the discard set had already thrown the script away. Only breaking both at once
+produced a failure. That is defence in depth working rather than a vacuous test,
+but it is worth writing down: a single-guard break that does not fail may mean
+the guard is dead, or may mean a second guard caught it, and those look
+identical from the outside. Break to the point of failure, then restore.

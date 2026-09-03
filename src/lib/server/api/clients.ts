@@ -4,6 +4,7 @@ import { nowUtc, todayInWorkingZone } from '../dates';
 import { ApiError, oneOf, optionalText, readJsonObject, requiredText } from './validate';
 import { CLIENT_STATUSES, parseMoneyToCents } from '$lib/types';
 import type { ClientStatus } from '$lib/types';
+import { mentionsRichField, readRichField } from '../rich-field';
 
 /**
  * Clients, thin but complete: list, create, edit, archive. D37.
@@ -84,17 +85,20 @@ clients.post('/', async (c) => {
 	const body = await readJsonObject(c.req.raw);
 	const now = nowUtc();
 	const id = crypto.randomUUID();
+	const notes = readRichField(body, 'notes', 'Notes');
 
 	try {
 		await c.env.DB.prepare(
-			`INSERT INTO clients (id, name, billing_terms, status, notes, created_at, updated_at)
-       VALUES (?, ?, ?, 'active', ?, ?, ?)`
+			`INSERT INTO clients
+         (id, name, billing_terms, status, notes, notes_html, created_at, updated_at)
+       VALUES (?, ?, ?, 'active', ?, ?, ?, ?)`
 		)
 			.bind(
 				id,
 				requiredText(body.name, 'Name', 200),
 				optionalText(body.billing_terms, 'Billing terms', 120),
-				optionalText(body.notes, 'Notes', 4000),
+				notes.plain,
+				notes.html,
 				now,
 				now
 			)
@@ -118,7 +122,7 @@ clients.post('/', async (c) => {
 	return c.json({ client: created }, 201);
 });
 
-const UPDATABLE = ['name', 'billing_terms', 'notes', 'status', 'default_rate_cents'] as const;
+const UPDATABLE = ['name', 'billing_terms', 'status', 'default_rate_cents'] as const;
 
 /**
  * A default hourly rate, in cents.
@@ -153,6 +157,14 @@ clients.patch('/:id', async (c) => {
 	const sets: string[] = [];
 	const binds: unknown[] = [];
 
+	// Notes write two columns from one value, so they are read once here rather
+	// than special cased inside a builder whose shape is one name, one bind.
+	if (mentionsRichField(body, 'notes')) {
+		const notes = readRichField(body, 'notes', 'Notes');
+		sets.push('notes = ?', 'notes_html = ?');
+		binds.push(notes.plain, notes.html);
+	}
+
 	for (const field of UPDATABLE) {
 		if (!(field in body)) continue;
 		const raw = body[field];
@@ -164,9 +176,6 @@ clients.patch('/:id', async (c) => {
 				break;
 			case 'billing_terms':
 				value = optionalText(raw, 'Billing terms', 120);
-				break;
-			case 'notes':
-				value = optionalText(raw, 'Notes', 4000);
 				break;
 			case 'default_rate_cents':
 				// Money, so integer cents and never a float. Empty clears the rate,

@@ -6,6 +6,7 @@ import { ApiError, oneOf, optionalDate, optionalText, readJsonObject, requiredTe
 import { TICKET_PRIORITIES, TICKET_STATUSES } from '$lib/types';
 import type { TicketPriority, TicketStatus } from '$lib/types';
 import { FINISHED_TICKET_STATUSES, finishedTicket, openTicket } from '../ticket-state';
+import { mentionsRichField, readRichField } from '../rich-field';
 
 /**
  * Tickets: the worked unit under a project.
@@ -240,7 +241,6 @@ tickets.get('/:id', async (c) => {
 /** Fields a caller may set, on create and on patch alike. */
 const WRITABLE = [
 	'title',
-	'description',
 	'start_date',
 	'due_date',
 	'estimate_hours',
@@ -254,8 +254,6 @@ function readField(field: (typeof WRITABLE)[number], raw: unknown): string | num
 	switch (field) {
 		case 'title':
 			return requiredText(raw, 'Title', 300);
-		case 'description':
-			return optionalText(raw, 'Description', 8000);
 		case 'start_date':
 			return optionalDate(raw, 'Start date');
 		case 'due_date':
@@ -287,20 +285,24 @@ tickets.post('/', async (c) => {
 
 	const projectId = requiredText(body.project_id, 'Project', 64);
 	const status = oneOf<TicketStatus>(body.status, TICKET_STATUSES, 'status', 'open');
+	// One call produces both columns, so the markup and the text search reads
+	// can never say different things about the same description.
+	const description = readRichField(body, 'description', 'Description');
 
 	try {
 		await c.env.DB.prepare(
 			`INSERT INTO tickets
-         (id, project_id, title, description, start_date, due_date, estimate_hours,
-          status, priority, assignee, reporter, completed_at,
+         (id, project_id, title, description, description_html, start_date, due_date,
+          estimate_hours, status, priority, assignee, reporter, completed_at,
           converted_from_action_item_id, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 		)
 			.bind(
 				id,
 				projectId,
 				readField('title', body.title),
-				readField('description', body.description),
+				description.plain,
+				description.html,
 				readField('start_date', body.start_date),
 				readField('due_date', body.due_date),
 				readField('estimate_hours', body.estimate_hours),
@@ -338,6 +340,15 @@ tickets.patch('/:id', async (c) => {
 		if (!(field in body)) continue;
 		sets.push(`${field} = ?`);
 		binds.push(readField(field, body[field]));
+	}
+
+	// The description writes two columns from one value. Left out of the loop
+	// above rather than special cased inside it, because a field that sets two
+	// columns does not fit a builder whose whole shape is one name, one bind.
+	if (mentionsRichField(body, 'description')) {
+		const description = readRichField(body, 'description', 'Description');
+		sets.push('description = ?', 'description_html = ?');
+		binds.push(description.plain, description.html);
 	}
 
 	if (sets.length === 0) throw new ApiError(400, 'Nothing to update.');
