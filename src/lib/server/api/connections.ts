@@ -1,7 +1,7 @@
 import type { D1Database } from '@cloudflare/workers-types';
 import { Hono } from 'hono';
 import type { ApiEnv } from './env';
-import { nowUtc } from '../dates';
+import { WORKING_TIME_ZONE, nowUtc } from '../dates';
 import { ApiError, readJsonObject } from './validate';
 import {
 	assertOwned,
@@ -26,6 +26,13 @@ import {
 	whoAmI,
 	writeTokens
 } from '../google';
+import {
+	gapsAreMeaningful,
+	readBusy,
+	straddlesClockChange,
+	zoneOffsetMinutes
+} from '$lib/calendar-gaps';
+import { findSlots } from '$lib/free-slots';
 
 /**
  * Connections to outside accounts. Google, built dark.
@@ -985,4 +992,145 @@ connections.put('/active-account', async (c) => {
 
 	await c.env.SESSIONS.put(ACTIVE_ACCOUNT_KEY, wanted);
 	return c.json({ ok: true, active: wanted });
+});
+
+/**
+ * Gaps, from the calendar already in the database.
+ *
+ * W3. The live free/busy search on the Calendar page asks Google and is right
+ * when the answer must be current. This one reads the mirror, so it needs no
+ * network and cannot fail per calendar, and it covers the partner calendars
+ * that store free and busy only. Their shape is exactly what a gap search
+ * needs, so the privacy rule cost this feature nothing.
+ *
+ * WHAT IT WILL NOT DO. It will not answer from an empty mirror. A window with
+ * no events is not a clear diary, it is a calendar nobody has synced, and
+ * "you are free all week" is the most expensive way to be confidently wrong.
+ * It says which it is instead. D214.
+ *
+ * FRESHNESS IS PART OF THE ANSWER, not a footnote. A gap found in a mirror
+ * synced three hours ago is a gap as of three hours ago, and the caller is
+ * given the age so the screen can say so rather than implying currency.
+ */
+connections.get('/google/calendar/gaps', async (c) => {
+	const minutes = Math.min(Math.max(Number(c.req.query('minutes') ?? 30), 5), 480);
+	const days = Math.min(Math.max(Number(c.req.query('days') ?? 14), 1), 60);
+	const dayStartHour = Math.min(Math.max(Number(c.req.query('from_hour') ?? 9), 0), 23);
+	const dayEndHour = Math.min(Math.max(Number(c.req.query('to_hour') ?? 17), 1), 24);
+
+	const from = new Date();
+	const to = new Date(from.getTime() + days * 86_400_000);
+
+	const { results } = await c.env.DB.prepare(
+		/*
+     * The interval and nothing else.
+     *
+     * Not the summary, the organizer, the location or the link, and not the
+     * calendar's name either: a gap is start and end times, and a busy block
+     * that arrives carrying whose it is has brought more than the computation
+     * needs. Six of the seven calendars store free and busy only anyway, so
+     * most of those columns are null, and selecting them would still be the
+     * wrong instruction to leave behind for the next person. D205.
+     *
+     * All calendars, deliberately. A gap that considered only Paul's own would
+     * confidently offer times six other people have already filled, which is
+     * worse than having no gap finder.
+     */
+		`SELECT e.starts_at, e.ends_at, e.all_day
+     FROM calendar_events e
+     WHERE e.starts_at < ? AND COALESCE(e.ends_at, e.starts_at) > ?
+     ORDER BY e.starts_at`
+	)
+		.bind(to.toISOString(), from.toISOString())
+		.all<{ starts_at: string; ends_at: string | null; all_day: number | null }>();
+
+	const events = results ?? [];
+	const reading = readBusy(events);
+
+	// How old the mirror is, from the rows themselves rather than from a sync
+	// state table, because the question is when these events were read.
+	const newest = await c.env.DB.prepare(
+		'SELECT MAX(fetched_at) AS at, COUNT(*) AS n FROM calendar_events'
+	).first<{ at: string | null; n: number }>();
+	const asOf = newest?.at ?? null;
+
+	const calendars = await c.env.DB.prepare(
+		/*
+     * Known against synced, because the difference is the whole risk.
+     *
+     * A gap computed from five of six people's calendars is worse than no gap
+     * finder: it offers times the sixth has already filled, with the same
+     * confidence as a correct answer. A calendar that is switched off
+     * contributes no events, which looks exactly like a calendar with nothing
+     * on it. Counted separately so the screen can say which. D220.
+     */
+		`SELECT COUNT(*) AS known,
+            SUM(CASE WHEN sync_enabled = 1 THEN 1 ELSE 0 END) AS synced,
+            SUM(CASE WHEN sync_enabled = 1 AND COALESCE(access_role, 'owner') != 'owner' THEN 1 ELSE 0 END)
+              AS free_busy_only
+     FROM calendars`
+	).first<{ known: number; synced: number | null; free_busy_only: number | null }>();
+
+	const meaningful = gapsAreMeaningful(reading, events.length);
+
+	/*
+	 * The zone, computed for this window rather than written down.
+	 *
+	 * Mountain is minus six in summer and minus seven in winter. Paul works US
+	 * hours from GMT+8, so the zone the answer depends on is the one nobody
+	 * involved is sitting in, and a constant would be right for half the year.
+	 * Returned in the answer so the screen can state it rather than imply it.
+	 */
+	const offset = zoneOffsetMinutes(WORKING_TIME_ZONE, from);
+	const clockChanges = straddlesClockChange(WORKING_TIME_ZONE, from, to);
+
+	return c.json({
+		from: from.toISOString(),
+		to: to.toISOString(),
+		minutes,
+		zone: WORKING_TIME_ZONE,
+		zone_offset_minutes: offset,
+		working_hours: { from_hour: dayStartHour, to_hour: dayEndHour },
+		/*
+		 * One offset covers the whole window, so a fortnight across the clock
+		 * change is an hour out for part of it. Said rather than silently picked.
+		 */
+		clock_changes_in_window: clockChanges,
+		/*
+		 * Null, not an empty list, when the mirror cannot answer. An empty list
+		 * means searched and found none; null means not searched. A screen that
+		 * cannot tell those apart will report the wrong one confidently.
+		 */
+		slots: meaningful
+			? findSlots(reading.busy, {
+					minutes,
+					from: from.toISOString(),
+					to: to.toISOString(),
+					dayStartHour,
+					dayEndHour,
+					zoneOffsetMinutes: offset,
+					limit: 20,
+					granularity: 15
+				})
+			: null,
+		reason: meaningful ? null : 'No calendar events are mirrored for this window, so there is nothing to find gaps in. This is not the same as being free.',
+		considered: {
+			events_in_window: events.length,
+			counted_as_busy: reading.counted,
+			all_day_excluded: reading.all_day_excluded,
+			all_day_days: reading.all_day_days,
+			unbounded_excluded: reading.unbounded_excluded
+		},
+		calendars: {
+			known: Number(calendars?.known ?? 0),
+			synced: Number(calendars?.synced ?? 0),
+			not_synced: Number(calendars?.known ?? 0) - Number(calendars?.synced ?? 0),
+			free_busy_only: Number(calendars?.free_busy_only ?? 0)
+		},
+		freshness: {
+			synced: Boolean(asOf),
+			as_of: asOf,
+			age_minutes: asOf ? Math.round((Date.now() - Date.parse(asOf)) / 60000) : null
+		}
+	});
 });

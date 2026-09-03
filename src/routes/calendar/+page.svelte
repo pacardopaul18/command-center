@@ -314,6 +314,59 @@
 		return Math.round((asZone.getTime() - asUtc.getTime()) / 60_000);
 	}
 
+	/**
+	 * Gaps from the mirror, as opposed to the live Google read above.
+	 *
+	 * No network, no per-person email, and it covers the partner calendars that
+	 * store free and busy only, whose shape is exactly what a gap search needs.
+	 * The trade is freshness, so the answer carries how old it is and the screen
+	 * says so rather than implying currency. W3.
+	 */
+	let gaps = $state<null | {
+		zone: string;
+		zone_offset_minutes: number;
+		working_hours: { from_hour: number; to_hour: number };
+		clock_changes_in_window: boolean;
+		slots: { start: string; end: string }[] | null;
+		reason: string | null;
+		considered: {
+			events_in_window: number;
+			counted_as_busy: number;
+			all_day_excluded: number;
+			all_day_days: string[];
+			unbounded_excluded: number;
+		};
+		calendars: { known: number; synced: number; not_synced: number; free_busy_only: number };
+		freshness: { synced: boolean; as_of: string | null; age_minutes: number | null };
+	}>(null);
+	let gapsBusy = $state(false);
+
+	async function findGaps() {
+		gapsBusy = true;
+		errorMessage = '';
+		try {
+			const res = await fetch(
+				`/api/connections/google/calendar/gaps?minutes=${Number(slotMinutes)}&days=14`
+			);
+			if (!res.ok) {
+				const body = (await res.json().catch(() => ({}))) as { error?: string };
+				errorMessage = body.error ?? 'Could not read gaps from the mirror.';
+				return;
+			}
+			gaps = await res.json();
+		} finally {
+			gapsBusy = false;
+		}
+	}
+
+	/** Age in words. Hours and days, because minutes past an hour is noise here. */
+	function ageInWords(minutes: number | null): string {
+		if (minutes === null) return 'never';
+		if (minutes < 60) return `${minutes} minutes ago`;
+		if (minutes < 60 * 36) return `${Math.round(minutes / 60)} hours ago`;
+		return `${Math.round(minutes / (60 * 24))} days ago`;
+	}
+
 	async function findTime() {
 		matching = true;
 		matched = false;
@@ -679,6 +732,78 @@
 					</p>
 				{/if}
 
+				<!--
+					Gaps from the mirror, beside the live match rather than instead of
+					it. The live one asks Google and is right when the answer must be
+					current; this one reads what is already here, covers the partner
+					calendars, and says how old it is. W3.
+				-->
+				<div class="gaps">
+					<Button variant="secondary" disabled={gapsBusy} onclick={findGaps}>
+						{gapsBusy ? 'Reading' : 'Gaps from the mirror'}
+					</Button>
+
+					{#if gaps}
+						<!--
+							The zone, stated. Paul works US hours from GMT+8 against
+							calendars in Mountain, so the clock these times are on is the
+							one thing a reader cannot infer from where they are sitting.
+						-->
+						<p class="fine">
+							{gaps.working_hours.from_hour}:00 to {gaps.working_hours.to_hour}:00
+							<strong>{gaps.zone.replace('_', ' ')}</strong>, over the next fortnight.
+							Read {ageInWords(gaps.freshness.age_minutes)}.
+						</p>
+
+						{#if gaps.clock_changes_in_window}
+							<p class="fine warn">
+								The clocks change during this fortnight, so the working hours shift by an
+								hour partway through and these times are on the earlier setting.
+							</p>
+						{/if}
+
+						{#if gaps.calendars.not_synced > 0}
+							<!--
+								The hazard worth naming. Gaps computed from some of the
+								calendars offer times the others have already filled, with
+								the same confidence as a correct answer.
+							-->
+							<p class="fine warn">
+								{gaps.calendars.not_synced} of {gaps.calendars.known} calendars is not
+								being synced, so anything on it is not counted here.
+							</p>
+						{/if}
+
+						{#if gaps.considered.all_day_excluded > 0}
+							<p class="fine warn">
+								{gaps.considered.all_day_excluded} all-day
+								{gaps.considered.all_day_excluded === 1 ? 'entry' : 'entries'} not counted as
+								busy, on {gaps.considered.all_day_days.join(', ')}. Check those days yourself.
+							</p>
+						{/if}
+
+						{#if gaps.slots === null}
+							<!--
+								Not an empty list. Nothing loaded and nothing booked look the
+								same, and this screen invites somebody to book something, so
+								the difference has to be said. D214.
+							-->
+							<p class="fine warn">{gaps.reason}</p>
+						{:else if gaps.slots.length === 0}
+							<p class="fine">
+								Nothing free at that length across {gaps.considered.counted_as_busy} booked
+								blocks. Searched, and found none.
+							</p>
+						{:else}
+							<ul class="slots">
+								{#each gaps.slots as slot (slot.start)}
+									<li><span class="slot-when">{slotLabel(slot)}</span></li>
+								{/each}
+							</ul>
+						{/if}
+					{/if}
+				</div>
+
 				<ul class="slots">
 					{#each slots as slot (slot.start)}
 						<li>
@@ -987,6 +1112,12 @@
 {/if}
 
 <style>
+	.gaps {
+		margin-top: var(--space-4);
+		padding-top: var(--space-4);
+		border-top: 1px solid var(--border-thin);
+	}
+
 	/*
 	 * The rail beside the grid, and gone below it on a phone.
 	 *

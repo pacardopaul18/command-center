@@ -6614,3 +6614,65 @@ Proved by breaking it: a detector that always returns null fails two tests, a
 hardcoded amount fails two, and removing the upper bound fails one. The
 duplicate it detects in the fixture is one this test wrote, so the detector has
 been seen to find something that was not there before.
+
+### D231: gaps from the mirror, and the three ways it could be quietly wrong
+
+W3. "Find a time" already existed and asks Google live, which is right when the
+answer must be current. This is the other one: it reads the calendar already in
+the database, so it needs no network, no per-person email, and cannot fail per
+calendar. The use case is the SOP scheduling work.
+
+**The privacy rule did not move, and it cost this feature nothing.** Six of the
+seven calendars store free and busy only, per D205: start, end, and nothing
+else. That is exactly and only what a gap search needs, so the boundary and the
+feature want the same shape of data. The query reads `starts_at`, `ends_at` and
+`all_day` and nothing more, and a test names each forbidden column. An earlier
+draft selected the calendar's own name for no reason; it is gone, because a busy
+block that arrives carrying whose it is has brought more than the computation
+needs, and the wrong instruction to leave behind is worse than the row.
+
+If this feature ever needs to know what a meeting is in order to place something
+around it, the answer is no and it does without.
+
+**The zone is computed, never written down.** Paul works US hours from GMT+8
+against calendars in Mountain, so the clock the answer depends on is the one
+nobody involved is sitting in. Mountain is minus six in summer and minus seven
+in winter, and the first draft hardcoded minus six, which is right for half the
+year and confidently wrong for the other half. Wrong here means a suggested time
+somebody has already filled.
+
+So the offset is derived from `America/Denver` at the window's start, taken from
+the shared working-zone constant so this route cannot drift from the rest of the
+app, **returned in the answer**, and rendered on screen beside the hours. A test
+asserts the offset is not a literal.
+
+**A window that straddles the clock change is reported, not silently picked.**
+`findSlots` takes one offset for the whole window, so a fortnight across the end
+of daylight saving is an hour out for part of it. Detected by comparing the
+offset at both ends, and said on screen.
+
+**An unloaded window is no-data, never all-free.** D214 applies harder here than
+anywhere else in the app, because the output is an invitation to book something.
+A window with no events returns `slots: null` with a reason, not an empty list:
+searched-and-found-none and never-loaded are different claims and only one of
+them means the week is clear. Freshness travels with the answer, in words, and
+the real mirror is currently 23 hours old.
+
+**All-day entries are set aside and named.** Five of 360 rows. An all-day entry
+is a marker far more often than a wall, and twenty-four hours of busy erases the
+day; but some are real leave, and that is exactly the day not to book. So they
+are excluded, counted, and their dates listed on screen for the reader to check.
+The tool does not guess, and does not hide the guess it declined to make.
+
+**Coverage is stated, because partial coverage is the real hazard.** A gap
+computed from some calendars offers times the others have filled, with the same
+confidence as a correct answer. Confirmed by query rather than assumed: **seven
+calendars known, six synced, one reader switched off and contributing nothing.**
+The route reports known against synced and the screen says when they differ.
+That one calendar is a fact for Paul, not a defect: its busy time is invisible
+to this feature and to the calendar screen, and only he can say whether that is
+intended.
+
+Proved by breaking it: hardcoding the offset, selecting the event summary,
+counting all-day rows as busy, and answering from an empty window each fail a
+test that names the reason.
