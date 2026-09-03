@@ -579,6 +579,7 @@ export interface Meeting {
 	meeting_date: string;
 	attendees: string | null;
 	recording_url: string | null;
+	notes: string | null;
 	transcript_ref: string | null;
 	summary: string | null;
 	summary_reviewed_at: string | null;

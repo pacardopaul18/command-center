@@ -204,6 +204,23 @@
 <div class="board">
 	<div class="main">
 
+<!--
+	Notes.
+
+	What was typed when the meeting was captured, before there was a transcript
+	or a summary to read. Quick Add writes the agenda here, so leaving it off the
+	page would have made the box on that form a place where words go to die.
+	Shown above the transcript because for a meeting that has not happened yet it
+	is the only thing on the page with anything in it.
+-->
+{#if meeting.notes}
+	<div class="block">
+		<Card title="Notes" subtitle="Written by hand, not generated">
+			<p class="notes">{meeting.notes}</p>
+		</Card>
+	</div>
+{/if}
+
 <!-- Transcript -->
 <div class="block">
 	<Card
@@ -786,6 +803,12 @@
 	.note {
 		font-size: var(--text-sm);
 		color: var(--text-secondary);
+	}
+
+	.notes {
+		margin: 0;
+		white-space: pre-wrap;
+		max-width: 72ch;
 	}
 
 	/* The unreviewed banner is deliberately loud. An AI summary nobody has

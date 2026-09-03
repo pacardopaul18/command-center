@@ -334,3 +334,53 @@ Two consequences worth keeping:
 - **A feature verified only against real data is half verified.** Run it against
   the fixture too, and treat a difference between the two as the finding rather
   than as an inconvenience.
+
+---
+
+## A 200 is not evidence of storage
+
+Quick Add's Meeting form offered a box labelled "Agenda or notes". It posted the
+text as `notes`, the route returned 201 with a meeting, and the words were gone:
+`meetings` had no `notes` column and the insert never named one. Nothing threw.
+The dialog closed, the meeting appeared, the agenda did not.
+
+The rule, and it is general:
+
+**For every form field, assert round-trip, not acceptance.** Post the field
+through the real route, read the record back through the real route, and compare.
+A test that checks the status code is testing that the request was well formed,
+which is not the question anybody is asking.
+
+The field either persists or it does not exist. Seven more fields were rendered
+by that form and never reached a route: ticket `start_date`, `estimate_hours`,
+`status`, `reporter`; project `owner_id`, `start_date`; meeting `recording_url`.
+`tests/layer2-quick-add-roundtrip.test.ts` now covers them, and a static check
+in the same file fails when a new box is added to the form without being sent.
+
+Two kinds were audited and were not defects, so nobody repeats the work:
+
+- **Client.** Quick Add posts to `/api/invoicing/clients`, which is the billing
+  record, and every field it offers is stored there. The wider client profile is
+  edited on the client page, deliberately: a capture dialog is the wrong place
+  for it.
+- **Template.** Every field it offers round-trips already. The body is written
+  on the template page, which is correct for the same reason.
+
+### Method correction, from the audit that found this
+
+The first pass at this finding read source and reported three defects. Two were
+artifacts: the reader split the form spec on `label:`, which also appears nested
+inside `fields`, so every block after the first was attributed to the wrong kind.
+The findings looked exactly like the real one. A single empirical probe, posting
+a meeting and reading it back, settled all three in under a minute.
+
+**When an audit reads code to answer a question about behaviour, confirm at
+least one finding empirically before reporting the set.** A parse error yields
+findings shaped exactly like real ones, and the shape is not the evidence.
+
+The same trap caught the test written for this entry. The static orphan check
+passed on the first run, and passed again with a deliberately unwired field
+injected into the form: the escaping had collapsed and the regex was matching a
+backspace character rather than a word boundary. A test that has never been seen
+to fail has not been shown to test anything. **Prove a new guard bites by
+breaking the thing it guards, before believing a green run.**

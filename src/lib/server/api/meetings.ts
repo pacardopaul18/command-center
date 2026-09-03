@@ -22,7 +22,7 @@ import { getSettings } from '../settings';
 
 const LIST_SELECT = `
   SELECT m.id, m.client_id, m.project_id, m.title, m.meeting_date, m.attendees,
-         m.recording_url, m.transcript_ref, m.summary, m.summary_reviewed_at,
+         m.recording_url, m.notes, m.transcript_ref, m.summary, m.summary_reviewed_at,
          m.created_at, m.updated_at,
          cl.name AS client_name,
          p.name  AS project_name,
@@ -393,8 +393,9 @@ meetings.post('/', async (c) => {
 	try {
 		await c.env.DB.prepare(
 			`INSERT INTO meetings
-         (id, client_id, project_id, title, meeting_date, attendees, recording_url, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+         (id, client_id, project_id, title, meeting_date, attendees, recording_url,
+          notes, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 		)
 			.bind(
 				id,
@@ -404,6 +405,9 @@ meetings.post('/', async (c) => {
 				meetingDate,
 				optionalText(body.attendees, 'Attendees', 1000),
 				optionalText(body.recording_url, 'Recording link', 1000),
+				// The Quick Add form has always sent this and it has always been
+				// dropped: no column, no route field, and a 200 either way.
+				optionalText(body.notes, 'Notes', 8000),
 				now,
 				now
 			)
@@ -426,6 +430,7 @@ const UPDATABLE = [
 	'meeting_date',
 	'attendees',
 	'recording_url',
+	'notes',
 	'summary'
 ] as const;
 

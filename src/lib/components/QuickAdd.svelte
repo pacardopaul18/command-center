@@ -85,6 +85,15 @@ import { apiWrite } from '$lib/http';
 	let clients = $state<{ id: string; name: string }[]>([]);
 	let categories = $state<{ id: string; name: string; kind: string }[]>([]);
 	let owners = $state<string[]>([]);
+	/**
+	 * The roster, by id.
+	 *
+	 * `owners` is names, because an action item's owner is a string and most of
+	 * the ones in the data were never users. A project's owner_id is a foreign
+	 * key into `users`, so it needs the ids, and the two lists are not
+	 * interchangeable: posting a display name into owner_id would fail the key.
+	 */
+	let users = $state<{ id: string; display_name: string }[]>([]);
 	let loadedRefs = $state(false);
 	/**
 	 * Whether the pickers can be trusted yet.
@@ -109,6 +118,7 @@ import { apiWrite } from '$lib/http';
 		clients = c?.clients ?? [];
 		categories = cat?.categories ?? [];
 		owners = o?.owners ?? [];
+		users = o?.users ?? [];
 		refsReady = true;
 	}
 
@@ -210,7 +220,31 @@ import { apiWrite } from '$lib/http';
 					kind: 'select',
 					options: () => [{ value: '', label: 'Unassigned' }, ...plain(owners)]
 				},
-				{ key: 'due_date', label: 'Due', kind: 'date', mono: true }
+				{ key: 'due_date', label: 'Due', kind: 'date', mono: true },
+				{ key: 'start_date', label: 'Start', kind: 'date', mono: true },
+				{
+					key: 'estimate_hours',
+					label: 'Estimate (hours)',
+					kind: 'text',
+					placeholder: '4'
+				},
+				{
+					key: 'status',
+					label: 'Status',
+					kind: 'select',
+					options: () => [
+						{ value: 'open', label: 'Open' },
+						{ value: 'in_progress', label: 'In progress' },
+						{ value: 'blocked', label: 'Blocked' },
+						{ value: 'in_review', label: 'In review' }
+					]
+				},
+				{
+					key: 'reporter',
+					label: 'Reporter',
+					kind: 'select',
+					options: () => [{ value: '', label: 'Not recorded' }, ...plain(owners)]
+				}
 			],
 			href: (created) => `/tickets/${created.id}`,
 			save: (title, area, v) => {
@@ -223,7 +257,14 @@ import { apiWrite } from '$lib/http';
 						description: area,
 						priority: v.priority || 'normal',
 						assignee: v.assignee,
-						due_date: v.due_date
+						due_date: v.due_date,
+						start_date: v.start_date,
+						// A blank estimate is no estimate. Sending 0 would claim the
+						// work takes no time, which flows straight into the variance
+						// figures on the ticket.
+						estimate_hours: v.estimate_hours ? Number(v.estimate_hours) : null,
+						status: v.status || 'open',
+						reporter: v.reporter
 					}
 				};
 			}
@@ -257,6 +298,13 @@ import { apiWrite } from '$lib/http';
 					kind: 'text',
 					placeholder: 'Comma separated',
 					span: true
+				},
+				{
+					key: 'recording_url',
+					label: 'Recording link',
+					kind: 'text',
+					placeholder: 'https://...',
+					span: true
 				}
 			],
 			href: (created) => `/meetings/${created.id}`,
@@ -268,7 +316,8 @@ import { apiWrite } from '$lib/http';
 					meeting_date: v.meeting_date || today,
 					client_id: v.client_id,
 					project_id: v.project_id,
-					attendees: v.attendees
+					attendees: v.attendees,
+					recording_url: v.recording_url
 				}
 			})
 		},
@@ -289,6 +338,16 @@ import { apiWrite } from '$lib/http';
 					options: () => asOptions(clients, 'No client')
 				},
 				{ key: 'target_close', label: 'Target close', kind: 'date', mono: true },
+				{ key: 'start_date', label: 'Start', kind: 'date', mono: true },
+				{
+					key: 'owner_id',
+					label: 'Owner',
+					kind: 'select',
+					options: () => [
+						{ value: '', label: 'Unassigned' },
+						...users.map((u) => ({ value: u.id, label: u.display_name }))
+					]
+				},
 				{
 					key: 'next_milestone',
 					label: 'Next milestone',
@@ -306,6 +365,8 @@ import { apiWrite } from '$lib/http';
 					client_id: v.client_id,
 					target_close: v.target_close,
 					next_milestone: v.next_milestone,
+					start_date: v.start_date,
+					owner_id: v.owner_id,
 					phase: 'initiating',
 					status: 'on_track'
 				}
