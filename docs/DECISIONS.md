@@ -6276,3 +6276,53 @@ Two findings from building it:
   is exactly what the trigger exists to prevent. It now fingerprints the source
   it sent and carries the hash in the change note, so "unchanged file, no new
   version" means what it says.
+
+### D225: the uncommitted source, and the shape of an honest skip
+
+SOP-001's authored source stays out of version control. `docs/data/` is already
+ignored because it holds real client data, and the SOP names clients, staff and
+a confidentiality exception. Putting it in a remote repository is the same
+one-way step that rule exists to prevent.
+
+That leaves a real problem: the test asserting SOP-001's content cannot run on a
+checkout without the file. Two wrong answers were available and both were
+rejected.
+
+**Committing the file** would fix the test by breaking the rule, which is the
+wrong direction: the rule is about client data and the test is about
+convenience.
+
+**Failing hard when the file is absent** was the first attempt, and it is wrong
+for a different reason. A bare checkout cannot then run the suite at all, and
+"the suite does not run here" quickly becomes "the suite is not run".
+
+The answer is a skip that announces itself, plus a named check that bites:
+
+- The suite **skips the SOP-001 content tests with a stated reason** when the
+  file is absent, and prints `SOP source not present, install unverified`. The
+  run is green and visibly incomplete, and vitest counts them as skipped rather
+  than passed. A skip that says nothing is the silent-pass failure mode this
+  project keeps finding; a skip that names what it did not check is not.
+- **`npm run verify:sop`** is the half that bites. It checks the installed
+  record against the authored source and fails, with exit 1, when they disagree,
+  when the SOP is missing, or when either the document or the record has stopped
+  saying DRAFT. It exits 0 and says so plainly when the source is absent, so
+  "not checked" is never dressed up as "checked and fine".
+
+Proven by breaking it: an edited source that was not reinstalled, a deputy
+filled in without Dustin naming one, and DRAFT removed from the status line all
+produce exit 1 with the reason named. All four exit paths were checked, because
+a check that reports a failure and exits 0 is the same silent pass wearing a
+different coat.
+
+**Fingerprint the source, not the output.** The general form, from the installer
+bug in D224: an idempotent installer must key on what it sent, not on what came
+back. Anything that parses and rebuilds a value makes the stored form canonical
+and the generated form not, so those two are never equal and the comparison
+always says "changed". Both the installer and the verifier now hash the markdown
+file, which also means the verifier does not carry a second copy of the
+markdown-to-HTML converter that would have to be kept in step with the first.
+
+The three noise versions on SOP-001 stay. They are history, the immutability
+trigger exists to prevent exactly the tidying that would remove them, and
+deleting them to make the record look clean is the thing the rule forbids.

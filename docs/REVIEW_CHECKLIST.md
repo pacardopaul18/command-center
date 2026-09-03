@@ -413,3 +413,39 @@ The same move settles three other questions that a response cannot:
 Use the API to test behaviour. Use the file to test storage. A test that reads
 storage is also the one that survives a refactor of the route, which is a
 secondary benefit and not the reason.
+
+---
+
+## A lossy transform is data loss, even when nothing errors
+
+The rich-text entity decoder knew six named entities. Anything else fell through
+its unknown-token path unchanged, as the literal characters `&mdash;`, and was
+then escaped on the way out into a visible `&amp;mdash;`. No error, no warning,
+a 201 and a stored row. The character the writer typed was gone, and gone in a
+way that cannot be undone afterwards: nothing downstream can tell an escaped
+entity that was meant literally from one that used to be punctuation.
+
+Found because the SOP template happened to contain one. It would otherwise have
+been found by a client, in their own words, on their own record.
+
+The rule:
+
+**When a transform has an "anything else" branch, ask what that branch does to
+the value, not just whether it throws.** Passing an unrecognised token through
+unchanged is only safe if nothing downstream will transform it again. Here the
+next stage escaped it, so "leave it alone" and "corrupt it" were the same code
+path.
+
+Three checks worth making on any parse-and-rebuild path:
+
+- **Round-trip the awkward characters, not the easy ones.** The five that get
+  escaped are always tested. The ones that get *decoded* are the risk, and the
+  table of them is never complete.
+- **Ask whether the fallback is faithful or approximate.** `email-html.ts` turns
+  an em dash into a hyphen on purpose, because mail is being flattened for
+  reading. The same decoder applied to content that is stored and read back
+  would rewrite the author's words a little more on every save. The two cases
+  need two decoders, and sharing one to avoid duplication is how the wrong one
+  gets used.
+- **Prefer failing loudly to passing something through.** Where that is not
+  possible, at least know which of the two a fallback is doing.

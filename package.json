@@ -22,7 +22,8 @@
 		"test:e2e": "playwright test",
 		"test:unit": "vitest run",
 		"dev:real": "node scripts/dev-real.mjs",
-		"db:migrate:real": "wrangler d1 migrations apply command-center-db --local --persist-to .wrangler/real"
+		"db:migrate:real": "wrangler d1 migrations apply command-center-db --local --persist-to .wrangler/real",
+		"verify:sop": "node scripts/verify-sop.mjs"
 	},
 	"dependencies": {
 		"@anthropic-ai/sdk": "^0.122.0",

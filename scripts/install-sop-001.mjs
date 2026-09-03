@@ -173,7 +173,8 @@ const post = (payload) => ({
 	body: JSON.stringify(payload)
 });
 
-const html = toHtml(readFileSync(SOURCE, 'utf8'));
+const markdown = readFileSync(SOURCE, 'utf8');
+const html = toHtml(markdown);
 
 const health = await api('/api/health');
 console.log(`Target: ${BASE}, serving the ${health.data_environment} database.`);
@@ -184,10 +185,14 @@ console.log(`Target: ${BASE}, serving the ${health.data_environment} database.`)
  * Comparing the generated HTML against the stored HTML does not work: the route
  * parses and rebuilds every value, so what comes back is canonical and what
  * this script produced is not. That comparison silently added an identical
- * version on the first re-run. The hash is of the source this script sent, so
- * "unchanged file, no new version" is exactly what it means.
+ * version on the first re-run. The hash is of the source, so "unchanged file,
+ * no new version" is exactly what it means.
+ *
+ * Of the markdown rather than of the HTML this script generated from it, so
+ * that `verify-sop.mjs` can compute the same value without carrying a second
+ * copy of the converter that would have to be kept in step with this one.
  */
-const fingerprint = createHash('sha256').update(html).digest('hex').slice(0, 12);
+const fingerprint = createHash('sha256').update(markdown).digest('hex').slice(0, 12);
 const note = (verb) => `${verb} from ${SOURCE} (source ${fingerprint})`;
 
 const existing = await api('/api/sops?status=all');
