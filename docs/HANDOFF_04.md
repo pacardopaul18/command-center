@@ -715,3 +715,115 @@ authorized. This session holds.
 *Session 05. Nothing above alters `HANDOFF_03.md`, which stands as written, or
 anything it inherits. This is a handoff update and not a session close; Paul
 calls the close.*
+
+---
+
+## 12. AMENDED 2026-09-03, at the opening of session 06
+
+Three corrections ruled by the PM against section 11. Appended rather than
+edited in: the entries above stand as written and these state the right answer,
+which is the same discipline this document applies to everything it inherits.
+
+### 12.1 This document is a handoff update, not a session close
+
+Already stated in two places, at the top and in the closing line, and both stand.
+The line that could be read the other way is in section 11:
+
+> **Authorized: nothing.** The batch of eight is closed and no further work is
+> authorized. This session holds.
+
+That was true when it was written and is now superseded. Session 06 authorizes
+work; see 12.4. The batch of eight is closed; the session is not.
+
+### 12.2 T-obs-token is two scopes, and the second is a widening
+
+Section 9's registry row said "Workers Observability Read and nothing broader".
+That is D61's original text and it is stale. `docs/DECISIONS.md` line 31 has the
+current state and is the authority:
+
+> **T-obs-token.** Scoped Cloudflare API token: Workers Observability Read,
+> **plus Workers Builds read**. D61, **widened by D64**.
+
+**Recorded as a deliberate widening, not as prior state.** D61 chose the
+narrowest scope that answered the question it faced, and said so. D64 then hit a
+second 403 on a different question, whether non-production branches build, could
+not answer it, and deferred it with the note that adding Workers Builds read
+would make the next answer one call instead of a deferral. The second scope is
+that decision, taken later and for a stated reason. It is not something D61
+included and this document forgot.
+
+`CLAUDE.md` carried the same stale text and is corrected in the same commit,
+with the widening named.
+
+### 12.3 `main` auto-deploys. Verified live, and it moves the merge inside gate 2
+
+**Verified, not assumed.** `wrangler deployments list` against the live Worker,
+correlated against `origin/main`:
+
+| main merge | UTC | next deployment | gap |
+|---|---|---|---|
+| `ea4be3d` | 09-01 01:34:16 | 09-01 01:49:06 | 14.8 min |
+| `5cec39d` | 09-01 02:32:36 | 09-01 02:44:58 | 12.4 min |
+| `d3e424b` | 09-01 02:52:41 | 09-01 03:05:12 | 12.5 min |
+| `0d53a8f` | 09-01 03:21:42 | 09-01 03:35:05 | 13.4 min |
+| `a1ad72b` | 09-01 03:49:24 | 09-01 04:03:28 | 14.1 min |
+
+Five merges, five deployments, one for one, every gap between 12 and 15 minutes.
+
+**The discriminating half.** A correlation like that is also what a coincidence
+looks like if deployments happen on their own, so the other side was checked:
+`realdata/stage-a` has been pushed to origin twelve times across 2026-09-02 and
+2026-09-03, and **the deployment list has no entry after 2026-09-01T04:03:28Z**.
+Pushes to a non-production branch produce no deployment. Pushes to main produce
+one every time.
+
+That also answers the question **D64 deferred** and recorded as undeterminable
+from that session. It is answered now, by outcome rather than by the Workers
+Builds API, so it needed no new token: non-production branches do not build here.
+The safe default D64 adopted turns out to have been correct, and the reason it
+was adopted, that a branch build running `wrangler deploy` would push a branch's
+config to production, does not arise.
+
+**The consequence, which is the point of the check.** Merging
+`realdata/stage-a` into main deploys it, about a quarter of an hour later, with
+nobody pressing anything. The branch's code expects migrations 0032 through
+0045. Confirmed live and read-only, `wrangler d1 migrations list --remote`
+reports **exactly 14 unapplied: 0032 through 0045.** The remote database holds
+none of them.
+
+So a merge alone ships code that queries fourteen migrations' worth of tables
+against a database that has none, which is the D50 ordering failure that took
+`/templates` down in production on 2026-08-29, at fourteen times the size.
+
+**The merge of `realdata/stage-a` is therefore inside Stage C gate 2 and is not
+available before it.** Section 11 listed the merge as held; this says why it is
+held, which is stronger than a preference. It is not a separate decision anybody
+can take on its own.
+
+### 12.4 What is authorized at the opening of session 06
+
+Superseding 11's "Authorized: nothing".
+
+1. **Exercise the run allowance attribution path end to end.** Section 4.5's
+   watch item sits on a money path, so D166 applies: break to failure per D223,
+   restore, run one real metered call inside a named run, and read the row back
+   out of `ai_run_usage` rather than trusting a 200.
+2. **Pillar 2 status reconciliation**, under the ruling that arrived with it:
+   the 281 verbatim sections map to coarse status through an **editable
+   crosswalk with provenance on every row, never through inferred logic**, and
+   an unmapped section **renders as unmapped and never falls into a default
+   bucket**. The same shape as the client crosswalk.
+3. **The calendar free and busy gap finder**, if the first two land. Its use
+   case now exists in the SOP scheduling work.
+
+**Still held, both gates, unchanged.** Stage C. Dustin's clearance covers the
+local mailbox connection only and the hosted question was never asked. Nothing
+goes to remote. The D50 per-migration evidence pack may be assembled against a
+scratch database as fill work, **applying nothing**.
+
+**Paul's, unchanged.** The 27 proposals, SOP-001 to Dustin with the deputy
+question first, and the two token grants. **Extraction is not tuned before the
+verdicts exist**, because tuning against no verdicts is tuning against a guess.
+
+*Session 06. Nothing in this section alters sections 1 to 11, which stand as
+written, or anything this document inherits.*

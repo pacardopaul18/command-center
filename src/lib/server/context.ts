@@ -320,31 +320,6 @@ async function threadBodies(
 	return kept.length > 0 ? kept : all.slice(0, 1);
 }
 
-async function record(
-	db: D1Database,
-	connectionId: string,
-	kind: 'triage' | 'summary' | 'draft',
-	usage: Usage,
-	threadId: string | null
-): Promise<void> {
-	await db
-		.prepare(
-			`INSERT INTO ai_usage
-         (id, kind, model, input_tokens, output_tokens, thread_id, connection_id, at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-		)
-		.bind(
-			crypto.randomUUID(),
-			kind,
-			usage.model,
-			usage.input_tokens,
-			usage.output_tokens,
-			threadId,
-			connectionId,
-			nowUtc()
-		)
-		.run();
-}
 
 /**
  * One supervised context pass over an account.
@@ -488,7 +463,6 @@ export async function runContextPass(
 						at
 					)
 					.run();
-				await record(env.DB, connectionId, 'summary', built.usage, null);
 				out.voice = 1;
 			} catch (err) {
 				if (transient(err)) {
@@ -557,7 +531,6 @@ export async function runContextPass(
 					at
 				)
 				.run();
-			await record(env.DB, connectionId, 'summary', digest.usage, thread.id);
 			out.digests += 1;
 
 			if (out.calls >= maxCalls) {
@@ -567,7 +540,6 @@ export async function runContextPass(
 
 			const found = await extractCommitments(apiKey, subject, bodies);
 			await spend('summary', found.usage, thread.id);
-			await record(env.DB, connectionId, 'summary', found.usage, thread.id);
 
 			// Replaced rather than appended: a re-read of the same thread should
 			// correct what it found last time, not stack a second copy beside it.
@@ -697,7 +669,6 @@ export async function runContextPass(
 					nowUtc()
 				)
 				.run();
-			await record(env.DB, connectionId, 'summary', built.usage, null);
 			out.profiles += 1;
 		} catch (err) {
 			if (transient(err)) {

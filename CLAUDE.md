@@ -40,4 +40,6 @@ Private, single-user personal operations command center for Paul Pacardo. Comple
 ## What only Paul can provide (ask up front, all at once, when first needed)
 Cloudflare account and wrangler login, a domain, GitHub repo access, the OTP whitelist email, Asana Personal Access Token, Resend API key, AI provider API key.
 
-Added 2026-08-29, D61: a scoped Cloudflare API token with **Workers Observability Read** and nothing broader. Wrangler's own OAuth token cannot read Workers Logs, which is how a cron incident nearly closed on outcome evidence alone. Deliver it with `wrangler secret put`, never in chat.
+Added 2026-08-29, D61: a scoped Cloudflare API token with **Workers Observability Read**. Wrangler's own OAuth token cannot read Workers Logs, which is how a cron incident nearly closed on outcome evidence alone. Deliver it with `wrangler secret put`, never in chat.
+
+Widened 2026-08-30, D64: the same token also needs **Workers Builds read**. D61 asked for the narrowest scope that answered its own question and said so. A second question, whether non-production branches build, then met the same 403 and had to be deferred. Two scopes, and the second is a later decision with its own reason, not something D61 included. (The branch question was answered by outcome in session 06 without the token; the scope stays on the list because the next such question should not need a deferral.)

@@ -449,3 +449,30 @@ Three checks worth making on any parse-and-rebuild path:
   gets used.
 - **Prefer failing loudly to passing something through.** Where that is not
   possible, at least know which of the two a fallback is doing.
+
+---
+
+## 12. How many rows does one call write?
+
+Not "does it write one", which is what a code review answers by looking at the
+call site. Count them.
+
+The context pass wrote two `ai_usage` rows for every model call: one through the
+shared recorder, which attributed it to the backfill run, and one through a
+private writer left over from before the metering work, which did not. Both call
+sites read as correct on their own. The defect existed only in their sum, and
+the API's response was accurate about everything it reported.
+
+Ask it of anything that records, meters, logs or queues:
+
+- **Count the rows a single operation produces**, against a database you can
+  read directly. One call, one row, is a property nobody had ever asserted here.
+- **Grep for the write, not for the wrapper.** `INSERT INTO <table>` across the
+  server directory takes ten seconds and answers "who else writes this". A
+  second writer is invisible from every call site of the first.
+- **Where a table must have one writer, assert exactly one and not at most
+  one**, so a scan that finds nothing fails rather than passes.
+
+Related: item 10 asks whether anything writes a table at all. This is its
+mirror, and the two failures are opposite: a table with no writer is inert, and a
+table with two is wrong in a way that looks like it is working.

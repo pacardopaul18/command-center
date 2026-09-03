@@ -6326,3 +6326,76 @@ markdown-to-HTML converter that would have to be kept in step with the first.
 The three noise versions on SOP-001 stay. They are history, the immutability
 trigger exists to prevent exactly the tidying that would remove them, and
 deleting them to make the record look clean is the thing the rule forbids.
+
+### D226: the second writer, found by reading the row back
+
+Ordered as an exercise, not as an investigation: the run allowance attribution
+path had never been observed, so run one real metered call inside a named run
+and read the row back out of `ai_run_usage` rather than trusting a 200. It sits
+on a money path, so D166 applies.
+
+The exercise found a defect the code review would not have.
+
+**What was wrong.** `context.ts` carried a private `record()` that inserted into
+`ai_usage` directly, with no run attribution, alongside the `spend()` that calls
+the shared `recordUsage()`. Both fired for every AI call the context pass made.
+At lines 569 and 570 they sat on consecutive lines.
+
+Almost certainly a leftover. `record()` predates the metering work of D165, and
+`spend()` was added beside it rather than in place of it. Every test passed
+throughout, because no test had ever counted the rows a single call produced.
+
+**What it cost, in three ways.**
+
+1. **The meter double counted.** One model call, two `ai_usage` rows, identical
+   tokens, one second apart. Six such phantom rows exist in the real database,
+   overstating spend by $0.0749.
+2. **The two allowances mixed.** The attributed twin charged the run; the
+   unattributed twin charged the month. So naming a backfill run did not keep
+   its spend off the monthly ceiling, which is the one thing D165 says the two
+   allowances must never do. The mechanism looked correct at every call site and
+   was defeated by a second call site nobody was looking at.
+3. **The ceiling fired early**, at roughly twice the true rate for context
+   passes. That errs safe, and a stop that is wrong in the safe direction is
+   still wrong.
+
+**How it was found, and this is the part worth keeping.** The instruction was to
+read the row back rather than trust the response. The response was correct:
+`calls: 1`, one call's worth of tokens, a named run echoed back. The database
+had two rows. Nothing in the API's answer could have revealed it, and nothing in
+the source review did either: both writers are individually correct, and the
+defect exists only in their sum.
+
+The first attempt to localise it was wrong in an instructive way. The probe
+placed in `recordUsage` logged **once** while two rows appeared, which was read
+as "one call, two inserts" and sent the search towards retries and
+double-dispatch. The probe was in the wrong writer. Only `grep "INSERT INTO
+ai_usage"` across `src/lib/server` settled it, and that search took ten seconds.
+**When an instrumented path disagrees with the data, consider that the data came
+from somewhere the instrument is not.**
+
+**The fix.** `record()` and its four call sites are gone. `spend()` did
+everything it did, plus attribution.
+
+**The guarantee.** A source scan in the shape of D166: exactly one file under
+`src/lib/server` may contain `INSERT INTO ai_usage`, and it must be
+`ai-usage.ts`. Asserted as exactly one rather than at most one, so that a scan
+finding nothing fails instead of passing. Proved both ways: reintroducing a
+second writer fails it, and renaming the only writer's table fails it too.
+
+The first break of the second kind was ineffective and is worth recording,
+because it is the same trap as the `<u` matching `<ul>`: renaming the table to
+`ai_usage_renamed` still matched `/INSERT\s+INTO\s+ai_usage/`, so the test passed
+and briefly looked vacuous. It was the break that was wrong, not the test. **A
+break that does not fail has to be checked for being a real break before it is
+read as a dead guard.** That is the third distinct way a member of the D222
+family has appeared, after D222's own case and D223's layered-guard ambiguity.
+
+**The phantom rows stay.** Six of them, $0.0749 overstated, all in the local real
+database. A spend ledger should not be edited by the thing that got it wrong,
+and the error is in the direction of stopping sooner. They are recorded here so
+the next person reading the meter knows why the figure is high rather than
+concluding the fix did not work.
+
+**Verified after the fix**, on real data: one forced call, exactly one `ai_usage`
+row, attributed to the run, and `month_to_date_usd` did not move.
