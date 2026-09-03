@@ -180,7 +180,35 @@ const NAMED: Record<string, string> = {
 	gt: '>',
 	quot: '"',
 	apos: "'",
-	nbsp: ' '
+	nbsp: ' ',
+	/*
+	 * The punctuation that pasted content actually carries.
+	 *
+	 * An entity this table does not know passes through as literal text and is
+	 * then escaped, so a body holding one comes back with a visible "&amp;" in
+	 * front of it: corrupted once, on the first save, and not recoverable. Found
+	 * because the SOP template used one.
+	 *
+	 * Decoded to the real character rather than to an approximation. Mail is
+	 * flattened for reading, which is why the decoder in email-html.ts turns
+	 * these into hyphens; this content is stored and read back, so a character
+	 * that goes in has to come out.
+	 */
+	mdash: '—',
+	ndash: '–',
+	hellip: '…',
+	lsquo: '‘',
+	rsquo: '’',
+	ldquo: '“',
+	rdquo: '”',
+	bull: '•',
+	middot: '·',
+	deg: '°',
+	trade: '™',
+	copy: '©',
+	reg: '®',
+	pound: '£',
+	euro: '€'
 };
 
 export function decodeRichEntities(text: string): string {

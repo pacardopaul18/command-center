@@ -384,3 +384,32 @@ injected into the form: the escaping had collapsed and the regex was matching a
 backspace character rather than a word boundary. A test that has never been seen
 to fail has not been shown to test anything. **Prove a new guard bites by
 breaking the thing it guards, before believing a green run.**
+
+---
+
+## What is stored is answered by reading storage
+
+A route can return a field it never wrote. It can return the request body, or a
+computed value, or a row it read before the write landed. A response says what
+the API answered, which is a different question from what is in the database.
+
+So when the question is **what is at rest**, read the file. The rich-text tests
+open the local D1 sqlite directly and assert that no stored value contains a
+script tag, an iframe, an event handler or a `javascript:` URL. That assertion
+cannot be satisfied by a route that happens to sanitise on the way out, which is
+the failure it exists to rule out.
+
+The same move settles three other questions that a response cannot:
+
+- **Did both columns get written?** The HTML and its plain projection are two
+  columns, and a route returning one says nothing about the other.
+- **Is the constraint real?** The route rejects a fault with no note so the
+  reader gets a sentence. Whether the *database* would reject it is a separate
+  fact, and the only way to ask is to try it against the file.
+- **Did a fixture put back what it took down?** The SOP verification fixture
+  drops an immutability trigger to remove its own rows. That it was restored is
+  a property of `sqlite_master`, not of any response.
+
+Use the API to test behaviour. Use the file to test storage. A test that reads
+storage is also the one that survives a refactor of the route, which is a
+secondary benefit and not the reason.

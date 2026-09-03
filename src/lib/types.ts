@@ -161,6 +161,35 @@ export interface ActionItemCounts {
 
 // --- SOPs ---
 
+/**
+ * One verification event against a SOP.
+ *
+ * Append only. A compliance log that can be edited afterwards is not evidence
+ * of anything, so a mistaken entry is corrected by logging the right one and
+ * both stay visible. See migration 0045.
+ */
+export interface SopVerification {
+	id: string;
+	sop_id: string;
+	/** Null means the whole procedure was run through, not that a step is missing. */
+	step_number: number | null;
+	subject: string;
+	verified_by: string;
+	verified_at: string;
+	outcome: 'pass' | 'fault';
+	note: string | null;
+	created_at: string;
+}
+
+export interface SopVerificationTally {
+	total: number;
+	faults: number;
+	passes: number;
+	/** Null when nothing has been logged. Zero would claim it never fails. D220. */
+	fault_rate: number | null;
+	last_verified_at: string | null;
+}
+
 export const SOP_STATUSES = ['active', 'archived'] as const;
 export type SopStatus = (typeof SOP_STATUSES)[number];
 

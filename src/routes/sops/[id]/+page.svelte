@@ -20,6 +20,23 @@
 	let notice = $state('');
 	let errorMessage = $state('');
 	let mode = $state<'read' | 'edit' | 'meta'>('read');
+	/**
+	 * A verification being logged.
+	 *
+	 * `verified_by` is typed rather than assumed to be Paul: the whole point of
+	 * a deputy in the roles table is that somebody else runs the procedure, and
+	 * a log that always says Paul cannot show that it happened.
+	 */
+	let logging = $state(false);
+	let verification = $state({
+		subject: '',
+		step_number: '',
+		verified_by: '',
+		verified_at: '',
+		outcome: 'pass',
+		note: ''
+	});
+
 	let newBody = $state('');
 	/* The version's plain body, so an older markdown version opens as itself. */
 	let newBodyPlain = $state('');
@@ -88,6 +105,35 @@
 			'New version saved.'
 		);
 		if (ok) mode = 'read';
+	}
+
+	async function logVerification(event: SubmitEvent) {
+		event.preventDefault();
+		if (!verification.subject.trim() || !verification.verified_by.trim()) {
+			errorMessage = 'A verification needs what was checked and who checked it.';
+			return;
+		}
+		if (verification.outcome === 'fault' && !verification.note.trim()) {
+			errorMessage = 'A fault needs a note saying what went wrong.';
+			return;
+		}
+		const ok = await send(
+			`/api/sops/${sop.id}/verifications`,
+			'POST',
+			verification,
+			'Verification logged.'
+		);
+		if (ok) {
+			verification = {
+				subject: '',
+				step_number: '',
+				verified_by: verification.verified_by,
+				verified_at: '',
+				outcome: 'pass',
+				note: ''
+			};
+			logging = false;
+		}
 	}
 
 	async function saveMeta(event: SubmitEvent) {
@@ -341,6 +387,124 @@
 		{/if}
 	</div>
 
+	<!--
+		The verification log.
+
+		A SOP says what to check at each step, and until this there was nowhere
+		to record that anybody did. Compliance was a claim and the fault rate was
+		anecdotal, which is not a thing anyone can act on. Now both come off the
+		same rows. Closes SOP-001's first open question.
+	-->
+	<div class="block">
+		<Card
+			title="Verification log"
+			subtitle={data.verification.total === 0
+				? 'Nothing logged yet'
+				: `${data.verification.total} checks, ${data.verification.faults} found a fault`}
+		>
+			{#snippet actions()}
+				<Button variant="ghost" size="sm" onclick={() => (logging = !logging)}>
+					{logging ? 'Cancel' : 'Log a check'}
+				</Button>
+			{/snippet}
+
+			<!--
+				Fault rate, or the reason there isn't one.
+
+				Zero would read as "this never fails", and "nobody has checked" is
+				the opposite claim. Saying which is which is the whole point. D220.
+			-->
+			<p class="rate">
+				{#if data.verification.fault_rate === null}
+					No fault rate yet, because nothing has been verified. That is not the same as a
+					procedure that has never failed.
+				{:else}
+					Fault rate <strong>{Math.round(data.verification.fault_rate * 100)}%</strong>
+					across {data.verification.total} checks.
+					{#if data.verification.last_verified_at}
+						Last verified {formatDay(data.verification.last_verified_at.slice(0, 10))}.
+					{/if}
+				{/if}
+			</p>
+
+			{#if logging}
+				<form onsubmit={logVerification} class="log-form">
+					<FormField label="What was verified" hint="The meeting, the invoice, the record.">
+						<Input
+							bind:value={verification.subject}
+							maxlength={300}
+							placeholder="09-02 Workflow Automation"
+							required
+						/>
+					</FormField>
+					<div class="log-grid">
+						<FormField label="Step" hint="Empty means the whole procedure.">
+							<Input bind:value={verification.step_number} mono placeholder="3" />
+						</FormField>
+						<FormField label="Who verified it">
+							<Input bind:value={verification.verified_by} maxlength={120} required />
+						</FormField>
+						<FormField label="Verified on" hint="Today if left empty.">
+							<Input type="date" bind:value={verification.verified_at} mono />
+						</FormField>
+						<FormField label="Outcome">
+							<Select bind:value={verification.outcome}>
+								<option value="pass">Passed</option>
+								<option value="fault">Found a fault</option>
+							</Select>
+						</FormField>
+					</div>
+					<FormField
+						label="Note"
+						hint={verification.outcome === 'fault'
+							? 'Required. A fault with no description is a number with nothing behind it.'
+							: 'Optional.'}
+					>
+						<Textarea bind:value={verification.note} rows={2} maxlength={2000} />
+					</FormField>
+					<div class="form-actions">
+						<Button type="submit" disabled={busy}>Log it</Button>
+					</div>
+				</form>
+			{/if}
+
+			{#if data.verifications.length === 0}
+				<p class="empty">
+					No checks logged. The steps in this procedure each name something to verify; logging
+					it here is what makes following the procedure visible afterwards.
+				</p>
+			{:else}
+				<div class="scroller">
+					<table>
+						<thead>
+							<tr>
+								<th scope="col">When</th>
+								<th scope="col">What</th>
+								<th scope="col">Step</th>
+								<th scope="col">Who</th>
+								<th scope="col">Outcome</th>
+							</tr>
+						</thead>
+						<tbody>
+							{#each data.verifications as entry (entry.id)}
+								<tr class:fault={entry.outcome === 'fault'}>
+									<td class="mono">{formatDay(entry.verified_at.slice(0, 10))}</td>
+									<th scope="row">
+										{entry.subject}
+										{#if entry.note}<span class="vnote">{entry.note}</span>{/if}
+									</th>
+									<td class="mono">{entry.step_number ?? 'All'}</td>
+									<td>{entry.verified_by}</td>
+									<td>{entry.outcome === 'fault' ? 'Fault' : 'Passed'}</td>
+								</tr>
+							{/each}
+						</tbody>
+					</table>
+				</div>
+			{/if}
+		</Card>
+	</div>
+
 	<aside class="side">
 		<Card title="Version history" subtitle="Immutable. Nothing here is ever edited or removed." padded={false}>
 			<ol class="history">
@@ -375,6 +539,72 @@
 </div>
 
 <style>
+	.rate {
+		margin: 0 0 var(--space-3);
+		color: var(--text-secondary);
+		font-size: var(--text-sm);
+		max-width: 70ch;
+	}
+
+	.rate strong {
+		color: var(--ink);
+	}
+
+	.log-form {
+		margin-bottom: var(--space-4);
+		padding-bottom: var(--space-4);
+		border-bottom: 1px solid var(--border-thin);
+	}
+
+	.log-grid {
+		display: grid;
+		gap: var(--space-3);
+		grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+		margin: var(--space-3) 0;
+	}
+
+	/* Wide content scrolls inside its own box; the page never scrolls sideways. */
+	.scroller {
+		overflow-x: auto;
+	}
+
+	table {
+		width: 100%;
+		border-collapse: collapse;
+		font-size: var(--text-sm);
+	}
+
+	th,
+	td {
+		text-align: left;
+		padding: var(--space-2) var(--space-3);
+		border-bottom: 1px solid var(--border-thin);
+		vertical-align: top;
+	}
+
+	thead th {
+		color: var(--text-secondary);
+		font-weight: 600;
+		white-space: nowrap;
+		border-bottom-width: 2px;
+	}
+
+	tbody th {
+		font-weight: 600;
+	}
+
+	/* A fault is marked, not coloured only: colour alone is not a state. D22. */
+	tr.fault td:last-child {
+		font-weight: 600;
+		color: var(--red);
+	}
+
+	.vnote {
+		display: block;
+		font-weight: 400;
+		color: var(--text-secondary);
+		max-width: 60ch;
+	}
 
 	.placement {
 		margin: 0;

@@ -1,6 +1,6 @@
 import { error } from '@sveltejs/kit';
 import type { PageLoad } from './$types';
-import type { Sop, SopVersion } from '$lib/types';
+import type { Sop, SopVerification, SopVerificationTally, SopVersion } from '$lib/types';
 
 /** History carries no bodies; exactly one body comes back, chosen by ?version. */
 type VersionMeta = Omit<SopVersion, 'body'>;
@@ -51,6 +51,8 @@ export const load: PageLoad = async ({ fetch, params, url }) => {
 		versions: VersionMeta[];
 		viewing: SopVersion;
 		placement: Placement | null;
+		verifications: SopVerification[];
+		verification: SopVerificationTally;
 	};
 
 	// The picker is supporting detail: a failure reading it must not stop the

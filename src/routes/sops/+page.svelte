@@ -9,7 +9,8 @@
 	import Input from '$lib/components/Input.svelte';
 	import Select from '$lib/components/Select.svelte';
 	import StatusChip from '$lib/components/StatusChip.svelte';
-	import Textarea from '$lib/components/Textarea.svelte';
+	import RichTextEditor from '$lib/components/RichTextEditor.svelte';
+	import { SOP_TEMPLATE_HTML, unfilledPlaceholders } from '$lib/sop-template';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
@@ -19,11 +20,23 @@
 	let errorMessage = $state('');
 	let showForm = $state(false);
 
+	/**
+	 * A new SOP starts from the house shape, never from an empty box.
+	 *
+	 * A procedure written from nothing gets the parts its author was thinking
+	 * about and misses the ones that only matter when something has gone wrong:
+	 * the deputy, the timing, the check on each step, the failure table. The
+	 * template carries all of them, and the square brackets say what still needs
+	 * filling in. See sop-template.ts and D224.
+	 */
 	function blankDraft() {
-		return { title: '', category: '', review_due: '', body: '' };
+		return { title: '', category: '', review_due: '', body_html: SOP_TEMPLATE_HTML };
 	}
 
 	let draft = $state(blankDraft());
+
+	/* What is left to fill in, so a half-written SOP says so before it is saved. */
+	const remaining = $derived(unfilledPlaceholders(draft.body_html));
 
 	// Grouped by category, the way the design's library reads. Uncategorised
 	// SOPs collect at the end rather than being hidden.
@@ -42,7 +55,7 @@
 
 	async function create(event: SubmitEvent) {
 		event.preventDefault();
-		if (!draft.title.trim() || !draft.body.trim()) {
+		if (!draft.title.trim() || !draft.body_html.trim()) {
 			errorMessage = 'A SOP needs a title and a body.';
 			return;
 		}
@@ -128,9 +141,20 @@
 						<Input type="date" bind:value={draft.review_due} mono />
 					</FormField>
 					<div class="span-all">
-						<FormField label="Body" hint="One action per numbered step, plain language.">
-							<Textarea bind:value={draft.body} rows={10} placeholder={'1. First step.\n2. Second step.'} />
+						<FormField
+							label="Body"
+							hint="Started from the house template. Replace everything in square brackets; one action per step, each with when it happens and what to check."
+						>
+							{#key showForm}
+								<RichTextEditor bind:value={draft.body_html} label="Body" rows={16} />
+							{/key}
 						</FormField>
+						{#if remaining > 0}
+							<p class="remaining">
+								{remaining} placeholder{remaining === 1 ? '' : 's'} still to fill in. A SOP saved
+								with them left reads as finished from the library and is not.
+							</p>
+						{/if}
 					</div>
 				</div>
 				<div class="form-actions">
@@ -259,6 +283,13 @@
 {/if}
 
 <style>
+	.remaining {
+		margin: var(--space-2) 0 0;
+		font-size: var(--text-sm);
+		color: var(--text-secondary);
+		max-width: 70ch;
+	}
+
 
 	.tiles {
 		display: grid;

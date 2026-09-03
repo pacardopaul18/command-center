@@ -546,7 +546,113 @@ sops.get('/:id', async (c) => {
 		.bind(id)
 		.first();
 
-	return c.json({ sop, versions: results ?? [], viewing, placement });
+	/**
+	 * The verification log, and what it says about the fault rate.
+	 *
+	 * Both are read here rather than behind a second request, because a
+	 * procedure's compliance record is part of reading the procedure: a SOP
+	 * nobody has verified in a month is a different thing from one verified
+	 * yesterday, and the page should not need to be asked twice to say so.
+	 */
+	const verifications = await c.env.DB.prepare(
+		`SELECT id, sop_id, step_number, subject, verified_by, verified_at, outcome, note, created_at
+     FROM sop_verifications WHERE sop_id = ?
+     ORDER BY verified_at DESC, created_at DESC
+     LIMIT 200`
+	)
+		.bind(id)
+		.all();
+
+	const tally = await c.env.DB.prepare(
+		`SELECT COUNT(*) AS total,
+            SUM(CASE WHEN outcome = 'fault' THEN 1 ELSE 0 END) AS faults,
+            MAX(verified_at) AS last_verified_at
+     FROM sop_verifications WHERE sop_id = ?`
+	)
+		.bind(id)
+		.first<{ total: number; faults: number | null; last_verified_at: string | null }>();
+
+	const total = Number(tally?.total ?? 0);
+	const faults = Number(tally?.faults ?? 0);
+
+	return c.json({
+		sop,
+		versions: results ?? [],
+		viewing,
+		placement,
+		verifications: verifications.results ?? [],
+		verification: {
+			total,
+			faults,
+			passes: total - faults,
+			/*
+			 * Null rather than zero when nothing has been logged. A rate of 0%
+			 * reads as "this never fails", and "nobody has checked" is the
+			 * opposite claim. D220.
+			 */
+			fault_rate: total > 0 ? faults / total : null,
+			last_verified_at: tally?.last_verified_at ?? null
+		}
+	});
+});
+
+/**
+ * Records that somebody checked, and what they found.
+ *
+ * Append only. There is no route to edit or delete an entry, for the same
+ * reason a SOP version cannot be rewritten: a compliance log that can be
+ * tidied up afterwards is not evidence of anything. A mistaken entry is
+ * corrected by logging the correct one, which leaves both visible.
+ */
+sops.post('/:id/verifications', async (c) => {
+	const sopId = c.req.param('id');
+	const body = await readJsonObject(c.req.raw);
+
+	const sop = await c.env.DB.prepare('SELECT id FROM sops WHERE id = ?').bind(sopId).first();
+	if (!sop) throw new ApiError(404, 'SOP not found.');
+
+	const outcome = oneOf<'pass' | 'fault'>(body.outcome, ['pass', 'fault'], 'outcome', 'pass');
+	const note = optionalText(body.note, 'Note', 2000);
+	// The database enforces this too. Checked here so the reader gets a sentence
+	// rather than a constraint failure.
+	if (outcome === 'fault' && !note) {
+		throw new ApiError(400, 'A fault needs a note saying what went wrong.');
+	}
+
+	let stepNumber: number | null = null;
+	if (body.step_number !== null && body.step_number !== undefined && body.step_number !== '') {
+		const n = Number(body.step_number);
+		if (!Number.isInteger(n) || n < 1) {
+			throw new ApiError(400, 'The step must be a whole number, or empty for the whole procedure.');
+		}
+		stepNumber = n;
+	}
+
+	const id = crypto.randomUUID();
+	const now = nowUtc();
+
+	await c.env.DB.prepare(
+		`INSERT INTO sop_verifications
+       (id, sop_id, step_number, subject, verified_by, verified_at, outcome, note, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+	)
+		.bind(
+			id,
+			sopId,
+			stepNumber,
+			requiredText(body.subject, 'What was verified', 300),
+			requiredText(body.verified_by, 'Who verified it', 120),
+			optionalDate(body.verified_at, 'Verified on') ?? todayInWorkingZone(),
+			outcome,
+			note,
+			now
+		)
+		.run();
+
+	const created = await c.env.DB.prepare('SELECT * FROM sop_verifications WHERE id = ?')
+		.bind(id)
+		.first();
+	return c.json({ verification: created }, 201);
 });
 
 /**

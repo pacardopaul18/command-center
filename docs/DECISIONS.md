@@ -6196,3 +6196,83 @@ produced a failure. That is defence in depth working rather than a vacuous test,
 but it is worth writing down: a single-guard break that does not fail may mean
 the guard is dead, or may mean a second guard caught it, and those look
 identical from the outside. Break to the point of failure, then restore.
+
+### D224: the house SOP shape, and a log that makes compliance a number
+
+P7, and the last of the eight. SOP-001 was written against a real recorded
+session and reviewed for shape rather than for content. What survived that
+review is now `src/lib/sop-template.ts`, and every new SOP starts from it.
+
+**Why a template and not a convention.** A procedure written from a blank box
+gets the parts its author was thinking about and misses the parts that only
+matter when something has gone wrong. Each section earns its place:
+
+- **Roles with a deputy.** A procedure that names one person is a procedure that
+  stops when that person is away. SOP-001 is the case: the Filer has steps 2
+  through 8 against them, and the deputy is deliberately left as `[TO BE NAMED]`
+  because inventing one would have been the easiest thing in the document to get
+  wrong.
+- **Timing on every step.** "Then file it" is not a schedule. Without a deadline
+  per step, work that is merely late is indistinguishable from work that was
+  skipped. Same day for Generate, because an ungenerated recording does not fail,
+  it waits, and waiting is invisible. Next business morning for the rest, because
+  same-day filing would be better and is not realistic, and a deadline nobody
+  holds is worse than none.
+- **A check on every step.** A step with no check cannot be verified, so nobody
+  can say whether it happened.
+- **Failure modes keyed on the symptom**, because the symptom is what the reader
+  has when they come looking.
+- **Propose, review, push** wherever something produces work for a person.
+  SOP-001's steps 6 and 7 are written that way now, so the Command Center taking
+  the extraction over later is a change of tooling and not a change of policy.
+  Nothing reaches Asana that a person has not reviewed.
+
+**The verification log is a table in the app, not a section in the document.**
+Migration 0045. One row per check: who, when, which step, what was being looked
+at, and pass or fault. Two things fall out of the same rows, which is the point:
+whether the procedure was followed, and how often it fails. The fault rate for
+the Plaud automation was anecdotal, and "it gets it wrong sometimes" is not a
+number anybody can take to the person who built it. This closes SOP-001's first
+open question.
+
+Three properties, each of which had a reason:
+
+- **Append only.** No route edits or deletes an entry. A compliance log that can
+  be tidied up afterwards is not evidence of anything, so a mistaken entry is
+  corrected by logging the right one and both stay visible.
+- **A fault requires a note.** Checked at the route so the reader gets a
+  sentence, and again as a CHECK constraint so the rule is true of the data.
+  Those are two guards, not one: removing the route check turns a 400 into a 500,
+  which is how they were told apart. D223's rule applied.
+- **No fault rate until something has been verified.** Null, never zero. A rate
+  of 0% reads as "this never fails" and "nobody has checked" is the opposite
+  claim. D220, in a fourth place.
+
+**SOP-001 is authored in the repo and installed by a script**, not by a
+migration. It is real firm procedure and belongs in the real database; a
+migration would put it into the fixture too, where layer 1 asserts the exact set
+of SOPs and would fail on a row the generator never made.
+
+**It is a DRAFT and nothing here can approve it.** Approval is Dustin's act. The
+status is in the title, in the body and in the installer, and the tests assert
+that none of them says otherwise. A document that arrives already looking
+approved is how an unapproved procedure gets followed.
+
+Two findings from building it:
+
+- **An entity the decoder did not know was corrupted on the first save.** The
+  template used `&mdash;`, which was not in the table, so it passed through as
+  literal text and was escaped into a visible `&amp;mdash;`. Not recoverable
+  afterwards. The table now decodes the punctuation pasted content actually
+  carries, faithfully rather than to an approximation: this content is stored and
+  read back, so a character that goes in has to come out. (The template itself no
+  longer uses one, per the house style rule.)
+- **The installer compared the wrong two things.** It checked its generated HTML
+  against the stored HTML to decide whether to write a new version. Those are
+  never equal, because the route parses and rebuilds every value: the stored form
+  is canonical and the generated form is not. Every re-run therefore added an
+  identical version, and on an append-only table that cannot be undone. SOP-001
+  carries versions 2 through 4 as a result, and they stay, because deleting them
+  is exactly what the trigger exists to prevent. It now fingerprints the source
+  it sent and carries the hash in the change note, so "unchanged file, no new
+  version" means what it says.
