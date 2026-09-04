@@ -469,6 +469,99 @@ actionItems.get('/proposals', async (c) => {
 	return c.json({ proposals, status, counts });
 });
 
+/*
+ * ORDER MATTERS. This sits above the :decision route on purpose.
+ *
+ * Hono matches in definition order, so a literal path declared after a
+ * parameterised one is unreachable: with :decision first, /undo arrived as
+ * a decision called "undo" and was refused with "the decision must be
+ * accept or reject". The standing constraint caught this the same way it
+ * did for /proposals, and it bit anyway because the route was written in
+ * the obvious place rather than the correct one.
+ */
+/**
+ * Reverses the last verdict, when reversing it is still safe.
+ *
+ * The queue advances by itself after a decision, which is what makes
+ * twenty-seven of them practical, and it is also what makes a misclick
+ * possible: the card is gone before the eye catches up. Auto-advance without an
+ * undo trades one kind of friction for one kind of irreversibility, and this is
+ * a queue whose whole purpose is deciding what Paul actually owes people.
+ *
+ * REFUSES RATHER THAN DESTROYS. Accepting writes an action item. If anybody has
+ * since edited it, or it has been pushed to Asana, undoing would delete real
+ * work to tidy up a mistake, so the reversal is refused and says why. An
+ * untouched action item created seconds ago is a different thing from one
+ * somebody has worked on, and the two are told apart by evidence rather than by
+ * a time window: `updated_at` moving, or an Asana gid existing.
+ */
+actionItems.post('/proposals/:source/:id/undo', async (c) => {
+	const source = c.req.param('source');
+	const id = c.req.param('id');
+	if (source !== 'mail' && source !== 'meeting') {
+		throw new ApiError(400, 'A proposal comes from mail or from a meeting.');
+	}
+
+	const table = source === 'mail' ? 'mail_action_proposals' : 'meeting_action_proposals';
+	const proposal = await c.env.DB.prepare(
+		`SELECT id, status, action_item_id FROM ${table} WHERE id = ?`
+	)
+		.bind(id)
+		.first<{ id: string; status: string; action_item_id: string | null }>();
+
+	if (!proposal) throw new ApiError(404, 'No proposal with that id.');
+	if (proposal.status === 'pending') {
+		throw new ApiError(409, 'That proposal is already waiting for a decision.');
+	}
+
+	if (proposal.status === 'accepted' && proposal.action_item_id) {
+		const item = await c.env.DB.prepare(
+			'SELECT id, created_at, updated_at, asana_task_gid FROM action_items WHERE id = ?'
+		)
+			.bind(proposal.action_item_id)
+			.first<{ id: string; created_at: string; updated_at: string; asana_task_gid: string | null }>();
+
+		if (item) {
+			if (item.asana_task_gid) {
+				throw new ApiError(
+					409,
+					'That action item has been pushed to Asana, so undoing here would leave the two out of step. Remove it in Asana first.'
+				);
+			}
+			if (item.updated_at !== item.created_at) {
+				throw new ApiError(
+					409,
+					'That action item has been edited since it was accepted, so undoing would throw the edit away. Delete it yourself if that is what you want.'
+				);
+			}
+			/*
+			 * The proposal is reset first, then the action item is deleted.
+			 *
+			 * Not an arbitrary order. `action_item_id` is a foreign key with ON
+			 * DELETE SET NULL, so deleting the item first nulls the column while
+			 * the row still says accepted, and the table's own CHECK refuses that
+			 * combination. The row would be momentarily illegal and D1 stops it.
+			 * Resetting first means the delete lands on a row that no longer
+			 * claims to have one.
+			 */
+			await c.env.DB.prepare(
+				`UPDATE ${table} SET status = 'pending', reviewed_at = NULL, action_item_id = NULL
+         WHERE id = ?`
+			)
+				.bind(id)
+				.run();
+			await c.env.DB.prepare('DELETE FROM action_items WHERE id = ?').bind(item.id).run();
+			return c.json({ ok: true, status: 'pending' });
+		}
+	}
+
+	await c.env.DB.prepare(`UPDATE ${table} SET status = 'pending', reviewed_at = NULL WHERE id = ?`)
+		.bind(id)
+		.run();
+
+	return c.json({ ok: true, status: 'pending' });
+});
+
 /**
  * Accepts or rejects a proposal, whichever queue it came from.
  *

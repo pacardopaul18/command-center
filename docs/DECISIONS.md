@@ -7077,3 +7077,52 @@ the sentence is about a different set and would be wrong.
 **This is a finding about the firm rather than about the app**, and it may be
 the most useful thing the mirror has produced for his actual job. The app's part
 is to say plainly what the number is, and to stop short of judging it.
+
+### D243: one decision at a time, advancing by itself, with a way back
+
+W6c, the last of W6. The queue was twenty-seven cards, then twenty-seven rows.
+Both are a wall. **A review surface shows the thing being decided and keeps the
+rest as a count.**
+
+**The shape.** One proposal on screen with everything the verdict turns on:
+title, the sentence it was read from, who owes it, when, which client. The count
+is in the subtitle and the rest is a link away. 157px at 1920, 265px at 412, and
+the whole card fits a phone without scrolling.
+
+**D235 outranks the shape and is satisfied without compromise.** The evidence is
+on the card that is showing, not behind an expander within it. One decision at a
+time gives it the room the row layout did not have, so the constraint that
+forced a clamp in W5b costs nothing here.
+
+**Auto-advance, and this was the decision to make rather than measure.**
+
+The queue moves to the next proposal on its own. Requiring a second click to
+advance turns twenty-seven decisions into fifty-four actions and reintroduces
+exactly the friction being removed. The cost is that a misclick lands before the
+eye catches up, and the thing being decided is what Paul actually owes people, so
+irreversibility is the wrong trade.
+
+**So the undo is not a nicety, it is the other half of the choice.** The verdict
+just given stays on screen, named, with a way back, until the next one replaces
+it.
+
+**The undo refuses rather than destroys.** Accepting writes an action item.
+Reversing deletes it, so the server checks first: an item edited since it was
+accepted, or already pushed to Asana, is not deleted and the refusal says which
+and why. Told apart by evidence rather than a time window: `updated_at` having
+moved, or an Asana gid existing.
+
+Three things this got wrong before it got them right, all found by running it:
+
+- **The undo route was unreachable.** Declared after `/:decision`, so `/undo`
+  arrived as a decision called "undo". The standing constraint on route order
+  exists precisely for this and the route was still written in the obvious place
+  rather than the correct one.
+- **The reset and the delete were in the wrong order.** `action_item_id` is a
+  foreign key with ON DELETE SET NULL, so deleting the item first nulled the
+  column while the row still said accepted, and the table's own CHECK refused it.
+  The proposal is reset first, then the item is deleted.
+- **The tap-floor rule was silently lost.** It shared a selector with a control
+  that was removed, and deleting that half took the rule body with it. The
+  buttons measured under 44px at 412 and the existing tap-floor guard caught it,
+  which is the second time this session an old guard has caught new code.

@@ -428,71 +428,70 @@ test.describe('pages use the width they are read at', () => {
 });
 
 
-test.describe('the review queue is dense enough to work through', () => {
+test.describe('the review queue shows one decision at a time', () => {
 	/*
-	 * W5b. Twenty-seven verdicts at a quarter of a viewport each is a scrolling
-	 * exercise, and the cost of the interface was what was delaying the
-	 * decisions rather than anything about the decisions themselves.
+	 * W6c. W5b compressed twenty-seven cards into twenty-seven rows, which was
+	 * an improvement and still the wrong shape: a wall of decisions is a scroll
+	 * however short each line is. A review surface shows the thing being decided
+	 * and keeps the rest as a count.
 	 *
-	 * Asserted as a row height rather than a screen count, because the fixture
-	 * holds a different number of proposals than the real mirror and the
-	 * property that matters is the same either way: one decision, one row.
+	 * D235 outranks the shape and is asserted here too: the evidence sentence is
+	 * on the card that is showing, never behind an expander within it.
 	 */
-	test('a proposal row stays under 100px at 1920', async ({ page }) => {
+	test('exactly one proposal is on screen, with its evidence', async ({ page }) => {
 		await page.setViewportSize({ width: 1920, height: 1080 });
 		await page.goto('/actions');
-		const rows = page.locator('ul[class*="queue"] > li');
-		if ((await rows.count()) === 0) test.skip(true, 'no pending proposals in this fixture');
+		const cards = page.locator('article[class*="one"]');
+		if ((await cards.count()) === 0) test.skip(true, 'no pending proposals in this fixture');
 
-		const box = await rows.first().boundingBox();
-		expect(box, 'the first proposal row has no box').toBeTruthy();
-		expect(box!.height).toBeLessThan(100);
+		await expect(cards, 'more than one decision on screen').toHaveCount(1);
+		await expect(
+			page.locator('[class*="one-evidence"]'),
+			'the sentence being decided about is not on the card'
+		).toHaveCount(1);
+		// The remainder is a count, and reachable.
+		await expect(page.getByText(/left, from mail and meetings/)).toBeVisible();
 	});
 
 	test('both verdicts are reachable without opening anything', async ({ page }) => {
-		await page.setViewportSize({ width: 1920, height: 1080 });
 		await page.goto('/actions');
-		const rows = page.locator('ul[class*="queue"] > li');
-		if ((await rows.count()) === 0) test.skip(true, 'no pending proposals in this fixture');
-
-		const first = rows.first();
-		await expect(first.locator('button[class*="accept"]')).toBeVisible();
-		await expect(first.locator('button[class*="reject"]')).toBeVisible();
-		// And the sentence that stops a queue being cleared by accepting
-		// everything is on screen, not behind the expander.
-		await expect(first.locator('blockquote')).toBeVisible();
+		if ((await page.locator('article[class*="one"]').count()) === 0)
+			test.skip(true, 'no pending proposals in this fixture');
+		await expect(page.locator('button[class*="accept"]')).toBeVisible();
+		await expect(page.locator('button[class*="reject"]')).toBeVisible();
 	});
 
-	test('the queue comes before the summary tiles', async ({ page }) => {
+	test('a verdict advances the queue and leaves a way back', async ({ page }) => {
 		/*
-		 * A page is ordered by what the reader came to do. The decisions sat
-		 * below five tiles reading zero, so the first screen of a page about
-		 * pending decisions carried no content at all.
+		 * Auto-advance is what makes twenty-seven decisions practical, and it is
+		 * what makes a misclick land before the eye catches up. The undo is not a
+		 * nicety here, it is the other half of the choice.
 		 */
 		await page.goto('/actions');
-		const queue = page.locator('ul[class*="queue"]');
-		if ((await queue.count()) === 0) test.skip(true, 'no pending proposals in this fixture');
+		await page.waitForLoadState('networkidle');
+		const title = page.locator('[class*="one-title"]');
+		if ((await title.count()) === 0) test.skip(true, 'no pending proposals in this fixture');
 
-		const queueY = (await queue.boundingBox())!.y;
-		const tilesY = (await page.locator('[class*="tiles"]').first().boundingBox())!.y;
-		expect(queueY).toBeLessThan(tilesY);
+		const before = await title.innerText();
+		await page.locator('button[class*="reject"]').click();
+		await expect(title).not.toHaveText(before);
+		await expect(page.locator('button[class*="undo"]'), 'no way back after an auto-advance').toHaveCount(1);
+
+		await page.locator('button[class*="undo"]').click();
+		await expect(title).toHaveText(before);
 	});
 
-	test('every verdict meets the tap floor at 412px', async ({ page }) => {
-		// D22. A card costing a quarter of a desktop viewport costs a whole
-		// phone screen, and these are the controls Paul actually presses.
+	test('the card meets the tap floor at 412px', async ({ page }) => {
 		await page.setViewportSize({ width: 412, height: 915 });
 		await page.goto('/actions');
 		const buttons = page.locator('button[class*="verdict"]');
 		if ((await buttons.count()) === 0) test.skip(true, 'no pending proposals in this fixture');
-
 		const small = await buttons.evaluateAll((els) =>
 			els.filter((e) => e.getBoundingClientRect().height < 44).length
 		);
 		expect(small).toBe(0);
 	});
 });
-
 
 test.describe('a calendar event opens and says something', () => {
 	/*

@@ -98,36 +98,41 @@ describe('layer 2: the reviewer can see what they are deciding about', () => {
 		 * queue gets cleared by accepting everything.
 		 */
 		/*
-		 * Asserted as a property, not as exact markup.
+		 * Asserted as a property, and not against a variable name.
 		 *
-		 * W5b compressed the card to a row and the quote gained a class binding
-		 * for its expanded state, which broke a string match that was testing the
-		 * right thing in a form that could not survive the layout changing. What
-		 * matters is that the quote renders whenever there is one, and is never
-		 * gated on the row being open.
+		 * This has now been rewritten twice for the same reason: W5b made the
+		 * card a row and W6c made the queue one card at a time, and both times a
+		 * match on the old markup failed while testing the right thing. What
+		 * matters is that the evidence renders whenever there is one and is never
+		 * gated on an interaction, whatever the surrounding shape is called.
 		 */
-		expect(page).toContain('{#if proposal.evidence}');
-		expect(page).toContain('{proposal.evidence}');
+		const evidenceRendered = /\{#if (proposal|current)\.evidence\}/.test(page);
+		expect(evidenceRendered, 'the evidence is not rendered at all').toBe(true);
+		expect(/\{(proposal|current)\.evidence\}/.test(page)).toBe(true);
 		expect(
-			page.includes('{#if proposal.evidence && open}') ||
-				page.includes('{#if open && proposal.evidence}'),
-			'the quote is hidden until the row is expanded, which is how a queue gets cleared by accepting everything'
+			/\{#if (proposal|current)\.evidence && (open|expanded)/.test(page) ||
+				/\{#if (open|expanded)[^}]*\.evidence\}/.test(page),
+			'the evidence is gated behind an interaction, which is how a queue gets cleared by accepting everything'
 		).toBe(false);
 	});
 
 	it('shows the words rather than inventing a date', () => {
 		// An inferred deadline becomes a fact the moment somebody accepts.
 		// The words the message used, however the line is worded around them.
-		expect(page).toContain('{proposal.due_signal}');
-		expect(page).toMatch(/said "\{proposal\.due_signal\}", no date/);
+		expect(/\{(proposal|current)\.due_signal\}/.test(page)).toBe(true);
+		expect(/said "\{(proposal|current)\.due_signal\}", no date/.test(page)).toBe(true);
 	});
 
 	it('says nothing here is an action item yet', () => {
 		expect(page).toMatch(/until you accept it/);
 	});
 
-	it('disables only the row being decided', () => {
-		// One shared busy flag would freeze the whole queue on every click.
-		expect(page).toMatch(/disabled=\{reviewing === proposal\.id\}/);
+	it('disables the verdict being decided, not the whole queue', () => {
+		/*
+		 * One shared busy flag would freeze everything on every click. W6c shows
+		 * one card at a time, so the check is that the disable is keyed on the
+		 * item under decision rather than on a page-wide flag alone.
+		 */
+		expect(/reviewing === (proposal|current)\.id/.test(page)).toBe(true);
 	});
 });

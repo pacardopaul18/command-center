@@ -73,6 +73,51 @@
    view never hears about add or delete. */
 	let expanded = new SvelteSet<string>();
 
+	/**
+	 * Which proposal is on screen, and what the last verdict was.
+	 *
+	 * One decision at a time. Twenty-seven rows dumped on a page is a scroll,
+	 * however short each row is: a review surface shows the thing being decided
+	 * and keeps the rest as a count.
+	 *
+	 * AUTO-ADVANCE, WITH AN UNDO. Requiring a second click to move on doubles
+	 * twenty-seven decisions into fifty-four actions and reintroduces exactly the
+	 * friction this is meant to remove. The cost is that a misclick lands before
+	 * the eye catches up, so the verdict just given stays on screen with a way
+	 * back, and the server refuses to reverse one whose action item has since
+	 * been edited or pushed to Asana rather than deleting real work.
+	 */
+	let cursor = $state(0);
+	let lastVerdict = $state<
+		{ source: string; id: string; title: string; decision: 'accept' | 'reject' } | null
+	>(null);
+	let undoError = $state('');
+
+	const queue = $derived(data.proposals.proposals);
+	const current = $derived(queue[Math.min(cursor, Math.max(0, queue.length - 1))] ?? null);
+
+	async function undoLast() {
+		if (!lastVerdict) return;
+		busy = true;
+		undoError = '';
+		const res = await apiWrite(
+			`/api/action-items/proposals/${lastVerdict.source}/${lastVerdict.id}/undo`,
+			'POST',
+			undefined
+		);
+		busy = false;
+		if (res.ok) {
+			notice = `Put "${lastVerdict.title}" back in the queue.`;
+			lastVerdict = null;
+			cursor = Math.max(0, cursor - 1);
+			await invalidateAll();
+		} else {
+			// The server refuses rather than destroying work, and the reason is
+			// the useful part, so it is shown rather than replaced with "failed".
+			undoError = res.error ?? 'Could not undo that.';
+		}
+	}
+
 	function toggle(key: string) {
 		if (expanded.has(key)) expanded.delete(key);
 		else expanded.add(key);
@@ -103,7 +148,10 @@
 	 * The reviewer is doing one thing and should not have to know which
 	 * extraction produced the row in front of them.
 	 */
-	async function decide(proposal: { source: string; id: string }, decision: 'accept' | 'reject') {
+	async function decide(
+		proposal: { source: string; id: string; title?: string },
+		decision: 'accept' | 'reject'
+	) {
 		reviewing = proposal.id;
 		errorMessage = '';
 		try {
@@ -117,6 +165,18 @@
 				return;
 			}
 			notice = decision === 'accept' ? 'Added to your action items.' : 'Rejected.';
+			/*
+			 * Remembered so it can be taken back. The queue advances by itself,
+			 * so the card is gone before the eye catches up, and the only thing
+			 * standing between a misclick and a false obligation is this.
+			 */
+			lastVerdict = {
+				source: proposal.source,
+				id: proposal.id,
+				title: proposal.title ?? 'that item',
+				decision
+			};
+			undoError = '';
 			await invalidateAll();
 		} catch {
 			errorMessage = 'Could not reach the server.';
@@ -501,119 +561,94 @@
 	first screen carried no content at all and the headline number on a page
 	about pending decisions was a column of noughts.
 -->
-{#if data.proposals.counts.pending > 0}
+{#if data.proposals.counts.pending > 0 && current}
 	<Card
 		title="Waiting for your decision"
-		subtitle="{data.proposals.counts.pending} extracted from mail and meetings"
+		subtitle="{data.proposals.counts.pending} left, from mail and meetings"
 	>
+		{#snippet actions()}
+			<!--
+				The count is visible and the rest is reachable, but not dumped.
+				Twenty-seven rows on a page is a scroll however short each row is.
+			-->
+			<a class="see-all" href="/actions?view=proposals">See all {data.proposals.counts.pending}</a>
+		{/snippet}
+
 		<p class="queue-note">
 			Read out of a message or a transcript by a model. Nothing here is an action item
-			until you accept it. Press <kbd>A</kbd> or <kbd>R</kbd> on a focused row, or use the
-			buttons.
+			until you accept it, and the next one comes up on its own.
 		</p>
 
-		<ul class="queue">
-			{#each data.proposals.proposals as proposal (proposal.source + proposal.id)}
-				{@const open = expanded.has(proposal.source + proposal.id)}
-				<!--
-					A row, not a card.
+		<!--
+			One decision, with everything the decision needs on it.
 
-					Twenty-seven decisions at a quarter of a viewport each is a
-					scrolling exercise, and the cost of the interface was what was
-					actually delaying the verdicts. Everything needed to decide is on
-					one line and both verdicts are reachable without opening anything.
-				-->
-				<li class="proposal">
-					<div class="row-main">
-						<!--
-							Title and context share a line, because at a desktop width
-							there is 1,500px of it and stacking three blocks vertically
-							wastes the room that makes the queue scannable.
-						-->
-						<div class="row-top">
-							<span class="proposal-title">{proposal.title}</span>
+			D235 outranks the shape: the evidence sentence is on the card that is
+			showing, never behind an expand within it. Deciding whether Paul really
+			promised something needs the sentence in front of him, and a queue that
+			hides it gets cleared by accepting everything.
+		-->
+		<article class="one">
+			<h3 class="one-title">{current.title}</h3>
 
-						<!--
-							One line of the quote stays visible, and that is deliberate.
-							Deciding whether Paul really promised something needs the
-							sentence in front of him; making him open something first is
-							how a queue gets cleared by accepting everything. Compressed
-							to a line rather than hidden, with the rest on expansion.
-						-->
-							<div class="proposal-meta mono">
-								<span>{proposal.source === 'mail' ? 'Email' : 'Meeting'}</span>
-								{#if proposal.owner}<span>{proposal.owner}</span>{/if}
-								{#if proposal.deadline}
-									<span>due {proposal.deadline}</span>
-								{:else if proposal.due_signal}
-									<!--
-										The words the message used, not a date nobody stated. An
-										inferred deadline becomes fact the moment somebody accepts.
-									-->
-									<span class="signal">said "{proposal.due_signal}", no date</span>
-								{/if}
-								<!--
-									Where it came from and what it is about are context rather
-									than decision inputs, so they drop off a phone and return
-									on expansion. Who owes it and when are never dropped.
-								-->
-								<span class="wide-only">
-									{#if proposal.origin}{proposal.origin}{/if}
-								</span>
-								<span class="wide-only">
-									{#if proposal.client_name}{proposal.client_name}{/if}
-									{#if proposal.project_name}{proposal.project_name}{/if}
-								</span>
-							</div>
-						</div>
+			{#if current.evidence}
+				<blockquote class="one-evidence">{current.evidence}</blockquote>
+			{/if}
 
-						{#if proposal.evidence}
-							<blockquote class="evidence" class:full={open}>{proposal.evidence}</blockquote>
-						{/if}
-					</div>
+			<div class="one-meta mono">
+				<span>{current.source === 'mail' ? 'Email' : 'Meeting'}</span>
+				{#if current.origin}<span>{current.origin}</span>{/if}
+				{#if current.owner}<span>{current.owner}</span>{/if}
+				{#if current.deadline}
+					<span>due {current.deadline}</span>
+				{:else if current.due_signal}
+					<!--
+						The words the message used, not a date nobody stated. An
+						inferred deadline becomes fact the moment somebody accepts.
+					-->
+					<span class="signal">said "{current.due_signal}", no date</span>
+				{/if}
+				{#if current.client_name}<span>{current.client_name}</span>{/if}
+				{#if current.project_name}<span>{current.project_name}</span>{/if}
+			</div>
 
-					<div class="row-actions">
-						{#if proposal.evidence}
-							<button
-								type="button"
-								class="expand"
-								aria-expanded={open}
-								onclick={() => toggle(proposal.source + proposal.id)}
-							>
-								{open ? 'Less' : 'More'}
-							</button>
-						{/if}
-						<!--
-							The shortcut lives on the buttons rather than on the row.
+			<div class="one-actions">
+				<button
+					type="button"
+					class="verdict accept"
+					disabled={busy || reviewing === current.id}
+					onkeydown={(e) => onRowKey(e, current)}
+					onclick={() => decide(current, 'accept')}
+				>
+					{reviewing === current.id ? '...' : 'Accept'}
+				</button>
+				<button
+					type="button"
+					class="verdict reject"
+					disabled={busy || reviewing === current.id}
+					onkeydown={(e) => onRowKey(e, current)}
+					onclick={() => decide(current, 'reject')}
+				>
+					Reject
+				</button>
+				<span class="hint mono">or press <kbd>A</kbd> / <kbd>R</kbd></span>
+			</div>
+		</article>
 
-							A list item is not an interactive element and giving it a tab
-							stop and key handlers is the wrong shape for a screen reader.
-							Tab already lands on Accept, which is where a keyboard user
-							is, so A and R work from there and Enter still does the
-							obvious thing.
-						-->
-						<button
-							type="button"
-							class="verdict accept"
-							disabled={reviewing === proposal.id}
-							onkeydown={(e) => onRowKey(e, proposal)}
-							onclick={() => decide(proposal, 'accept')}
-						>
-							{reviewing === proposal.id ? '...' : 'Accept'}
-						</button>
-						<button
-							type="button"
-							class="verdict reject"
-							disabled={reviewing === proposal.id}
-							onkeydown={(e) => onRowKey(e, proposal)}
-							onclick={() => decide(proposal, 'reject')}
-						>
-							Reject
-						</button>
-					</div>
-				</li>
-			{/each}
-		</ul>
+		<!--
+			The way back from an auto-advance.
+
+			Shown until the next verdict replaces it. The server refuses to reverse
+			one whose action item has been edited or pushed to Asana, and says why,
+			so the refusal is shown rather than swallowed.
+		-->
+		{#if lastVerdict}
+			<p class="undo-line">
+				{lastVerdict.decision === 'accept' ? 'Accepted' : 'Rejected'}
+				"{lastVerdict.title}".
+				<button type="button" class="undo" disabled={busy} onclick={undoLast}>Undo that</button>
+			</p>
+		{/if}
+		{#if undoError}<p class="error-banner" role="alert">{undoError}</p>{/if}
 	</Card>
 {/if}
 
@@ -1094,6 +1129,85 @@
 </Modal>
 
 <style>
+	/* --- One decision at a time ------------------------------------------- */
+
+	.one {
+		padding: var(--space-4);
+		border: 1px solid var(--border-thin);
+		border-radius: var(--radius-2);
+		background: var(--surface-card);
+	}
+
+	.one-title {
+		margin: 0 0 var(--space-3);
+		font-size: 1.0625rem;
+		line-height: 1.35;
+		max-width: 70ch;
+	}
+
+	/* On the card, never behind an expander. D235. */
+	.one-evidence {
+		margin: 0 0 var(--space-3);
+		padding-left: var(--space-3);
+		border-left: 3px solid var(--border-thin);
+		color: var(--text-secondary);
+		max-width: 74ch;
+	}
+
+	.one-meta {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--space-1) var(--space-3);
+		margin-bottom: var(--space-4);
+		font-size: 0.6875rem;
+		color: var(--text-secondary);
+	}
+
+	.one-meta .signal {
+		color: var(--ink);
+	}
+
+	.one-actions {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--space-2);
+		align-items: center;
+	}
+
+	.hint {
+		font-size: 0.6875rem;
+		color: var(--text-secondary);
+	}
+
+	.see-all {
+		font-size: var(--text-sm);
+		color: var(--text-secondary);
+	}
+
+	.undo-line {
+		margin: var(--space-3) 0 0;
+		font-size: var(--text-sm);
+		color: var(--text-secondary);
+	}
+
+	.undo {
+		min-height: var(--tap);
+		padding: 0 var(--space-2);
+		border: 0;
+		background: none;
+		color: var(--navy);
+		font-family: var(--font-sans);
+		font-size: var(--text-sm);
+		text-decoration: underline;
+		cursor: pointer;
+	}
+
+	.undo:focus-visible,
+	.see-all:focus-visible {
+		outline: 2px solid var(--navy);
+		outline-offset: 1px;
+	}
+
 	/* --- The proposal queue, as rows ------------------------------------- */
 
 	.queue {
@@ -1102,38 +1216,14 @@
 		padding: 0;
 	}
 
-	.proposal {
-		display: flex;
-		gap: var(--space-3);
-		align-items: center;
-		justify-content: space-between;
-		/* Explicit px, not a spacing token: the scale starts at 16px and a queue
-		   row is the one place in the app that wants tighter than the scale. */
-		padding: 6px 0;
-		border-bottom: 1px solid var(--border-thin);
-	}
 
 	/* Title and context on one line, the quote under it. Two rows, not three. */
-	.row-top {
-		display: flex;
-		flex-wrap: wrap;
-		align-items: baseline;
-		gap: var(--space-1) var(--space-3);
-	}
 
 	.proposal:last-child {
 		border-bottom: 0;
 	}
 
-	.row-main {
-		min-width: 0;
-		flex: 1;
-	}
 
-	.proposal-title {
-		font-weight: 600;
-		line-height: 1.3;
-	}
 
 	/*
 	 * One line of the quote, expandable.
@@ -1146,65 +1236,28 @@
 	 */
 	/* Specific enough to beat the global blockquote margin, which is set for
 	   prose and is 12px of dead space on a one-line quote in a queue row. */
-	.proposal .evidence {
-		margin: 2px 0 0;
-		padding-left: var(--space-2);
-		border-left: 2px solid var(--border-thin);
-		color: var(--text-secondary);
-		font-size: var(--text-sm);
-		display: -webkit-box;
-		-webkit-line-clamp: 1;
-		line-clamp: 1;
-		-webkit-box-orient: vertical;
-		overflow: hidden;
-	}
 
-	.evidence.full {
-		-webkit-line-clamp: unset;
-		line-clamp: unset;
-		overflow: visible;
-	}
 
-	.proposal-meta {
-		display: flex;
-		flex-wrap: wrap;
-		gap: var(--space-1) var(--space-3);
-		font-size: 0.6875rem;
-		color: var(--text-secondary);
-	}
 
-	.proposal-meta span:empty {
-		display: none;
-	}
 
-	.proposal-meta .signal {
-		color: var(--ink);
-	}
 
-	.row-actions {
-		display: flex;
-		gap: var(--space-1);
-		align-items: center;
-		flex-shrink: 0;
-	}
 
-	/* D22: 44px tap floor on every verdict, at both widths. */
-	.verdict,
-	.expand {
+	/*
+	 * D22: 44px tap floor on every verdict, at both widths.
+	 *
+	 * This rule was briefly lost: it shared a selector with a control that was
+	 * removed, and deleting that half took the body with it. The buttons then
+	 * measured under 44px at 412 and the existing tap-floor guard caught it.
+	 */
+	.verdict {
 		min-height: var(--tap);
-		padding: 0 var(--space-3);
+		padding: 0 var(--space-4);
 		border: 1px solid var(--border-control);
 		border-radius: var(--radius-sm);
 		background: var(--surface-card);
 		font-family: var(--font-sans);
-		font-size: var(--text-sm);
+		font-size: var(--text-base);
 		cursor: pointer;
-	}
-
-	.expand {
-		border-color: transparent;
-		color: var(--text-secondary);
-		padding: 0 var(--space-2);
 	}
 
 	.verdict.accept {
@@ -1248,7 +1301,7 @@
 			display: none;
 		}
 
-		.row-actions {
+		.one-actions {
 			width: 100%;
 		}
 
@@ -1435,12 +1488,6 @@
 		gap: var(--space-4);
 	}
 
-	.proposal {
-		padding: var(--space-4);
-		border: 1px solid var(--border-thin);
-		border-radius: var(--radius-2);
-		background: var(--surface-card);
-	}
 
 	.proposal-head {
 		display: flex;
@@ -1450,9 +1497,6 @@
 		justify-content: space-between;
 	}
 
-	.proposal-title {
-		font-weight: 600;
-	}
 
 	.proposal-from {
 		color: var(--text-secondary);
@@ -1460,27 +1504,8 @@
 	}
 
 	/* The sentence it was read from, quoted so it reads as somebody else's words. */
-	.evidence {
-		margin: var(--space-3) 0;
-		padding-left: var(--space-3);
-		border-left: 3px solid var(--border-strong);
-		color: var(--text-secondary);
-		font-size: 0.9375rem;
-		line-height: 1.6;
-	}
 
-	.proposal-meta {
-		display: flex;
-		flex-wrap: wrap;
-		gap: var(--space-3);
-		color: var(--text-secondary);
-		font-size: 0.8125rem;
-		margin-bottom: var(--space-3);
-	}
 
-	.proposal-meta .signal {
-		font-style: italic;
-	}
 
 	.proposal-actions {
 		display: flex;
@@ -1577,13 +1602,6 @@
 		box-shadow: var(--focus-ring);
 	}
 
-	.row-actions {
-		display: flex;
-		flex-wrap: wrap;
-		align-items: center;
-		gap: var(--space-1);
-		margin-bottom: var(--space-2);
-	}
 
 	.context {
 		margin: var(--space-2) 0;
