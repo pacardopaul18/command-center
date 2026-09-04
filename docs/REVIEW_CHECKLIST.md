@@ -72,6 +72,26 @@ behaviour of the code. The environment is what changes.
 - Does it assert the **reason** for a refusal, not just that something refused?
 - Has the guard it names ever actually executed?
 
+### The restore half of a break is not proven until it has been run
+
+Breaking a thing to watch a guard fail is the discipline in D222 and D223, and
+it has a second half that is easy to treat as bookkeeping.
+
+Forcing the gap finder's no-data branch meant moving the fixture's calendar
+events into the past. The restore captured `starts_at` and not `ends_at`, so
+putting the starts back failed on a CHECK constraint that compares the two, and
+all fifteen rows were left in neither state: not broken as intended, not
+restored either. The break had been thought through and the restore had not.
+
+- **Prefer the tool that owns the state over a captured copy of it.** A
+  re-seeder was sitting there. `seed/calendar-preview.mjs` restored all fifteen
+  rows and their forty attendees in one command, and it could not have produced
+  a half-restored table because it does not work from a partial capture.
+- **A partial capture is a partial restore.** If the copy is the plan, copy the
+  whole row, and know which constraints relate one column to another.
+- **Check the restore the same way as the break**: read the state back, do not
+  assume the command that printed nothing did nothing wrong.
+
 ## 4. Does what it reports match what is stored?
 
 **D157, D174.** A loader that reports its own effort will report success on a
@@ -576,3 +596,15 @@ The same rule applies to the fix for it: the spend correction on the meter
 computes its own count, amount and date every time, and a test asserts the
 module contains no hardcoded figure, because writing "6 rows, $0.0749" into the
 correction would have reproduced the defect inside its own remedy.
+
+### A correction with a render surface is not complete when the decision is written
+
+The same shape, one layer out. D226 found the double-write, quantified it, ruled
+the rows stay, and recorded all of it in the decision log. Every word was
+correct and the meter went on rendering a number known to be high as though it
+were right, for a day, until somebody asked whether the correction had shipped.
+
+A decision that describes what a screen should say is not the screen saying it.
+Ask, at the moment the decision is written: **does this correction have a render
+surface, and did it reach it?** If the answer is somewhere a reader would have
+to already know the problem in order to find the answer, it has not.
