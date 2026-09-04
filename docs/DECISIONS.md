@@ -6676,3 +6676,43 @@ intended.
 Proved by breaking it: hardcoding the offset, selecting the event summary,
 counting all-day rows as busy, and answering from an empty window each fail a
 test that names the reason.
+
+### D232: the one word naming the privacy boundary was wrong about six rows in seven
+
+W5a, and it went first because it sits on the boundary rather than because it
+was large. Under an hour.
+
+**What it said.** The calendar page printed `yours, primary` or `yours` against
+every row in the calendar list, with **no ownership check at all**. Live, that
+is one owner and six read-only shares:
+
+| Calendar | access_role | Was labelled |
+|---|---|---|
+| paul@macgrayconsulting.com | owner | yours, primary |
+| dustinfinkel@, john@, mallory@, meredith@, rock@ | reader | **yours** |
+| Holidays in Philippines | reader | **yours** |
+
+**Why it matters more than a wording slip.** That line is the only place on the
+screen that names who a calendar belongs to. Paul is the person who would have
+to tell Dustin what this app holds about his diary, and the screen was telling
+him five partners' calendars were his own.
+
+**The rule existed and was applied in one place of two.** `CalendarList.svelte`
+had split correctly on `access_role === 'owner'` since it was written. The
+calendar page never asked. That is the D216 shape again, and this instance is
+worse than the original: a rule half applied usually looks broken where it was
+missed, and here the missed half looked confident.
+
+**The fix says what is stored, not only who owns it.** A non-owned calendar
+reads `shared with you, busy times only`, because "shared with you" answers the
+ownership question and leaves the one Dustin would actually ask. D205 stores
+start and end and nothing else for these calendars, and the label now says so.
+
+One function in `calendar-label.ts` beside the event label, so the next screen
+that lists calendars cannot get a third answer. Absent `access_role` means owner,
+matching the default the sync and both event queries already use, so a calendar
+read before roles were recorded does not silently become somebody else's on the
+screen while staying Paul's in the database.
+
+Verified on the running app: one `yours`, six `shared with you, busy times only`.
+Proved by breaking it both ways, in the module and at the call site.

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { label } from '../src/lib/calendar-label';
+import { calendarOwnership, label } from '../src/lib/calendar-label';
 
 const ROOT = process.cwd();
 
@@ -147,7 +147,14 @@ describe('layer 2: a busy block reads as busy, not as a failure', () => {
 					`${file.join('/')} still renders a raw summary fallback instead of label().`
 				).toBe(false);
 			}
-			expect(view).toMatch(/import \{ label \} from '\$lib\/calendar-label'/);
+			// `label` from the shared module, however the import is spelled: the
+			// calendar page now also takes `calendarOwnership` from it, and an
+			// exact-string match would have failed on a second correct import.
+			expect(
+				view.includes("label } from '$lib/calendar-label'") ||
+					view.includes(", label } from '$lib/calendar-label'"),
+				`${file.join('/')} does not take label from the shared module.`
+			).toBe(true);
 		}
 	});
 });
@@ -158,5 +165,56 @@ describe('layer 2: the scopes did not widen to make this possible', () => {
 		expect(google).toMatch(/calendar\.readonly/);
 		expect(google).not.toMatch(/calendar\.events\b/);
 		expect(google).not.toMatch(/'https:\/\/www\.googleapis\.com\/auth\/calendar'/);
+	});
+});
+
+
+describe('layer 2: the screen does not call another person calendar yours', () => {
+	/*
+	 * W5a. The calendar page printed "yours" against every row in the list, with
+	 * no ownership check at all. Six of the seven calendars are read-only shares
+	 * from partners, so the one word on that screen naming the privacy boundary
+	 * was wrong about six of the seven rows it appeared on.
+	 *
+	 * `CalendarList.svelte` had split correctly on access_role the whole time.
+	 * One rule, applied in one place of two. D216, and here the half that was
+	 * missed looked confident rather than broken, which is worse.
+	 */
+	it('says yours only for a calendar Paul owns', () => {
+		expect(calendarOwnership({ access_role: 'owner', is_primary: 1 })).toBe('yours, primary');
+		expect(calendarOwnership({ access_role: 'owner', is_primary: 0 })).toBe('yours');
+	});
+
+	it('never says yours for a calendar somebody shared', () => {
+		for (const role of ['reader', 'freeBusyReader', 'writer']) {
+			const said = calendarOwnership({ access_role: role, is_primary: 0 });
+			expect(said, `${role} was described as yours`).not.toContain('yours');
+			expect(said).toBe('shared with you, busy times only');
+		}
+	});
+
+	it('says what is stored, not only who owns it', () => {
+		/*
+		 * The person reading this line is the one who has to tell Dustin what
+		 * this app holds about his diary. "Shared with you" alone does not
+		 * answer that; "busy times only" does. D205.
+		 */
+		expect(calendarOwnership({ access_role: 'reader' })).toContain('busy times only');
+	});
+
+	it('treats a missing access role as owned, the same as everywhere else', () => {
+		// The same default the sync and the event queries use, so a calendar read
+		// before access roles were recorded does not silently become somebody
+		// else's on the screen while staying Paul's in the database.
+		expect(calendarOwnership({ is_primary: 1 })).toBe('yours, primary');
+		expect(calendarOwnership({ access_role: null })).toBe('yours');
+	});
+
+	it('is what the calendar page calls, rather than a second copy of the rule', () => {
+		const page = readFileSync(join(ROOT, 'src', 'routes', 'calendar', '+page.svelte'), 'utf8');
+		expect(page).toMatch(/calendarOwnership\(cal\)/);
+		expect(page, 'the old unconditional label is still there').not.toMatch(
+			/is_primary \? 'yours, primary' : 'yours'/
+		);
 	});
 });

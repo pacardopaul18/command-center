@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { label } from '$lib/calendar-label';
+	import { calendarOwnership, label } from '$lib/calendar-label';
 	import { goto, invalidateAll } from '$app/navigation';
 	import { apiWrite } from '$lib/http';
 	import Button from '$lib/components/Button.svelte';
@@ -646,7 +646,7 @@
 								<span class="cal-text">
 									<span class="cal-name">{cal.summary ?? cal.provider_calendar_id}</span>
 									<span class="cal-note mono">
-										{cal.is_primary ? 'yours, primary' : 'yours'}
+										{calendarOwnership(cal)}
 										{#if cal.sync_enabled}, {cal.event_count} read{/if}
 									</span>
 								</span>

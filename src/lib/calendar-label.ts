@@ -30,3 +30,32 @@ export function label(event: LabelledEvent): string {
 	// it that way, and saying so is accurate.
 	return event.summary?.trim() || '(no title)';
 }
+
+/**
+ * What a calendar is, in one phrase, from the access role Google reports.
+ *
+ * W5a. The calendar page printed "yours" against every calendar in the list
+ * with no ownership check at all. Six of the seven are read-only shares from
+ * partners, so the one word on that screen naming the privacy boundary was
+ * wrong about six of the seven rows it appeared on.
+ *
+ * `CalendarList.svelte` had it right all along, splitting on
+ * `access_role === 'owner'`. The rule was applied in one place of two, which is
+ * the D216 shape: a rule half applied looks broken wherever it was missed, and
+ * here it looked like the opposite of broken, which is worse.
+ *
+ * The share also says what is stored, not only who owns it. A reader looking at
+ * this line is the person who has to be able to tell Dustin what this app holds
+ * about his diary, and "shared with you" alone does not answer that. D205.
+ */
+export function calendarOwnership(calendar: {
+	access_role?: string | null;
+	is_primary?: number | null;
+}): string {
+	// Absent means owner, the same default the sync and the event queries use, so
+	// a calendar read before access roles were recorded does not silently become
+	// somebody else's.
+	const owned = (calendar.access_role ?? 'owner') === 'owner';
+	if (owned) return calendar.is_primary ? 'yours, primary' : 'yours';
+	return 'shared with you, busy times only';
+}
