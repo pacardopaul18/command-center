@@ -6930,3 +6930,86 @@ thing that produced it. `shortLabel` drops the domain: every calendar here is at
 one firm, so the domain is the half identical on all of them, and dropping the
 shared half is lossless in the way cutting the distinguishing half is not. The
 full name stays on hover. Eight of eight blocks now fit, zero clipped.
+
+### D238: action items and tickets never share a caption
+
+Ruled after F15 fired a third time on the page it was found on, and after the
+headings had already been fixed once. Fixing headings did not fix the habit, so
+this is aimed at the habit.
+
+**The rule.** Any figure counting action items or tickets names which of the two
+it counts, in its API field, its variable, and its label. There is no bare
+`overdue`, `open`, `due_today` or `items` anywhere between the query and the
+screen. Two populations, two names, two lines.
+
+**What it cost to learn.** `action_items` is empty until Paul accepts a
+proposal, and he has accepted none: the table holds zero rows. Today's tile read
+"Overdue items 0" and was a true statement about a population that cannot yet be
+non-empty, under a caption a reader takes as "your work". Meanwhile 247 open
+tickets were past due.
+
+**A population empty by construction, captioned as if general, is a claim about
+everything.** That is D214 crossed with F15, and it is the sharpest form either
+has taken: no query was wrong, no number was false, and the screen was
+misleading anyway.
+
+**The enforcement is feasible and is in place**, because the convention already
+existed: `tickets_open` and `projects_active` were named correctly and `overdue`
+and `due_today` were the exceptions. Those two are renamed to
+`overdue_action_items` and `due_today_action_items`, and `tickets_overdue` and
+`tickets_due_today` are added. A layer 2 test asserts the bare `counts.overdue`
+key does not come back, and proving it meant reintroducing the key and watching
+the test fail.
+
+Worth recording that the existing D214 guard caught the new tile during this
+work: the ticket tile alarmed on `tickets_overdue > 0` without checking whether
+the app has any tickets at all, and the source-check test failed it. The rule
+written for one screen caught a violation on another, months later, in code
+written to fix a different defect.
+
+### D239: colour is not a figure
+
+Projects had columns headed "Action items" and "Tickets open". Each rendered the
+**open** count and used the **overdue** count only to decide whether to colour
+it red. So a red 24 meant twenty-four open, of which some unstated number were
+late.
+
+A quantity encoded in a stylesheet is a caption failure with no caption. It
+cannot be read, compared, sorted or summed, and it is why 247 overdue tickets
+sat on this page for the life of the mirror without being shown: the number was
+fetched, carried to the component, and used only as a boolean.
+
+**If a column is headed overdue, it renders the overdue count.** Overdue now has
+its own column, showing the number, linking to that project's overdue list. The
+open columns show open, uncoloured.
+
+Colour may still mark a state. It may not carry a quantity.
+
+### D240: a count with nowhere to go is not a capability
+
+The severe finding of W6, and the three fixes above are the smaller half of it.
+
+**247 open tickets were past due and reached no reader on any screen.** Today
+counted the wrong population, Projects used the number as a colour, and there
+was no ticket list at all: `/tickets/[id]` existed, so a ticket could be opened
+by somebody who already knew which one, and nothing listed them. The number was
+correct in one API response and had nowhere to be seen.
+
+That is not three rendering defects. It is a missing capability that two broken
+columns were masking, and it is why the app spent a session telling Paul that
+nothing needed his attention.
+
+**`/tickets` now exists**, opening on overdue because that is the question
+somebody arrives with. Oldest first, with client, project, assignee, due date
+and how late in words. Filterable by assignee, matched on the Asana display name
+because the mirror carries names and this app has no user row for them. Every
+view carries its size, so a tab that leads nowhere says so before it is pressed.
+
+The empty states say which emptiness they mean: "no tickets have been mirrored
+yet, so there is nothing to be late" is a different sentence from "nothing is
+overdue, measured against 2,597 tickets", and a page that congratulates somebody
+on an empty database is the failure D214 exists to prevent.
+
+**The standing question this leaves.** Every number on every screen should be
+asked where its reader goes next. A figure that cannot be opened is a figure
+nobody can act on, and it will be believed anyway.

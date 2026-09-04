@@ -507,7 +507,7 @@ test.describe('invoicing, one client at a time', () => {
 });
 
 test.describe('the dashboard', () => {
-	test('shows the eight cards and the six headline tiles', async ({ page }) => {
+	test('shows the eight cards and the seven headline tiles', async ({ page }) => {
 		await page.goto('/');
 		for (const title of [
 			'Projects',
@@ -521,9 +521,18 @@ test.describe('the dashboard', () => {
 		]) {
 			await expect(page.getByRole('heading', { name: title, exact: true })).toBeVisible();
 		}
+		/*
+		 * Seven tiles now, and two of the labels changed.
+		 *
+		 * "Overdue items" counted action items only, and the action items table
+		 * is empty until Paul accepts a proposal, so it read zero while 247
+		 * tickets were past due. Two populations cannot share one caption, so
+		 * each of these names the population it counts. D238.
+		 */
 		for (const label of [
-			'Overdue items',
-			'Due today',
+			'Overdue tickets',
+			'Overdue action items',
+			'Action items due today',
 			'Awaiting a decision',
 			'Projects at risk',
 			'Tickets breaching',
@@ -543,6 +552,9 @@ test.describe('the dashboard', () => {
 			els.map((e) => (e as HTMLAnchorElement).getAttribute('href'))
 		);
 		expect(hrefs).toEqual([
+			// Overdue tickets first, because it is the largest true number on the
+			// page and had nowhere to go until /tickets existed.
+			'/tickets?view=overdue',
 			'/actions?view=overdue',
 			'/actions?view=today',
 			'/reports/slipping',

@@ -121,8 +121,11 @@ export const load: PageLoad = async ({ fetch, url }) => {
 		card_limit: number;
 		oldest_overdue: string | null;
 		counts: {
-			overdue: number;
-			due_today: number;
+			/* Every count names the population it counts. D238. */
+			overdue_action_items: number;
+			due_today_action_items: number;
+			tickets_overdue: number;
+			tickets_due_today: number;
 			week: number;
 			meetings: number;
 			invoice_alerts: number;

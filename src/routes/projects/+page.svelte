@@ -305,6 +305,16 @@
 					-->
 					<th scope="col" class="num">Action items</th>
 					<th scope="col" class="num">Tickets open</th>
+					<!--
+						Overdue is a number, so it gets a column.
+
+						It used to be a colour on the open count: a red 24 meaning
+						twenty-four open of which some unstated number were late. A
+						quantity encoded in a stylesheet is a caption failure with no
+						caption, and it is how 247 overdue tickets sat on this page
+						without ever being shown. D239.
+					-->
+					<th scope="col" class="num">Overdue</th>
 					<th scope="col">Status</th>
 				</tr>
 			</thead>
@@ -356,19 +366,22 @@
 								<span class="dim">None</span>
 							{/if}
 						</td>
+						<td class="num mono">{project.open_action_items ?? 0}</td>
 						<td class="num mono">
-							{#if (project.overdue_action_items ?? 0) > 0}
-								<span class="overdue">{project.open_action_items ?? 0}</span>
-							{:else}
-								{project.open_action_items ?? 0}
-							{/if}
+							{project.open_tickets ?? 0}<span class="of">of {project.all_tickets ?? 0}</span>
 						</td>
 						<td class="num mono">
 							{#if (project.overdue_tickets ?? 0) > 0}
-								<span class="overdue">{project.open_tickets ?? 0}</span>
+								<!--
+									A link, because a count of overdue work that cannot be
+									opened is a number with nowhere to go.
+								-->
+								<a class="overdue" href="/tickets?project={project.id}&view=overdue">
+									{project.overdue_tickets}
+								</a>
 							{:else}
-								{project.open_tickets ?? 0}
-							{/if}<span class="of">of {project.all_tickets ?? 0}</span>
+								<span class="dim">0</span>
+							{/if}
 						</td>
 						<td>
 							<StatusChip

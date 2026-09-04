@@ -54,15 +54,17 @@
 	const attention = $derived(
 		[...data.overdue, ...data.due_today].slice(0, data.card_limit)
 	);
-	const attentionCount = $derived(data.counts.overdue + data.counts.due_today);
+	const attentionCount = $derived(
+		data.counts.overdue_action_items + data.counts.due_today_action_items
+	);
 
 	/** The one sentence at the top. It has to be true on an empty day too. */
 	const headline = $derived.by(() => {
-		if (data.counts.overdue > 0) {
-			return `${data.counts.overdue} overdue. Start there, then the projects at risk.`;
+		if (data.counts.tickets_overdue > 0) {
+			return `${data.counts.tickets_overdue} overdue tickets. Start there, then the projects at risk.`;
 		}
-		if (data.counts.due_today > 0) {
-			return `Nothing overdue. ${data.counts.due_today} due today.`;
+		if (data.counts.due_today_action_items > 0) {
+			return `Nothing overdue. ${data.counts.due_today_action_items} action items due today.`;
 		}
 		if (data.counts.week > 0) {
 			return `Nothing overdue, nothing due today. ${data.counts.week} due this week.`;
@@ -99,21 +101,45 @@
 	}
 
 	const tiles = $derived([
+		/*
+		 * Two populations, two lines, two captions. D236 and D238.
+		 *
+		 * "Overdue items" counted action items only, and action items are empty
+		 * until Paul accepts a proposal, so the tile read zero while 247 tickets
+		 * were past due. A true figure over a population that cannot yet be
+		 * non-empty, under a caption he reads as "your work".
+		 *
+		 * The action-items line stays, because zero accepted against a pending
+		 * queue is exactly the number that says the queue has never been worked.
+		 * It now says which population it counts.
+		 */
 		{
-			label: 'Overdue items',
+			label: 'Overdue tickets',
 			...tile(
-				data.sources.action_items,
-				String(data.counts.overdue),
-				data.oldest_overdue ? `oldest ${formatDayShort(data.oldest_overdue)}` : 'nothing late'
+				data.sources.tickets,
+				String(data.counts.tickets_overdue),
+				`${data.counts.tickets_due_today} due today`
 			),
-			href: '/actions?view=overdue',
-			alarm: data.sources.action_items && data.counts.overdue > 0
+			href: '/tickets?view=overdue',
+			// Never alarm on a store this app has nothing from: an empty mirror
+			// would otherwise raise a red zero. D214, and the guard caught this.
+			alarm: data.sources.tickets && data.counts.tickets_overdue > 0
 		},
 		{
-			label: 'Due today',
+			label: 'Overdue action items',
 			...tile(
 				data.sources.action_items,
-				String(data.counts.due_today),
+				String(data.counts.overdue_action_items),
+				data.oldest_overdue ? `oldest ${formatDayShort(data.oldest_overdue)}` : 'none accepted yet'
+			),
+			href: '/actions?view=overdue',
+			alarm: data.sources.action_items && data.counts.overdue_action_items > 0
+		},
+		{
+			label: 'Action items due today',
+			...tile(
+				data.sources.action_items,
+				String(data.counts.due_today_action_items),
 				`${data.counts.done_due_today} done already`
 			),
 			href: '/actions?view=today',

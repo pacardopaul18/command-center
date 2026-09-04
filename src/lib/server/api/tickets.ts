@@ -5,7 +5,12 @@ import { nowUtc, todayInWorkingZone } from '../dates';
 import { ApiError, oneOf, optionalDate, optionalText, readJsonObject, requiredText } from './validate';
 import { TICKET_PRIORITIES, TICKET_STATUSES } from '$lib/types';
 import type { TicketPriority, TicketStatus } from '$lib/types';
-import { FINISHED_TICKET_STATUSES, finishedTicket, openTicket } from '../ticket-state';
+import {
+	FINISHED_TICKET_STATUSES,
+	finishedTicket,
+	openTicket,
+	overdueTicket
+} from '../ticket-state';
 import { mentionsRichField, readRichField } from '../rich-field';
 
 /**
@@ -106,6 +111,34 @@ tickets.get('/', async (c) => {
 		where.push(openTicket());
 	}
 
+	/*
+	 * Overdue as a view, because it is the question somebody arrives with.
+	 *
+	 * 247 open tickets were past due, correct in the Projects API and reaching
+	 * no reader anywhere in the app, because there was no list to reach. A count
+	 * with nowhere to go is not a capability.
+	 */
+	const view = c.req.query('view');
+	if (view === 'overdue') {
+		where.push(overdueTicket('t', '?' + (binds.length + 1)));
+		binds.push(todayInWorkingZone());
+	} else if (view === 'due_today') {
+		where.push(openTicket('t'));
+		where.push('t.due_date = ?' + (binds.length + 1));
+		binds.push(todayInWorkingZone());
+	}
+
+	/*
+	 * Whose. "Mine" is matched on the assignee string rather than on a user id,
+	 * because the mirror carries Asana display names and this app has no user
+	 * row for them. Exact, so a partial name cannot quietly widen the filter.
+	 */
+	const assignee = c.req.query('assignee')?.trim();
+	if (assignee) {
+		where.push('t.assignee = ?' + (binds.length + 1));
+		binds.push(assignee);
+	}
+
 	const q = c.req.query('q')?.trim();
 	if (q) {
 		where.push('(t.title LIKE ? OR t.description LIKE ? OR t.assignee LIKE ?)');
@@ -114,7 +147,10 @@ tickets.get('/', async (c) => {
 	}
 
 	const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';
-	const { results } = await c.env.DB.prepare(`${SELECT} ${clause} ${ORDER_BY}`)
+	// Latest first when the question is what is late, so the worst is at the top
+	// rather than wherever the default sort happens to put it.
+	const order = view === 'overdue' ? 'ORDER BY t.due_date ASC' : ORDER_BY;
+	const { results } = await c.env.DB.prepare(`${SELECT} ${clause} ${order}`)
 		.bind(...binds)
 		.all();
 
@@ -124,8 +160,37 @@ tickets.get('/', async (c) => {
 		.bind(...(projectId ? [projectId] : []))
 		.all<{ status: string; n: number }>();
 
+	/*
+	 * The view sizes, so the page can offer the filters with their weights and
+	 * say which of them is empty rather than showing a tab that leads nowhere.
+	 */
+	const views = await c.env.DB.prepare(
+		`SELECT
+       (SELECT COUNT(*) FROM tickets t WHERE ${overdueTicket('t', '?1')}) AS overdue,
+       (SELECT COUNT(*) FROM tickets t WHERE ${openTicket('t')} AND t.due_date = ?1) AS due_today,
+       (SELECT COUNT(*) FROM tickets t WHERE ${openTicket('t')}) AS open,
+       (SELECT COUNT(*) FROM tickets) AS all_tickets`
+	)
+		.bind(todayInWorkingZone())
+		.first<{ overdue: number; due_today: number; open: number; all_tickets: number }>();
+
+	// Who the work is on, for the "mine" filter, with their open counts.
+	const assignees = await c.env.DB.prepare(
+		`SELECT t.assignee, COUNT(*) AS n FROM tickets t
+     WHERE ${openTicket('t')} AND t.assignee IS NOT NULL AND TRIM(t.assignee) != ''
+     GROUP BY t.assignee ORDER BY n DESC`
+	).all<{ assignee: string; n: number }>();
+
 	return c.json({
 		tickets: results ?? [],
+		today: todayInWorkingZone(),
+		views: {
+			overdue: Number(views?.overdue ?? 0),
+			due_today: Number(views?.due_today ?? 0),
+			open: Number(views?.open ?? 0),
+			all: Number(views?.all_tickets ?? 0)
+		},
+		assignees: assignees.results ?? [],
 		counts: Object.fromEntries((counts.results ?? []).map((r) => [r.status, Number(r.n)]))
 	});
 });

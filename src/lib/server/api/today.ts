@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import type { ApiEnv } from './env';
 import { daysAgoUtc, todayInWorkingZone, workingDayStartUtc } from '../dates';
-import { openTicket } from '../ticket-state';
+import { openTicket, overdueTicket } from '../ticket-state';
 import { activeProject, projectNeedsAttention } from '../project-state';
 import { PENDING_PROPOSALS_SQL } from '../proposal-counts';
 
@@ -304,6 +304,18 @@ today.get('/', async (c) => {
            p WHERE ${projectNeedsAttention('p')}) AS projects_at_risk,
          (SELECT COUNT(*) FROM tickets
            WHERE ${openTicket('tickets')}) AS tickets_open,
+         /*
+          * Overdue tickets, which nothing on this page counted.
+          *
+          * The action items table is empty until Paul accepts a proposal, so every
+          * overdue figure here was a true statement about a population that
+          * cannot yet be non-empty, under a heading he reads as "your work".
+          * Meanwhile 247 open tickets were past due, correct in the Projects
+          * API and reaching no reader anywhere. D214 crossed with F15.
+          */
+         (SELECT COUNT(*) FROM tickets t WHERE ${overdueTicket('t', '?1')}) AS tickets_overdue,
+         (SELECT COUNT(*) FROM tickets t
+           WHERE ${openTicket('t')} AND t.due_date = ?1) AS tickets_due_today,
          (SELECT COUNT(*) FROM tickets
            WHERE ${openTicket('tickets')}
              AND due_date IS NOT NULL AND due_date <= ?1) AS tickets_breaching,
@@ -332,8 +344,18 @@ today.get('/', async (c) => {
 		week: week.results ?? [],
 		finished: finished.results ?? [],
 		counts: {
-			overdue: overdueAll.length,
-			due_today: dueTodayAll.length,
+			/*
+			 * Named for the population they count, both of them.
+			 *
+			 * These were `overdue` and `due_today`, which is a caption that spans
+			 * two populations before anybody writes a label. The convention was
+			 * already here on `tickets_open` and `projects_active`; these two were
+			 * the exceptions and they are the ones that misled. D238.
+			 */
+			overdue_action_items: overdueAll.length,
+			due_today_action_items: dueTodayAll.length,
+			tickets_overdue: Number(sizes?.tickets_overdue ?? 0),
+			tickets_due_today: Number(sizes?.tickets_due_today ?? 0),
 			week: Number(sizes?.week ?? 0),
 			meetings: Number(sizes?.meetings ?? 0),
 			invoice_alerts: Number(sizes?.alerts ?? 0),

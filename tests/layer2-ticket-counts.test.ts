@@ -114,3 +114,77 @@ describe('layer 2: the projects screen says which number is which', () => {
 		expect(page).toMatch(/all_tickets/);
 	});
 });
+
+describe('layer 2: overdue tickets reach a reader', () => {
+	/*
+	 * The severe one. 247 open tickets were past due, correct in the Projects
+	 * API, and reaching no reader on any screen: Today counted action items, of
+	 * which the real database holds zero because no proposal has been accepted;
+	 * Projects fetched the number and used it only to colour a different one;
+	 * and there was no ticket list at all, only `/tickets/[id]`.
+	 *
+	 * So the app spent the life of the mirror telling Paul that nothing needed
+	 * his attention. A count with nowhere to go is not a capability.
+	 */
+	const BASE = process.env.API_BASE ?? 'http://127.0.0.1:5173';
+
+	async function api(path: string) {
+		const res = await fetch(`${BASE}${path}`);
+		const text = await res.text();
+		let json: any = null;
+		try {
+			json = text ? JSON.parse(text) : null;
+		} catch {
+			json = null;
+		}
+		return { res, json, text };
+	}
+
+	it('the tickets route offers an overdue view and sizes every view', async () => {
+		const { res, json } = await api('/api/tickets?view=overdue');
+		expect(res.status).toBe(200);
+		expect(json.views, 'the page cannot label a tab it has no size for').toBeTruthy();
+		for (const key of ['overdue', 'due_today', 'open', 'all']) {
+			expect(typeof json.views[key], `views.${key} is missing`).toBe('number');
+		}
+		// Every row it returns is genuinely overdue, against the working-zone day
+		// the route itself reports.
+		for (const t of json.tickets ?? []) {
+			expect(t.due_date, 'an overdue ticket with no due date').toBeTruthy();
+			expect(t.due_date < json.today, `${t.due_date} is not before ${json.today}`).toBe(true);
+			expect(['done', 'cancelled']).not.toContain(t.status);
+		}
+	});
+
+	it('the overdue view agrees with the count on the same response', async () => {
+		// One expression. The Projects API and this one both read overdueTicket,
+		// so a screen cannot show a list of a different size from its own tab.
+		const { json } = await api('/api/tickets?view=overdue');
+		expect(json.tickets.length).toBe(json.views.overdue);
+	});
+
+	it('Today counts tickets and action items as two things', async () => {
+		/*
+		 * They were one caption over two populations, and the population the
+		 * caption implied was empty by construction. D238.
+		 */
+		const { json } = await api('/api/today');
+		for (const key of [
+			'tickets_overdue',
+			'tickets_due_today',
+			'overdue_action_items',
+			'due_today_action_items'
+		]) {
+			expect(typeof json.counts[key], `counts.${key} is missing`).toBe('number');
+		}
+		expect(json.counts.overdue, 'the bare key is back, and it spans both populations').toBe(
+			undefined
+		);
+	});
+
+	it('Today and the tickets route report the same overdue number', async () => {
+		const today = await api('/api/today');
+		const tickets = await api('/api/tickets?view=overdue');
+		expect(today.json.counts.tickets_overdue).toBe(tickets.json.views.overdue);
+	});
+});
