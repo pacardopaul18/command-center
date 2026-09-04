@@ -72,6 +72,26 @@ behaviour of the code. The environment is what changes.
 - Does it assert the **reason** for a refusal, not just that something refused?
 - Has the guard it names ever actually executed?
 
+### A guard that can never pass, which is not the same as one that can never fail
+
+Item 3 asks whether a test can fail. Its mirror is worth asking too, because the
+symptom is different and the diagnosis goes the wrong way.
+
+A browser guard for the month-view detail clicked the event, checked for the
+panel, and retried until it appeared. **Opening is a toggle**, so every retry
+closed what the previous one opened. The assertion could never be true, and the
+failure surfaced as a fifteen-second timeout on a page that worked perfectly.
+
+The wrong lesson was available and tempting: that the feature was broken. It
+took three runs to notice the test was fighting itself.
+
+- **A retry around a toggle cannot succeed.** Retry the assertion, never the
+  action, whenever the action has a side effect.
+- **A timeout is not a diagnosis.** It says the condition never held, not why,
+  and "the code is broken" and "the check is impossible" produce the same one.
+- **Before believing a guard, make it pass once by hand.** A guard that has
+  never been green on working code has not been shown to be satisfiable.
+
 ### The restore half of a break is not proven until it has been run
 
 Breaking a thing to watch a guard fail is the discipline in D222 and D223, and

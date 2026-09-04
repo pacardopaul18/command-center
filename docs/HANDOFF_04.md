@@ -962,3 +962,51 @@ the state is something the reader can see, prefer the URL, which is this app's
 own pattern for view state and is what the month cell expansion uses now.
 
 *Session 06. Nothing in this section alters sections 1 to 14.*
+
+---
+
+## 16. Standing constraints, added by W6
+
+Sections 10, 14 and 15 all still hold. Two more.
+
+### A hand-managed scratch copy is not a restore
+
+Twice in one session a `cp` to `/tmp` and back cost real time.
+
+The first left fifteen fixture calendar events stranded at the wrong dates,
+because the copy captured `starts_at` and not `ends_at` and putting the starts
+back failed a CHECK comparing the two. The second silently reverted the block
+under test, so a diagnostic run reported that a handler never fired when it fired
+correctly, and the search went looking for a reactivity bug that did not exist.
+
+The checklist note under item 3 says prefer the tool that owns the state, and it
+was written after the first incident and did not prevent the second. So it is
+here as well, as a constraint rather than advice:
+
+- **Use the thing that owns the rows.** `seed/calendar-preview.mjs` restored all
+  fifteen events and their forty attendees in one command and could not have
+  half-restored them. `git checkout -- <file>` is the equivalent for source, and
+  it restores what the repository says rather than what a copy happened to catch.
+- **Never diagnose against a file you have been patching and restoring.** The
+  measurement is of the file, not of the code, and those stop being the same
+  thing the moment a restore lands mid-investigation.
+- If a manual copy is genuinely the only option, copy the whole row or the whole
+  file, and read it back before believing the restore.
+
+### Route order is now tested, because the constraint alone did not hold
+
+Section 10 already carries "a literal path declared after a parameterised one is
+unreachable", written after `/proposals` was shadowed by `/:id`. The undo route
+in W6c was then declared after `/proposals/:source/:id/:decision` and arrived as
+a decision called "undo".
+
+That is not a knowledge failure. **A constraint is only consulted by somebody who
+is already suspicious**, and the whole difficulty is that the obvious place to
+write a route is usually the wrong one and never looks it.
+
+`tests/layer2-route-order.test.ts` scans every API module, reads the routes in
+declaration order, and fails naming the file, the path and both line numbers.
+Proved by moving the undo route back and watching it report exactly the defect
+that shipped. The document line stays; the test is what enforces it.
+
+*Session 06. Nothing in this section alters sections 1 to 15.*
