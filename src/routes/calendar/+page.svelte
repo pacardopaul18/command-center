@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { page } from '$app/state';
 	import { calendarOwnership, label } from '$lib/calendar-label';
 	import { goto, invalidateAll } from '$app/navigation';
 	import { apiWrite } from '$lib/http';
@@ -88,6 +89,7 @@
 			account: data.account,
 			view: data.view,
 			day: data.day,
+			expand: expandedDay,
 			...next
 		};
 		for (const [k, v] of Object.entries(merged)) if (v) params.set(k, v);
@@ -185,6 +187,96 @@
 	const today = $derived(dayKeyIn(new Date().toISOString(), zone));
 
 	/** The month the grid is about, so neighbouring days can be dimmed. */
+/**
+ * How many lines a month cell shows before it offers the rest.
+ *
+ * Six rather than three, measured rather than chosen: on the real mirror 61 of
+ * 81 days hold six events or fewer, so at six the great majority of cells show
+ * everything and the overflow control appears only where there is genuinely
+ * more to see. At three it appeared on days holding four.
+ */
+const MONTH_CELL_ROWS = 6;
+
+/**
+ * A month cell's lines, collapsing a person only when they are dense that day.
+ *
+ * The distribution decided this and it ruled against the obvious design. Events
+ * per person per day: median 2, and 82 of 131 person-days hold one or two. A
+ * counter on every row would therefore read "1" or "2" most of the time, adding
+ * a number where the event itself was the information and making the sparse
+ * days worse to read in order to help the dense ones.
+ *
+ * So the collapse is conditional. Three or more from one calendar on one day
+ * becomes a single line; fewer stay as themselves. Forty-two person-days
+ * qualify, all of them on days that genuinely need the room.
+ *
+ * Nobody is filtered out. A person with three events is still on the cell, as
+ * one line saying three.
+ */
+const MONTH_COLLAPSE_AT = 3;
+
+type MonthRow =
+	| { kind: 'event'; key: string; event: (typeof data.events)[number] }
+	| { kind: 'group'; key: string; who: string; count: number; color: string | null };
+
+function monthRows(
+	day: { key: string; events: (typeof data.events)[number][] },
+	/*
+	 * An opened cell shows the events themselves, not the summary of them.
+	 *
+	 * The first version collapsed regardless, so clicking "3 busy" expanded the
+	 * cell and still showed "3 busy", which is a control that appears to do
+	 * something and does not. Opening is how the reader asks what the three
+	 * are, and it has to answer.
+	 */
+	open: boolean
+): MonthRow[] {
+	if (open) {
+		return day.events.map((event) => ({ kind: 'event' as const, key: event.id, event }));
+	}
+	const byCalendar = new Map<string, (typeof data.events)[number][]>();
+	for (const event of day.events) {
+		const who = event.calendar_name ?? 'Unknown calendar';
+		const list = byCalendar.get(who) ?? [];
+		list.push(event);
+		byCalendar.set(who, list);
+	}
+
+	const rows: MonthRow[] = [];
+	for (const [who, events] of byCalendar) {
+		if (events.length >= MONTH_COLLAPSE_AT) {
+			rows.push({
+				kind: 'group',
+				key: `${day.key}|${who}`,
+				who,
+				count: events.length,
+				color: events[0].calendar_color ?? null
+			});
+		} else {
+			for (const event of events) rows.push({ kind: 'event', key: event.id, event });
+		}
+	}
+	return rows;
+}
+
+/** Which cells the reader has opened. Expansion is per day and stays put. */
+/**
+ * Which month cell is open, from the address rather than from component state.
+ *
+ * The same rule the view and the day already follow on this page: a thing the
+ * reader can see is a fact about the page, so it belongs in the URL. An opened
+ * cell survives a reload, can be sent to somebody, and going back closes it.
+ *
+ * One at a time, deliberately. Opening a second dense cell while the first is
+ * open is how a month grid becomes a list, and the reason to open one is to
+ * read it rather than to accumulate them.
+ */
+const expandedDay = $derived(page.url.searchParams.get('expand'));
+
+function dayHref(key: string, open: boolean) {
+	return urlFor({ expand: open ? null : key });
+}
+
 	const anchorMonth = $derived(data.day.slice(0, 7));
 	const inMonth = (key: string) => key.slice(0, 7) === anchorMonth;
 
@@ -955,24 +1047,57 @@
 					A month cell shows what fits and says how many more there are.
 					Truncating silently would make a busy day look like a quiet one.
 				-->
+				{@const open = expandedDay === day.key}
+				{@const rows = monthRows(day, open)}
+				{@const shown = open ? rows : rows.slice(0, MONTH_CELL_ROWS)}
+				{@const collapsed = monthRows(day, false)}
 				<div class="cell" class:today={day.key === today} class:outside={!inMonth(day.key)}>
 					<a class="cell-day" href={urlFor({ view: 'day', day: day.key })}>
 						{Number(day.key.slice(8, 10))}
 					</a>
-					{#each day.events.slice(0, 3) as event (event.id)}
-						<button
-							type="button"
-							class="pip"
-							style="border-left-color: {event.calendar_color ?? 'var(--navy-500)'}"
-							onclick={() => openEvent(event)}
-							title={label(event)}
-						>
-							{label(event)}
-						</button>
+					{#each shown as row (row.key)}
+						{#if row.kind === 'event'}
+							<button
+								type="button"
+								class="pip"
+								style="border-left-color: {row.event.calendar_color ?? 'var(--navy-500)'}"
+								onclick={() => openEvent(row.event)}
+								title={label(row.event)}
+							>
+								{label(row.event)}
+							</button>
+						{:else}
+							<!--
+								One person, one line, when they have three or more that day.
+								Conditional rather than universal: the median person-day is
+								two events, so a counter on every row would read "1" or "2"
+								on sixty per cent of them and add a number where the event
+								itself was the information. D234.
+							-->
+							<a
+								class="pip busy-group"
+								style="border-left-color: {row.color ?? 'var(--navy-500)'}"
+								href={dayHref(day.key, open)}
+								data-sveltekit-noscroll
+								title="{row.count} busy on {row.who}"
+							>
+								{row.count} busy · {row.who}
+							</a>
+						{/if}
 					{/each}
-					{#if day.events.length > 3}
-						<a class="more" href={urlFor({ view: 'day', day: day.key })}>
-							{day.events.length - 3} more
+					{#if open || collapsed.length > MONTH_CELL_ROWS}
+						<!--
+							Expands in place. It used to navigate to the Day view, which
+							answers the question by leaving the page the question was
+							asked on, and loses the month the reader was scanning.
+						-->
+						<a
+							class="more"
+							aria-expanded={open}
+							href={dayHref(day.key, open)}
+							data-sveltekit-noscroll
+						>
+							{open ? 'Show less' : `${collapsed.length - MONTH_CELL_ROWS} more`}
 						</a>
 					{/if}
 				</div>
@@ -1612,12 +1737,28 @@
 		background: var(--surface-hover);
 	}
 
+	/* A control that expands in place, not a link that leaves the page. */
 	.more {
-		display: block;
-		padding: 0 5px;
-		font-size: var(--text-xs);
-		color: var(--text-secondary);
+		border: 0;
+		background: none;
+		font-family: var(--font-sans);
+		cursor: pointer;
+		text-align: left;
+		width: 100%;
 	}
+
+	.more:focus-visible {
+		outline: 2px solid var(--navy);
+		outline-offset: 1px;
+	}
+
+	/* A collapsed person reads as one line about several things, so it is
+	   marked rather than looking like a single event. */
+	.busy-group {
+		font-weight: 600;
+	}
+
+
 
 	.agenda {
 		display: flex;

@@ -6772,3 +6772,66 @@ Two existing guards asserted the old markup exactly and broke on the layout
 change. They were testing the right property in a form that could not survive the
 page being rearranged, and are now written as properties: the quote renders
 whenever there is one, and is never gated on expansion. Both still bite.
+
+### D234: density is a property of the view, and the distribution ruled the design
+
+W5c. D220 said that where a rule empties a view the fix is the label, and
+`Busy · <calendar>` was right at list density. At month-grid density the same
+label prints three identical truncated strings in one cell and disambiguates
+nothing. **A label that separates one occurrence from another does not separate
+thirty.** That is a refinement of D220 rather than a failure of it, and it is
+why the month view got harder to read after the label landed rather than easier.
+
+**The measurement ruled against the obvious fix, and it was taken first.**
+
+| | |
+|---|---|
+| events per person per day | median 2, mean 2.7, max 10 |
+| person-days holding one or two | **82 of 131** |
+| people with events, per day | median 1, **max 4** |
+| total events per day | median 3, max 16 |
+| days exceeding six events | 20 of 81 |
+
+One counted row per person per day, which was the design, **would have read "1"
+or "2" on 82 of 131 rows**: a number added where the event itself was the
+information, making the sparse days worse in order to help the dense ones.
+
+**So the collapse is conditional.** Three or more from one calendar on one day
+becomes one line; fewer stay as themselves. Forty-two person-days qualify.
+Nobody is filtered: a person with seven events is one line saying seven, and
+opening the cell shows all seven.
+
+It costs nothing at all, and that is worth stating. These are free/busy-only
+calendars, so seven events from one partner render as **seven identical
+`Busy · name` lines**. The collapse replaces repetition with a count.
+
+**The cap moved from three to six**, because 61 of 81 days hold six or fewer, so
+at six the great majority of cells show everything and the overflow control
+appears only where there is more to see.
+
+**Expansion happens in place, and the state lives in the address.** The old
+control was a link to the Day view, which answers the question by leaving the
+page the question was asked on. It is now a link that sets `?expand=<day>`, the
+same rule the view and the day on this page already follow: a thing the reader
+can see is a fact about the page, so it survives a reload and can be sent to
+somebody.
+
+Two things this got wrong before it got them right, both found by running it:
+
+- **The first build collapsed regardless of whether the cell was open**, so
+  clicking "3 busy" expanded the cell and still showed "3 busy". A control that
+  appears to do something and does not.
+- **`$state(new SvelteSet())` does not work.** `SvelteSet` carries its own
+  signals and wrapping it in `$state` proxies the instance, so `add` and
+  `delete` never reach the view. Two clicks that changed nothing and no error
+  anywhere. The state moved to the URL, which is this page's own pattern and
+  sidesteps the question.
+
+**The window Paul lands on never exercises any of it**, and that is recorded
+rather than left to be discovered. Today's forward window holds at most two
+events on any day. The density is in June, at 8.1 events per day against 2.4 in
+July and 3.4 in August, and it is **not a pull artifact**: all 360 rows were
+fetched in one pass on 2026-09-02 and coverage is even across the months. June
+was simply three times busier. So the collapse and the overflow were verified on
+a June day, where they fire, and the current window was verified separately for
+no regression. D107's shape, named before it could bite.

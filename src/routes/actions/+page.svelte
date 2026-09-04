@@ -68,7 +68,10 @@
 	 * normal thing to want when they came out of the same meeting, and an
 	 * accordion that closes one to open another makes comparing them a chore.
 	 */
-	let expanded = $state(new SvelteSet<string>());
+	/* SvelteSet is reactive on its own. Wrapping it in $state() proxies the
+   instance and the proxy does not carry the set's own signals, so the
+   view never hears about add or delete. */
+	let expanded = new SvelteSet<string>();
 
 	function toggle(key: string) {
 		if (expanded.has(key)) expanded.delete(key);

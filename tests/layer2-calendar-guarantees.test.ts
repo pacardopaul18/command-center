@@ -305,3 +305,61 @@ describe('an invite is drafted, never sent', () => {
 		}
 	});
 });
+
+
+describe('layer 2: a month cell collapses a dense person and expands in place', () => {
+	/*
+	 * W5c, and the design was corrected by measurement before it was built.
+	 *
+	 * The obvious fix was one counted row per person per day. The distribution
+	 * ruled against it: events per person per day are median 2, and 82 of 131
+	 * person-days hold one or two, so a counter on every row would have read "1"
+	 * or "2" most of the time and added a number where the event itself was the
+	 * information. The collapse is therefore conditional at three or more, which
+	 * 42 person-days meet.
+	 *
+	 * Nothing is filtered. A person with seven events is one line saying seven,
+	 * and opening the cell shows all seven. This matters because these are
+	 * free/busy-only calendars: seven events from one partner render as seven
+	 * identical "Busy · name" lines, so the collapse replaces repetition with a
+	 * count and loses nothing at all. That is the refinement D220 needed at grid
+	 * density, where a label that disambiguates one occurrence disambiguates
+	 * nothing across thirty.
+	 */
+	const page = readFileSync(join(process.cwd(), 'src', 'routes', 'calendar', '+page.svelte'), 'utf8');
+
+	it('collapses only at three or more from one calendar', () => {
+		expect(page).toMatch(/MONTH_COLLAPSE_AT = 3/);
+		expect(page).toMatch(/events\.length >= MONTH_COLLAPSE_AT/);
+	});
+
+	it('shows six lines before offering the rest, not three', () => {
+		// Measured: 61 of 81 days hold six events or fewer, so at six the great
+		// majority of cells show everything.
+		expect(page).toMatch(/MONTH_CELL_ROWS = 6/);
+	});
+
+	it('expands in place instead of navigating to the day view', () => {
+		/*
+		 * The actual bug. "2 more" was a link to the Day view, which answers the
+		 * question by leaving the page the question was asked on and loses the
+		 * month the reader was scanning.
+		 */
+		expect(page).not.toMatch(/class="more" href=\{urlFor\(\{ view: 'day'/);
+		expect(page).toMatch(/href=\{dayHref\(day\.key, open\)\}/);
+	});
+
+	it('an opened cell shows the events, not the summary of them again', () => {
+		// The first build collapsed regardless of open, so clicking "3 busy"
+		// expanded the cell and still showed "3 busy": a control that appears to
+		// do something and does not.
+		expect(page).toMatch(/if \(open\) \{/);
+	});
+
+	it('keeps the open cell in the address, like the view and the day', () => {
+		// A thing the reader can see is a fact about the page. It survives a
+		// reload, it can be sent to somebody, and going back closes it.
+		expect(page).toMatch(/expand: expandedDay/);
+		expect(page).toMatch(/searchParams\.get\('expand'\)/);
+	});
+});
