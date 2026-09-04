@@ -112,6 +112,34 @@
 		</Select>
 	{/snippet}
 
+	<!--
+		What this list is, before Paul reads it as a to-do list.
+
+		The oldest overdue ticket is months old and almost none of it is his, so
+		this is an inherited backlog that predates him rather than work he has let
+		slip. A large share of it is very likely finished work nobody closed in
+		Asana. Saying so on the page matters more than saying it in a handoff,
+		because this is the screen he will open first and 247 is a number that
+		reads as an accusation if nothing frames it.
+
+		Derived, not written down: the oldest date and the split come from the
+		rows on screen, so this sentence cannot drift from the list beneath it.
+		Checklist item 15.
+	-->
+	{#if data.view === 'overdue' && data.tickets.length > 0 && !data.assignee}
+		{@const oldest = data.tickets[0]?.due_date}
+		{@const mine = data.tickets.filter((t) => t.assignee === 'Paul Pacardo').length}
+		{@const top = data.assignees[0]}
+		<p class="context">
+			The oldest here is due {oldest ? formatDayShort(oldest) : 'unknown'}, which is
+			{lateness(daysLate(oldest ?? null))} ago. {mine === 0
+				? 'None of it is assigned to you'
+				: `${mine} of these are yours`}{top ? `, and ${top.assignee} carries the most open work` : ''}.
+			This is the workspace as it stands, not a list you have fallen behind on, and some of
+			it is likely finished work nobody closed in Asana.
+		</p>
+	{/if}
+
 	{#if data.tickets.length === 0}
 		<p class="empty">
 			{#if data.views.all === 0}
@@ -215,6 +243,16 @@
 
 	.tab-count {
 		color: var(--text-secondary);
+		font-size: var(--text-sm);
+	}
+
+	.context {
+		margin: 0 0 var(--space-3);
+		padding: var(--space-3);
+		border-left: 3px solid var(--border-thin);
+		background: var(--surface-hover);
+		border-radius: var(--radius-sm);
+		max-width: 78ch;
 		font-size: var(--text-sm);
 	}
 

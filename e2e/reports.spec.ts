@@ -492,3 +492,54 @@ test.describe('the review queue is dense enough to work through', () => {
 		expect(small).toBe(0);
 	});
 });
+
+
+test.describe('a calendar event opens and says something', () => {
+	/*
+	 * W6b. Clicking an event did nothing in the month view, because the detail
+	 * panel lived inside the day and agenda views only: the pip set state that no
+	 * branch rendered. And when it did open, every field was null for a shared
+	 * calendar, so it was an empty frame.
+	 *
+	 * A control that appears to do something and does not, and an empty modal is
+	 * the same failure with a frame around it.
+	 */
+	test('clicking an event in the month grid opens a panel with content', async ({ page }) => {
+		await page.setViewportSize({ width: 1920, height: 1080 });
+		await page.goto('/calendar?view=month');
+		const pips = page.locator('button[class*="pip"]');
+		if ((await pips.count()) === 0) test.skip(true, 'no events in this fixture window');
+
+		/*
+		 * Waited for the page to settle, then clicked once.
+		 *
+		 * Two wrong versions before this one. Clicking as soon as the pip exists
+		 * is before hydration, so the handler is not attached. Retrying the click
+		 * until the panel appears is worse: opening is a toggle, so every retry
+		 * closed what the previous one opened and it could never pass.
+		 */
+		await page.waitForLoadState('networkidle');
+		await pips.first().click();
+		const panel = page.locator('[class*="month-detail"]');
+		await expect(panel, 'clicking a month event rendered nothing').toHaveCount(1);
+
+		// Never an empty frame, whichever kind of event it is.
+		const text = (await panel.innerText()).trim();
+		expect(text.length, 'the panel opened empty').toBeGreaterThan(80);
+	});
+
+	test('a shared event explains what is held instead of showing blanks', async ({ page }) => {
+		await page.goto('/calendar?view=month');
+		const busy = page.locator('button[class*="pip"]').filter({ hasText: 'Busy' });
+		if ((await busy.count()) === 0) test.skip(true, 'no shared-calendar events in this fixture');
+
+		await page.waitForLoadState('networkidle');
+		await busy.first().click();
+		const panel = page.locator('[class*="month-detail"]');
+		await expect(panel).toHaveCount(1);
+		const text = await panel.innerText();
+		// Says it is not his, says what is stored, and says why.
+		expect(text).toContain('do not own');
+		expect(text).toContain('start and end time');
+	});
+});

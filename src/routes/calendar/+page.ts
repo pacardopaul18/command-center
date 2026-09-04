@@ -21,6 +21,9 @@ export interface CalendarEventRow {
 	 * partner's join link is a door into a room and this app holds free/busy.
 	 */
 	conference_url?: string | null;
+	/* Derived, never stored: 1 when the calendar is one Paul does not own, so
+	   the row holds start and end and nothing else. See D205. */
+	free_busy_only?: number | null;
 	calendar_name: string | null;
 	calendar_color: string | null;
 	own_response: string | null;

@@ -38,6 +38,17 @@
 	let openEventId = $state<string | null>(null);
 
 	/**
+	 * The event whose detail is open, wherever it was clicked from.
+	 *
+	 * The month grid sets `openEventId` like every other view and had nowhere to
+	 * render it, so this resolves the id against the loaded events rather than
+	 * each view keeping its own copy of the selected row.
+	 */
+	const selectedEvent = $derived(
+		openEventId ? (data.events.find((e) => e.id === openEventId) ?? null) : null
+	);
+
+	/**
 	 * Which clock the times are drawn on.
 	 *
 	 * Local by default, because that is what the person looking at the screen
@@ -911,32 +922,36 @@ function dayHref(key: string, open: boolean) {
 
 		<div class="main">
 
-{#snippet eventRow(event: CalendarEventRow)}
-		<div class="row-wrap">
-			<button
-				type="button"
-				class="row"
-				aria-expanded={openEventId === event.id}
-				style="border-left-color: {event.calendar_color ?? 'var(--navy-500)'}"
-				onclick={() => openEvent(event)}
-			>
-				<span class="when mono">{timeLabel(event)}</span>
-				<span class="what">{label(event)}</span>
-				{#if event.location}<span class="where">{event.location}</span>{/if}
-				{#if event.own_response && event.own_response !== 'accepted'}
-					<span class="resp">{RESPONSE_LABEL[event.own_response] ?? event.own_response}</span>
-				{/if}
-				{#if (event.attendee_count ?? 0) > 0}
-					<span class="n mono">{event.attendee_count}</span>
-				{/if}
-				{#if data.scope === 'all'}
-					<span class="acct mono">{event.account_email}</span>
-				{/if}
-			</button>
+{#snippet eventDetail(event: CalendarEventRow)}
+	<div class="detail">
+					<!--
+						A shared calendar says what is held and why, rather than
+						opening an empty box.
 
-			{#if openEventId === event.id}
-				<div class="detail">
-					{#if event.description}<p class="prose">{event.description}</p>{/if}
+						Every field this panel renders is null for a calendar Paul
+						does not own, by the rule in D205, so clicking one produced a
+						frame with a single line in it and read as a broken control.
+						All eleven events in the current window are on shared
+						calendars, so every click hit this.
+
+						An empty modal is a silent failure with a frame around it,
+						and this is the second time the same defect has been reported.
+					-->
+					{#if event.free_busy_only}
+						<p class="prose">
+							This is on <strong>{event.calendar_name ?? 'a calendar shared with you'}</strong>,
+							which you do not own. The app holds the start and end time and nothing
+							else: no title, no description, no location, no attendees and no joining
+							link.
+						</p>
+						<p class="fine">
+							That is deliberate. The meeting belongs to someone who did not agree to
+							have it stored here, and knowing when they are busy is all that
+							scheduling around them needs. Open it in Google if you need more.
+						</p>
+					{:else if event.description}
+						<p class="prose">{event.description}</p>
+					{/if}
 					<dl class="facts">
 						{#if event.location}
 							<div><dt>Where</dt><dd>{event.location}</dd></div>
@@ -962,6 +977,18 @@ function dayHref(key: string, open: boolean) {
 							<div><dt>Meeting record</dt><dd>{event.meeting_title}</dd></div>
 						{/if}
 					</dl>
+
+					<!--
+						An owned event with nothing else stored says so. Sparse is a
+						real state and it must not look like a failure to load. D214.
+					-->
+					{#if !event.free_busy_only && !event.description && !event.location && !event.organizer && (event.attendee_count ?? 0) === 0 && !event.conference_url}
+						<p class="fine">
+							Nothing else is stored for this one: no description, location, attendees
+							or link. That is what Google returned, not something that failed to
+							load.
+						</p>
+					{/if}
 
 					{#if attendees.length > 0}
 						<h3>Who is coming</h3>
@@ -1013,6 +1040,33 @@ function dayHref(key: string, open: boolean) {
 						</a>
 					{/if}
 				</div>
+{/snippet}
+
+{#snippet eventRow(event: CalendarEventRow)}
+		<div class="row-wrap">
+			<button
+				type="button"
+				class="row"
+				aria-expanded={openEventId === event.id}
+				style="border-left-color: {event.calendar_color ?? 'var(--navy-500)'}"
+				onclick={() => openEvent(event)}
+			>
+				<span class="when mono">{timeLabel(event)}</span>
+				<span class="what">{label(event)}</span>
+				{#if event.location}<span class="where">{event.location}</span>{/if}
+				{#if event.own_response && event.own_response !== 'accepted'}
+					<span class="resp">{RESPONSE_LABEL[event.own_response] ?? event.own_response}</span>
+				{/if}
+				{#if (event.attendee_count ?? 0) > 0}
+					<span class="n mono">{event.attendee_count}</span>
+				{/if}
+				{#if data.scope === 'all'}
+					<span class="acct mono">{event.account_email}</span>
+				{/if}
+			</button>
+
+			{#if openEventId === event.id}
+				{@render eventDetail(event)}
 			{/if}
 		</div>
 {/snippet}
@@ -1103,6 +1157,26 @@ function dayHref(key: string, open: boolean) {
 				</div>
 			{/each}
 		</div>
+
+		<!--
+			The month grid had no detail anywhere.
+
+			Clicking a pip called openEvent, which set state that no branch in this
+			file rendered: the day and agenda views owned the panel and the month
+			did not. So a click in the month view genuinely did nothing, which is
+			what Paul reported twice. The panel is one snippet now and the month
+			renders it under the grid, where there is room for it.
+		-->
+		{#if selectedEvent}
+			<div class="month-detail">
+				<div class="detail-head">
+					<span class="mono">{timeLabel(selectedEvent)}</span>
+					<strong>{label(selectedEvent)}</strong>
+					<button type="button" class="close" onclick={() => (openEventId = null)}>Close</button>
+				</div>
+				{@render eventDetail(selectedEvent)}
+			</div>
+		{/if}
 		</div>
 	{:else if data.view === 'week'}
 		<div class="week">
@@ -1237,6 +1311,33 @@ function dayHref(key: string, open: boolean) {
 {/if}
 
 <style>
+	.month-detail {
+		margin-top: var(--space-3);
+		padding: var(--space-3);
+		border: 1px solid var(--border-thin);
+		border-radius: var(--radius-2);
+		background: var(--surface-card);
+	}
+
+	.detail-head {
+		display: flex;
+		gap: var(--space-3);
+		align-items: baseline;
+		flex-wrap: wrap;
+		margin-bottom: var(--space-2);
+	}
+
+	.close {
+		margin-left: auto;
+		min-height: var(--tap);
+		padding: 0 var(--space-3);
+		border: 1px solid var(--border-control);
+		border-radius: var(--radius-sm);
+		background: var(--surface-card);
+		font-family: var(--font-sans);
+		cursor: pointer;
+	}
+
 	.gaps {
 		margin-top: var(--space-4);
 		padding-top: var(--space-4);

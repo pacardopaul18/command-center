@@ -7013,3 +7013,67 @@ on an empty database is the failure D214 exists to prevent.
 **The standing question this leaves.** Every number on every screen should be
 asked where its reader goes next. A figure that cannot be opened is a figure
 nobody can act on, and it will be believed anyway.
+
+### D241: a control that appears to do something has to do it, and say what it did
+
+W6b. Clicking a calendar event did nothing, and it turned out to be two defects
+stacked, which is why it survived a session of work on that page.
+
+**One: the month view had no detail panel at all.** The panel lived inside the
+`eventRow` snippet, which only the day and agenda views render. A month pip
+called `openEvent`, which set `openEventId`, and no branch in the file rendered
+it. The click was doing exactly nothing, in the strictest sense.
+
+The panel is one snippet now, and the month renders it under the grid where
+there is room for it, with the event named and a way to close it.
+
+**Two: for a shared calendar the panel was empty.** Every field it renders is
+null for a calendar Paul does not own, by D205: description, location,
+organizer, attendee count, conference link. So the panel would have opened with
+one line in it. All eleven events in the current window are on shared calendars,
+so every click he could have made hit this.
+
+A shared event now says what is held and why, in words: that it is on a calendar
+he does not own, that the app holds start and end and nothing else, and that
+this is deliberate because the meeting belongs to somebody who did not agree to
+have it stored here. An empty modal is the same silent failure with a frame
+around it.
+
+**And the sparse owned case says so too.** An owned event with no description,
+location, attendees or link is a real state and must not read as a failure to
+load, so it says that is what Google returned rather than showing nothing. D214.
+
+**Three wrong turns while finding it, all mine, recorded because the pattern is
+the lesson.**
+
+- The handler appeared never to fire. It fired; my restore from a scratch backup
+  had reverted the block I was testing. **A diagnostic run against a file you
+  have been patching and restoring is a measurement of the wrong thing.**
+- The first browser guard clicked as soon as the pip existed, which is before
+  hydration, and failed on a page that works.
+- The second wrapped the click in a retry until the panel appeared. Opening is a
+  **toggle**, so every retry closed what the previous one opened and it could
+  never pass. A retry loop around a toggle is a loop that cannot succeed.
+
+The guard now waits for the page to settle and clicks once.
+
+### D242: the tickets page says what kind of list it is
+
+The oldest overdue ticket is eleven months old, 106 of the 247 are John's, 82
+are Dustin's, and none is Paul's.
+
+That is an inherited backlog predating his arrival, and a large share of it is
+very likely finished work nobody closed in Asana. **247 is a number that reads
+as an accusation if nothing frames it**, and this is the screen he opens first,
+so the framing belongs on the page rather than in a handoff he may read later.
+
+Derived rather than written: the oldest date, the count that is his, and who
+carries the most all come from the rows on screen, so the sentence cannot drift
+from the list beneath it. Checklist item 15.
+
+It is shown only on the unfiltered overdue view. Once he filters to one person
+the sentence is about a different set and would be wrong.
+
+**This is a finding about the firm rather than about the app**, and it may be
+the most useful thing the mirror has produced for his actual job. The app's part
+is to say plainly what the number is, and to stop short of judging it.
