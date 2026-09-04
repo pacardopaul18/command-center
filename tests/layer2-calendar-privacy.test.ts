@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { calendarOwnership, label } from '../src/lib/calendar-label';
+import { calendarOwnership, label, shortLabel } from '../src/lib/calendar-label';
 
 const ROOT = process.cwd();
 
@@ -216,5 +216,46 @@ describe('layer 2: the screen does not call another person calendar yours', () =
 		expect(page, 'the old unconditional label is still there').not.toMatch(
 			/is_primary \? 'yours, primary' : 'yours'/
 		);
+	});
+});
+
+
+describe('layer 2: a dense view gets a dense label', () => {
+	/*
+	 * D234 applied to the thing that produced it. A week-grid day column has
+	 * about 105 pixels and "Busy · meredith@macgrayconsulting.com" wants 226, so
+	 * every block truncated to "Busy · mer..." and carried nothing. Widening does
+	 * not fix it: seven columns and a full address do not fit at any screen size.
+	 *
+	 * The domain is dropped rather than the label truncated. Every calendar here
+	 * is at one firm, so the domain is the half that is identical on all of them,
+	 * and dropping the shared half is lossless in the way cutting the
+	 * distinguishing half is not.
+	 */
+	it('drops the domain and keeps the person', () => {
+		expect(shortLabel({ free_busy_only: 1, calendar_name: 'meredith@macgrayconsulting.com', summary: null })).toBe(
+			'Busy · meredith'
+		);
+	});
+
+	it('leaves a name that is not an address alone', () => {
+		expect(shortLabel({ free_busy_only: 1, calendar_name: 'Holidays in Philippines', summary: null })).toBe(
+			'Busy · Holidays in Philippines'
+		);
+		expect(shortLabel({ free_busy_only: 0, summary: 'Board meeting' })).toBe('Board meeting');
+	});
+
+	it('never turns a busy block into a titled one', () => {
+		// The privacy rule does not move for a layout change.
+		expect(
+			shortLabel({ free_busy_only: 1, calendar_name: 'meredith@x.com', summary: 'Confidential' })
+		).toBe('Busy · meredith');
+	});
+
+	it('is what the grid renders, with the full name still on hover', () => {
+		const grid = readFileSync(join(ROOT, 'src', 'lib', 'components', 'CalendarGrid.svelte'), 'utf8');
+		expect(grid).toMatch(/class="block-title">\{shortLabel\(/);
+		// The full name is not lost, it moves to the title attribute.
+		expect(grid).toMatch(/title=\{label\(/);
 	});
 });

@@ -7,6 +7,10 @@ import { PAGE_SIZES, readPaging } from './action-items';
 import { resolveAccount } from '../accounts';
 import { getSettings } from '../settings';
 import { mentionsRichField, readRichField } from '../rich-field';
+import {
+	PENDING_PROPOSALS_FOR_MEETING_SQL,
+	proposalCounts
+} from '../proposal-counts';
 
 /**
  * Meetings, with transcript import.
@@ -28,7 +32,17 @@ const LIST_SELECT = `
          cl.name AS client_name,
          p.name  AS project_name,
          CASE WHEN m.transcript_text IS NULL THEN 0 ELSE LENGTH(m.transcript_text) END AS transcript_chars,
-         (SELECT COUNT(*) FROM action_items WHERE meeting_id = m.id) AS action_item_count
+         (SELECT COUNT(*) FROM action_items WHERE meeting_id = m.id) AS action_item_count,
+         /*
+          * Proposals still waiting on Paul for this meeting.
+          *
+          * Without it the row says "0 items" for a meeting whose transcript
+          * produced a dozen proposals, which is true about action items and
+          * reads as "nothing came out of this meeting". The accepted count and
+          * the waiting count are different facts and the screen shows both.
+          * D214.
+          */
+         ${PENDING_PROPOSALS_FOR_MEETING_SQL} AS pending_proposal_count
   FROM meetings m
   LEFT JOIN clients cl ON cl.id = m.client_id
   LEFT JOIN projects p ON p.id = m.project_id
@@ -208,6 +222,8 @@ meetings.get('/', async (c) => {
 		.bind(`${weekStart}T00:00:00Z`)
 		.first<{ n: number }>();
 
+	const proposals = await proposalCounts(c.env.DB);
+
 	return c.json({
 		meetings: results ?? [],
 		view,
@@ -219,7 +235,16 @@ meetings.get('/', async (c) => {
 			reviewed: Number(counts?.reviewed ?? 0),
 			this_week: Number(counts?.this_week ?? 0),
 			today: Number(counts?.today ?? 0),
-			items_from_meetings: Number(fromMeetings?.n ?? 0)
+			items_from_meetings: Number(fromMeetings?.n ?? 0),
+			/*
+			 * The queue, from the one expression every page reads it from. This
+			 * page said "Awaiting your review 0" while Action items said 27, and
+			 * both were right: that tile counts unreviewed AI summaries and the
+			 * 27 are proposals. Two true numbers under headings a reader hears as
+			 * one question. F15, and the fix is the labels plus the missing
+			 * number rather than a corrected query.
+			 */
+			proposals_pending: proposals.pending
 		}
 	});
 });

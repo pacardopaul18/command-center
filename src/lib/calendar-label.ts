@@ -59,3 +59,26 @@ export function calendarOwnership(calendar: {
 	if (owned) return calendar.is_primary ? 'yours, primary' : 'yours';
 	return 'shared with you, busy times only';
 }
+
+/**
+ * The same label, for a view that has a hundred pixels rather than a thousand.
+ *
+ * `Busy · meredith@macgrayconsulting.com` wants 226px and a week-grid day
+ * column has 105, so every block in the week view truncated to "Busy · mer..."
+ * and carried no information at all. Widening the column does not fix it: seven
+ * columns and a full email address do not fit at any screen size anybody has.
+ *
+ * So the dense view gets a dense label, which is D234's rule applied to the
+ * thing that produced it: density is a property of the view, not of the record.
+ * The name is unchanged in the list views, where there is room for it.
+ *
+ * The domain is dropped rather than the label truncated, because every calendar
+ * here is at the same firm and the domain is the part that is identical on all
+ * of them. Dropping the shared half of a label is lossless in the way truncating
+ * the distinguishing half is not.
+ */
+export function shortLabel(event: Parameters<typeof label>[0]): string {
+	const full = label(event);
+	// Only the calendar's own name is shortened, and only when it is an address.
+	return full.replace(/([\w.+-]+)@[\w.-]+/g, '$1');
+}

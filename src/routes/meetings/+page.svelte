@@ -314,15 +314,31 @@
 		<span class="tile-value">{data.counts.needs_transcript}</span>
 		<span class="tile-note mono">import to extract</span>
 	</a>
+	<!--
+		This said "Awaiting your review" and counted unreviewed AI summaries,
+		while the Action items page said 27 were waiting for a decision. Both
+		numbers were right and a reader hears one question. The heading now says
+		which thing it counts. F15.
+	-->
 	<a class="tile warn" href={urlFor({ view: 'to_review' })}>
-		<span class="tile-label mono">Awaiting your review</span>
+		<span class="tile-label mono">Summaries to check</span>
 		<span class="tile-value">{data.counts.to_review}</span>
-		<span class="tile-note mono">summaries drafted</span>
+		<span class="tile-note mono">drafted by AI, unread</span>
 	</a>
 	<a class="tile good" href="/actions?view=all&source=meeting">
 		<span class="tile-label mono">Items from meetings</span>
 		<span class="tile-value">{data.counts.items_from_meetings}</span>
 		<span class="tile-note mono">this week</span>
+	</a>
+	<!--
+		The queue, from the one expression every page that mentions it reads.
+		Absent from this page entirely before, which is how it could disagree
+		with Action items without either number being wrong.
+	-->
+	<a class="tile warn" href="/actions">
+		<span class="tile-label mono">Proposals waiting on you</span>
+		<span class="tile-value">{data.counts.proposals_pending}</span>
+		<span class="tile-note mono">mail and meetings</span>
 	</a>
 </div>
 
@@ -385,7 +401,24 @@
 									</span>
 								</span>
 								<span class="row-side">
+									<!--
+										Accepted items and waiting proposals are different
+										facts. "0 items" against a transcript that produced
+										fourteen proposals is true about action items and
+										reads as nothing came out of this meeting. D214.
+									-->
 									<span class="items mono">
+										{#if meeting.pending_proposal_count}
+											<!--
+												A marker, not a link: the row is already one, and
+												an anchor inside an anchor is invalid and gets
+												rearranged by the browser. The tile above carries
+												the link to the queue.
+											-->
+											<span class="waiting">
+												{meeting.pending_proposal_count} waiting
+											</span>
+										{/if}
 										{meeting.action_item_count}
 										{meeting.action_item_count === 1 ? 'item' : 'items'}
 									</span>
@@ -527,6 +560,13 @@
 </Modal>
 
 <style>
+	/* Waiting proposals read as a claim on the reader, so they are marked
+	   rather than sitting in the same grey as the accepted count. */
+	.waiting {
+		color: var(--ink);
+		font-weight: 600;
+	}
+
 	.head {
 		display: flex;
 		align-items: flex-start;
@@ -548,11 +588,41 @@
 		font-size: var(--text-sm);
 	}
 
+	/*
+	 * Tiles are context, not content.
+	 *
+	 * Five tiles reading 2, 2, 0, 0 held the full width while the week grid,
+	 * which is the only thing on the page carrying real information, was squeezed
+	 * into a column narrow enough to truncate every entry to "Call w... 7:00".
+	 * The trivial thing was large and the informative thing was cramped. A page
+	 * is ordered by what the reader came to do. D233.
+	 *
+	 * They keep their numbers and lose their bulk: a row of small facts rather
+	 * than a wall of large ones.
+	 */
 	.tiles {
-		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-		gap: var(--space-3);
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--space-2);
 		margin-bottom: var(--space-4);
+	}
+
+	.tiles .tile {
+		flex: 1 1 auto;
+		min-width: 9rem;
+		flex-direction: row;
+		align-items: baseline;
+		gap: var(--space-2);
+		padding: var(--space-2) var(--space-3);
+	}
+
+	.tiles .tile :global(.tile-value) {
+		font-size: 1.125rem;
+	}
+
+	.tiles .tile :global(.tile-note) {
+		/* The sub-line is the first thing to go when a tile is a row. */
+		display: none;
 	}
 
 	.tile {
@@ -625,9 +695,20 @@
 		align-items: start;
 	}
 
+	/*
+	 * The week grid gets the room. It was at 2fr against the log's 3fr, which
+	 * left it too narrow to render a title beside a time, so every entry
+	 * truncated and the panel carried no information at all.
+	 */
 	@media (min-width: 1100px) {
 		.board {
-			grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+			grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+		}
+	}
+
+	@media (min-width: 1500px) {
+		.board {
+			grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
 		}
 	}
 

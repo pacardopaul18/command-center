@@ -3,6 +3,7 @@ import type { ApiEnv } from './env';
 import { daysAgoUtc, todayInWorkingZone, workingDayStartUtc } from '../dates';
 import { openTicket } from '../ticket-state';
 import { activeProject, projectNeedsAttention } from '../project-state';
+import { PENDING_PROPOSALS_SQL } from '../proposal-counts';
 
 /**
  * The Today cockpit.
@@ -270,7 +271,12 @@ today.get('/', async (c) => {
          (SELECT COUNT(*) FROM invoices
            WHERE amount_paid_cents < amount_cents AND julianday(?1) > julianday(due_date)
              AND kind = 'invoice' AND voided_at IS NULL) AS alerts,
-         (SELECT COUNT(*) FROM meeting_action_proposals WHERE status = 'pending') AS proposals,
+         /*
+          * Both sources. This counted only meeting proposals, so Today would
+          * have said 24 where Action items said 27, and the difference was
+          * every proposal that came out of mail. One expression now. F15.
+          */
+         ${PENDING_PROPOSALS_SQL} AS proposals,
          (SELECT COUNT(*) FROM action_items WHERE status = 'ambiguous') AS ambiguous,
          (SELECT COALESCE(SUM(amount_cents - amount_paid_cents), 0) FROM invoices
            WHERE amount_paid_cents < amount_cents AND julianday(?1) > julianday(due_date)

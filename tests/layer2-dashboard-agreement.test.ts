@@ -119,3 +119,66 @@ describe('layer 2: a zero with nothing behind it says so', () => {
 		}
 	});
 });
+
+
+describe('layer 2: every page reports the review queue from one expression', () => {
+	/*
+	 * F15's shape, a second time, across pages rather than within one.
+	 *
+	 * Action items summed both proposal sources and said 27. `today.ts` summed
+	 * only meeting proposals and would have said 24, the difference being every
+	 * proposal that came out of mail. Meetings did not report it at all and
+	 * showed "Awaiting your review 0", which is a true statement about unreviewed
+	 * AI summaries and reads as a statement about the queue.
+	 *
+	 * Three pages, three answers to what a reader hears as one question, and only
+	 * one of the three was actually wrong. The fix is one expression plus labels
+	 * that say which thing they count, not three corrected queries.
+	 */
+	const server = join(ROOT, 'src', 'lib', 'server');
+	const walk = (dir: string): string[] =>
+		readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+			const full = join(dir, e.name);
+			if (e.isDirectory()) return walk(full);
+			return e.name.endsWith('.ts') ? [full] : [];
+		});
+
+	it('counts pending proposals in exactly one place', () => {
+		const offenders = walk(server)
+			.filter((f) => !f.endsWith(join('server', 'proposal-counts.ts')))
+			.filter((f) =>
+				/(mail|meeting)_action_proposals\s+WHERE\s+status\s*=\s*'pending'/i.test(
+					readFileSync(f, 'utf8')
+				)
+			)
+			.map((f) => f.slice(server.length + 1));
+		expect(offenders, 'these count the queue themselves instead of sharing the expression').toEqual(
+			[]
+		);
+	});
+
+	it('counts both sources, never one', () => {
+		// A count that silently covers one source is wrong in the direction that
+		// looks fine, which is how today.ts disagreed without anybody noticing.
+		const shared = readFileSync(join(server, 'proposal-counts.ts'), 'utf8');
+		expect(shared).toMatch(/mail_action_proposals WHERE status = 'pending'/);
+		expect(shared).toMatch(/meeting_action_proposals WHERE status = 'pending'/);
+	});
+
+	it('the meetings page distinguishes accepted items from waiting proposals', () => {
+		// "0 items" against a transcript that produced fourteen proposals is true
+		// about action items and reads as nothing came out of this meeting. D214.
+		/*
+		 * Comments stripped first. The old heading is quoted in the comment that
+		 * explains why it changed, and the first version of this test matched
+		 * that quote: a guard that fails on its own explanation.
+		 */
+		const page = readFileSync(join(ROOT, 'src', 'routes', 'meetings', '+page.svelte'), 'utf8')
+			.replace(/<!--[\s\S]*?-->/g, ' ')
+			.replace(/\/\*[\s\S]*?\*\//g, ' ');
+		expect(page).toMatch(/pending_proposal_count/);
+		expect(page).toMatch(/waiting/);
+		// And the tile that counts summaries no longer claims to count reviews.
+		expect(page).not.toMatch(/Awaiting your review/);
+	});
+});

@@ -628,6 +628,9 @@ export interface Meeting {
 	project_name?: string | null;
 	transcript_chars?: number;
 	action_item_count?: number;
+	/* Proposals from this meeting still waiting on a person. Different from
+	   action_item_count, which counts the ones already accepted. */
+	pending_proposal_count?: number;
 }
 
 export const PROPOSAL_STATUSES = ['pending', 'accepted', 'rejected'] as const;

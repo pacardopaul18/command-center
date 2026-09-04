@@ -15,6 +15,7 @@ import {
 	readJsonObject,
 	requiredText
 } from './validate';
+import { proposalCounts } from '../proposal-counts';
 
 // Every read joins the project so a row can link back to its project in one click.
 const SELECT = `
@@ -461,15 +462,9 @@ actionItems.get('/proposals', async (c) => {
 		)
 	);
 
-	const counts = await c.env.DB.prepare(
-		`SELECT
-       (SELECT COUNT(*) FROM mail_action_proposals WHERE status = 'pending') +
-       (SELECT COUNT(*) FROM meeting_action_proposals WHERE status = 'pending') AS pending,
-       (SELECT COUNT(*) FROM mail_action_proposals WHERE status = 'accepted') +
-       (SELECT COUNT(*) FROM meeting_action_proposals WHERE status = 'accepted') AS accepted,
-       (SELECT COUNT(*) FROM mail_action_proposals WHERE status = 'rejected') +
-       (SELECT COUNT(*) FROM meeting_action_proposals WHERE status = 'rejected') AS rejected`
-	).first();
+	// One expression, shared with Today and Meetings. Three pages said three
+	// different things about this number before it lived in one place.
+	const counts = await proposalCounts(c.env.DB);
 
 	return c.json({ proposals, status, counts });
 });

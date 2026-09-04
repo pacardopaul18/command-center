@@ -31,6 +31,10 @@ export interface MeetingCounts {
 	this_week: number;
 	today: number;
 	items_from_meetings: number;
+	/* The review queue, from the one expression every page that mentions it
+	   reads. Absent from this page before, which is how it could disagree with
+	   Action items without either number being wrong. */
+	proposals_pending: number;
 }
 
 /**

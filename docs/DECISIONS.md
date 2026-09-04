@@ -6835,3 +6835,98 @@ fetched in one pass on 2026-09-02 and coverage is even across the months. June
 was simply three times busier. So the collapse and the overflow were verified on
 a June day, where they fire, and the current window was verified separately for
 no regression. D107's shape, named before it could bite.
+
+### D235: evidence in a human-gated review queue is never behind an interaction
+
+Written down because it refused a direct instruction and won, and a rule that
+strong has to be citable by somebody who cannot read the code.
+
+**The rule.** Wherever a person accepts or rejects something a machine proposed,
+the evidence for it is on screen at the moment of the decision. Not behind an
+expander, a hover, a tooltip or a second page. It may be clamped, summarised or
+truncated with the rest on expansion; it may not be hidden.
+
+**Why.** A proposal is a machine's reading of something Paul may have promised.
+Deciding whether he really did needs the sentence in front of him. Making him
+open something first is how a queue gets cleared by accepting everything, and a
+queue cleared that way produces an Action items page full of obligations nobody
+actually made, which is the one failure that destroys the page's usefulness
+permanently.
+
+**Scope: any human-gated queue**, not the Action items page. The same shape
+recurs wherever the propose-review-push chain appears, and it is already in the
+SOP template as the shape for any step where something produces work for a
+person.
+
+**How it came up.** W5b was ordered with the quote moved to expansion, to win
+back the density that was delaying twenty-seven verdicts. The density problem
+was real. The instruction would have solved it by removing the safeguard, and
+the rule existed only as a comment in the code, so the person giving the
+instruction could not have known it was there.
+
+Both are satisfied by clamping to one line with the rest on expansion. The
+density came from the layout rather than from the quote: title and context share
+a line, spacing tightened, and the row went from 132px to 88px with the sentence
+still visible.
+
+**Tested by breaking it.** Gating the quote on the row being open fails a layer 2
+test and a browser test. The layer 2 one asserts the property rather than the
+markup, after the first version broke on the layout change while testing the
+right thing.
+
+### D236: one expression per concept, across pages and not only within one
+
+F15 said two screens must not disagree about the same rows. That was about one
+page against a dashboard. This is the same rule between three pages, and it
+found a defect nobody had reported.
+
+**What each page said about the review queue.**
+
+| Page | Said | Counting |
+|---|---|---|
+| Action items | 27 | both sources, pending |
+| Today | would have said 24 | **meeting proposals only** |
+| Meetings | "Awaiting your review 0" | unreviewed AI summaries |
+
+Three answers to what a reader hears as one question. **Only one was wrong.**
+Today omitted every proposal that came out of mail. The other two were correct
+statements about different things, wearing headings that made them look like the
+same thing, which is exactly F15's original finding.
+
+**So the fix is not three corrected queries.** It is one expression, plus labels
+that say which thing they count, plus the number that was missing entirely.
+
+- `proposal-counts.ts` holds the expression. A guarantee test walks
+  `src/lib/server` and fails if any file counts pending proposals itself.
+- Meetings gained the queue: a tile reading the shared expression, and a per
+  meeting **"14 waiting"** beside the accepted count.
+- The tile that said "Awaiting your review" now says **"Summaries to check"**,
+  because that is what it counts.
+
+**"0 items" was true and misleading.** It counts accepted action items, and the
+two transcripts produced 24 proposals still waiting. A meeting whose transcript
+produced fourteen proposals read as a meeting nothing came out of. Accepted and
+waiting are different facts and the row shows both. D214 on a page D214 never
+reached.
+
+### D237: the tiles are context and the grid is content
+
+W5d's layout half. Four tiles reading 2, 2, 0, 0 held the full width while the
+week grid, the only thing on the page carrying information, was squeezed into a
+column narrow enough to truncate every entry.
+
+Tiles are now a row of small facts rather than a wall of large ones: 45px tall
+at 1920, down from a full band. The grid went from 2fr against the log's 3fr to
+an even split, and to 3fr against 2fr above 1500px. It now has 970px where it
+had about 620.
+
+**Widening did not fix the truncation, and that is the finding.** Every block
+still read `Busy · mer...` because the label is a full email address:
+`Busy · meredith@macgrayconsulting.com` wants 226px and a day column has 105.
+Seven columns and a full address do not fit at any screen size anybody owns.
+
+So the dense view gets a dense label, which is D234's own rule applied to the
+thing that produced it. `shortLabel` drops the domain: every calendar here is at
+one firm, so the domain is the half identical on all of them, and dropping the
+shared half is lossless in the way cutting the distinguishing half is not. The
+full name stays on hover. Eight of eight blocks now fit, zero clipped.

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { label } from '$lib/calendar-label';
+	import { label, shortLabel } from '$lib/calendar-label';
 	import { packLanes } from '$lib/calendar-layout';
 
 	/**
@@ -161,7 +161,7 @@
 		{#each columns as col (col.key)}
 			<div class="allday">
 				{#each allDayFor(col.key) as e (e.id)}
-					<span class="chip" style="border-left-color: {tint(e)}">{label(e)}</span>
+					<span class="chip" title={label(e)} style="border-left-color: {tint(e)}">{shortLabel(e)}</span>
 				{/each}
 			</div>
 		{/each}
@@ -190,7 +190,7 @@
 						       border-left-color: {tint(block.item.event)}"
 						title="{label(block.item.event)} · {clock.format(new Date(block.item.event.starts_at))}"
 					>
-						<span class="block-title">{label(block.item.event)}</span>
+						<span class="block-title">{shortLabel(block.item.event)}</span>
 						<span class="block-time">{clock.format(new Date(block.item.event.starts_at))}</span>
 					</div>
 				{/each}

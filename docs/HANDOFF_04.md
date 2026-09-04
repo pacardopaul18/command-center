@@ -928,3 +928,37 @@ have used the labels, and one downstream objection was built entirely on one.
 and asking it would have taken less time than writing the caption did.
 
 *Session 06. Nothing in this section alters sections 1 to 13.*
+
+---
+
+## 15. Standing constraints, added by W5
+
+Section 10 and section 14 both still hold. This is one more, and it is a
+framework trap rather than a defect in any feature.
+
+### `$state(new SvelteSet())` silently breaks reactivity
+
+`SvelteSet` and `SvelteMap` carry their own signals. Wrapping one in `$state()`
+proxies the instance, the proxy does not carry those signals, and `add`, `delete`
+and `clear` never reach the view.
+
+**There is no error.** The set updates, the data is correct, and the screen does
+not move. It looks like a click handler that did not fire.
+
+```
+let open = $state(new SvelteSet<string>());   // silently dead
+let open = new SvelteSet<string>();           // correct
+```
+
+It hit two commits in one session. The first shipped through a green suite and
+was only found when somebody clicked the control in the second. Worth saying
+plainly: **a green suite passed a dead reactive control twice.** The layer 2
+tests read source and the browser tests did not exercise that particular
+interaction, so nothing was wrong with either layer; the interaction simply had
+no test until it had a bug.
+
+Where a reactive collection is genuinely needed, use the class directly. Where
+the state is something the reader can see, prefer the URL, which is this app's
+own pattern for view state and is what the month cell expansion uses now.
+
+*Session 06. Nothing in this section alters sections 1 to 14.*
