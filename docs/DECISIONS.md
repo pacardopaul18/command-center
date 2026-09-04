@@ -6716,3 +6716,59 @@ screen while staying Paul's in the database.
 
 Verified on the running app: one `yours`, six `shared with you, busy times only`.
 Proved by breaking it both ways, in the module and at the call site.
+
+### D233: a page is ordered by what the reader came to do
+
+W5b. The Action items page opened with five summary tiles reading zero and a
+filter row reading zero. Twenty-seven decisions waited below them, each in a
+card taking about a quarter of the viewport. The first screen of a page about
+pending decisions carried no content at all, and the headline number on it was a
+column of noughts.
+
+**The interface was the thing delaying the verdicts.** They were never blocked
+on Paul's attention. Twenty-seven decisions at that size is a scrolling
+exercise, and the queue is the decaying item in the whole programme: the
+transcripts fade and the verdicts are the requirements document for extraction.
+That makes this a build item, and it was found by looking at the running app
+rather than by reading reports about it.
+
+**The queue moved above the tiles**, and the ordering is now asserted in the
+browser suite. A summary that reads zero never outranks a queue beneath it.
+
+**The card became a row.** Title and context share a line, the quote sits under
+them, and both verdicts are on the row. Measured on the real mirror at 1920:
+
+| | Before | After |
+|---|---|---|
+| row height | 132px | **88px** |
+| the 27 verdicts | 3.7 screens | **2.6 screens** |
+| at 412px | 8.9 screens | **6.0 screens** |
+
+Two spacing findings behind that. `--space-1` is 16px, because the scale starts
+at 16, so the "tight" padding was the same as the loose padding; a queue row is
+the one place in this app that wants tighter than the scale and now uses explicit
+pixels. And a global `blockquote` margin was adding 12px of prose spacing to a
+one-line quote, beaten with a more specific selector rather than by removing the
+global rule that is right everywhere else.
+
+**The quote stays visible, and that is not a compromise.** The instruction was
+to move it to expansion. The code carried an older ruling that the sentence must
+be in front of the reader, because deciding whether Paul really promised
+something needs it and making him open something first is how a queue gets
+cleared by accepting everything. Both are satisfied by clamping it to one line
+with the rest on expansion. A test asserts the quote is never gated on the row
+being open, and it was proved by gating it and watching the test fail.
+
+**Keyboard verdicts, on the buttons rather than the row.** A list item is not an
+interactive element, and giving it a tab stop and key handlers is the wrong shape
+for a screen reader. Tab already lands on Accept, so `A` and `R` act from there
+and Enter still does the obvious thing.
+
+**At 412px the context drops and the decision inputs never do.** Where it came
+from and what it is about are context; who owes it and when are what the verdict
+turns on. Those two are never hidden at any width.
+
+Two existing guards asserted the old markup exactly and broke on the layout
+change. They were testing the right property in a form that could not survive the
+page being rearranged, and are now written as properties: the quote renders
+whenever there is one, and is never gated on expansion. Both still bite.

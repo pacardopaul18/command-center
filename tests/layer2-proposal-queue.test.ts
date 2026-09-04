@@ -97,12 +97,29 @@ describe('layer 2: the reviewer can see what they are deciding about', () => {
 		 * sentence in front of them. Making them open something first is how a
 		 * queue gets cleared by accepting everything.
 		 */
-		expect(page).toMatch(/<blockquote class="evidence">\{proposal\.evidence\}<\/blockquote>/);
+		/*
+		 * Asserted as a property, not as exact markup.
+		 *
+		 * W5b compressed the card to a row and the quote gained a class binding
+		 * for its expanded state, which broke a string match that was testing the
+		 * right thing in a form that could not survive the layout changing. What
+		 * matters is that the quote renders whenever there is one, and is never
+		 * gated on the row being open.
+		 */
+		expect(page).toContain('{#if proposal.evidence}');
+		expect(page).toContain('{proposal.evidence}');
+		expect(
+			page.includes('{#if proposal.evidence && open}') ||
+				page.includes('{#if open && proposal.evidence}'),
+			'the quote is hidden until the row is expanded, which is how a queue gets cleared by accepting everything'
+		).toBe(false);
 	});
 
 	it('shows the words rather than inventing a date', () => {
 		// An inferred deadline becomes a fact the moment somebody accepts.
-		expect(page).toMatch(/said "\{proposal\.due_signal\}", no date given/);
+		// The words the message used, however the line is worded around them.
+		expect(page).toContain('{proposal.due_signal}');
+		expect(page).toMatch(/said "\{proposal\.due_signal\}", no date/);
 	});
 
 	it('says nothing here is an action item yet', () => {

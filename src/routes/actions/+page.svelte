@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { SvelteSet } from 'svelte/reactivity';
 	import { goto, invalidateAll } from '$app/navigation';
 	import { page } from '$app/state';
 	import {
@@ -59,6 +60,36 @@
 	}
 
 	let busy = $state(false);
+
+	/**
+	 * Which quotes are open.
+	 *
+	 * A set rather than a single id: reading two proposals side by side is a
+	 * normal thing to want when they came out of the same meeting, and an
+	 * accordion that closes one to open another makes comparing them a chore.
+	 */
+	let expanded = $state(new SvelteSet<string>());
+
+	function toggle(key: string) {
+		if (expanded.has(key)) expanded.delete(key);
+		else expanded.add(key);
+	}
+
+	/**
+	 * A and R decide the focused row.
+	 *
+	 * Twenty-seven verdicts by mouse is the actual cost of this queue, and it is
+	 * what was delaying them. Bound to the row's own buttons, which are where a
+	 * keyboard user already is once they tab into the row. Only bare keys, so a
+	 * browser shortcut is never intercepted.
+	 */
+	function onRowKey(event: KeyboardEvent, proposal: { source: string; id: string }) {
+		if (event.ctrlKey || event.metaKey || event.altKey) return;
+		const key = event.key.toLowerCase();
+		if (key !== 'a' && key !== 'r') return;
+		event.preventDefault();
+		decide(proposal, key === 'a' ? 'accept' : 'reject');
+	}
 
 	/** Which proposal is mid-decision, so only its own buttons disable. */
 	let reviewing = $state('');
@@ -459,6 +490,130 @@
 <p class="status-line" role="status" aria-live="polite">{notice}</p>
 {#if errorMessage}<p class="error-banner" role="alert">{errorMessage}</p>{/if}
 
+<!--
+	The queue comes first, above the summary tiles.
+
+	A page is ordered by what the reader came to do. Twenty-seven decisions were
+	waiting below five tiles reading zero and a filter row reading zero, so the
+	first screen carried no content at all and the headline number on a page
+	about pending decisions was a column of noughts.
+-->
+{#if data.proposals.counts.pending > 0}
+	<Card
+		title="Waiting for your decision"
+		subtitle="{data.proposals.counts.pending} extracted from mail and meetings"
+	>
+		<p class="queue-note">
+			Read out of a message or a transcript by a model. Nothing here is an action item
+			until you accept it. Press <kbd>A</kbd> or <kbd>R</kbd> on a focused row, or use the
+			buttons.
+		</p>
+
+		<ul class="queue">
+			{#each data.proposals.proposals as proposal (proposal.source + proposal.id)}
+				{@const open = expanded.has(proposal.source + proposal.id)}
+				<!--
+					A row, not a card.
+
+					Twenty-seven decisions at a quarter of a viewport each is a
+					scrolling exercise, and the cost of the interface was what was
+					actually delaying the verdicts. Everything needed to decide is on
+					one line and both verdicts are reachable without opening anything.
+				-->
+				<li class="proposal">
+					<div class="row-main">
+						<!--
+							Title and context share a line, because at a desktop width
+							there is 1,500px of it and stacking three blocks vertically
+							wastes the room that makes the queue scannable.
+						-->
+						<div class="row-top">
+							<span class="proposal-title">{proposal.title}</span>
+
+						<!--
+							One line of the quote stays visible, and that is deliberate.
+							Deciding whether Paul really promised something needs the
+							sentence in front of him; making him open something first is
+							how a queue gets cleared by accepting everything. Compressed
+							to a line rather than hidden, with the rest on expansion.
+						-->
+							<div class="proposal-meta mono">
+								<span>{proposal.source === 'mail' ? 'Email' : 'Meeting'}</span>
+								{#if proposal.owner}<span>{proposal.owner}</span>{/if}
+								{#if proposal.deadline}
+									<span>due {proposal.deadline}</span>
+								{:else if proposal.due_signal}
+									<!--
+										The words the message used, not a date nobody stated. An
+										inferred deadline becomes fact the moment somebody accepts.
+									-->
+									<span class="signal">said "{proposal.due_signal}", no date</span>
+								{/if}
+								<!--
+									Where it came from and what it is about are context rather
+									than decision inputs, so they drop off a phone and return
+									on expansion. Who owes it and when are never dropped.
+								-->
+								<span class="wide-only">
+									{#if proposal.origin}{proposal.origin}{/if}
+								</span>
+								<span class="wide-only">
+									{#if proposal.client_name}{proposal.client_name}{/if}
+									{#if proposal.project_name}{proposal.project_name}{/if}
+								</span>
+							</div>
+						</div>
+
+						{#if proposal.evidence}
+							<blockquote class="evidence" class:full={open}>{proposal.evidence}</blockquote>
+						{/if}
+					</div>
+
+					<div class="row-actions">
+						{#if proposal.evidence}
+							<button
+								type="button"
+								class="expand"
+								aria-expanded={open}
+								onclick={() => toggle(proposal.source + proposal.id)}
+							>
+								{open ? 'Less' : 'More'}
+							</button>
+						{/if}
+						<!--
+							The shortcut lives on the buttons rather than on the row.
+
+							A list item is not an interactive element and giving it a tab
+							stop and key handlers is the wrong shape for a screen reader.
+							Tab already lands on Accept, which is where a keyboard user
+							is, so A and R work from there and Enter still does the
+							obvious thing.
+						-->
+						<button
+							type="button"
+							class="verdict accept"
+							disabled={reviewing === proposal.id}
+							onkeydown={(e) => onRowKey(e, proposal)}
+							onclick={() => decide(proposal, 'accept')}
+						>
+							{reviewing === proposal.id ? '...' : 'Accept'}
+						</button>
+						<button
+							type="button"
+							class="verdict reject"
+							disabled={reviewing === proposal.id}
+							onkeydown={(e) => onRowKey(e, proposal)}
+							onclick={() => decide(proposal, 'reject')}
+						>
+							Reject
+						</button>
+					</div>
+				</li>
+			{/each}
+		</ul>
+	</Card>
+{/if}
+
 <div class="tiles">
 	{#each tiles as tile (tile.label)}
 		<a
@@ -569,69 +724,6 @@
 	of them; making them open something first is how a queue gets cleared by
 	accepting everything.
 -->
-{#if data.proposals.counts.pending > 0}
-	<Card
-		title="Waiting for your decision"
-		subtitle="{data.proposals.counts.pending} extracted from mail and meetings"
-	>
-		<p class="queue-note">
-			Read out of a message or a transcript by a model. Nothing here is an action item
-			until you accept it.
-		</p>
-
-		<ul class="queue">
-			{#each data.proposals.proposals as proposal (proposal.source + proposal.id)}
-				<li class="proposal">
-					<div class="proposal-head">
-						<span class="proposal-title">{proposal.title}</span>
-						<span class="proposal-from">
-							{proposal.source === 'mail' ? 'Email' : 'Meeting'}{proposal.origin
-								? ` · ${proposal.origin}`
-								: ''}
-						</span>
-					</div>
-
-					{#if proposal.evidence}
-						<blockquote class="evidence">{proposal.evidence}</blockquote>
-					{/if}
-
-					<div class="proposal-meta">
-						{#if proposal.owner}<span>{proposal.owner}</span>{/if}
-						{#if proposal.deadline}
-							<span>due {proposal.deadline}</span>
-						{:else if proposal.due_signal}
-							<!--
-								The words the message used, not a date nobody stated. An
-								inferred deadline becomes fact the moment somebody accepts.
-							-->
-							<span class="signal">said "{proposal.due_signal}", no date given</span>
-						{/if}
-						{#if proposal.client_name}<span>{proposal.client_name}</span>{/if}
-						{#if proposal.project_name}<span>{proposal.project_name}</span>{/if}
-					</div>
-
-					<div class="proposal-actions">
-						<Button
-							variant="secondary"
-							disabled={reviewing === proposal.id}
-							onclick={() => decide(proposal, 'accept')}
-						>
-							{reviewing === proposal.id ? 'Working' : 'Accept'}
-						</Button>
-						<Button
-							variant="ghost"
-							disabled={reviewing === proposal.id}
-							onclick={() => decide(proposal, 'reject')}
-						>
-							Reject
-						</Button>
-					</div>
-				</li>
-			{/each}
-		</ul>
-	</Card>
-{/if}
-
 {#if data.items.length === 0}
 	<!--
 		An empty screen has to say which kind of empty it is.
@@ -999,6 +1091,169 @@
 </Modal>
 
 <style>
+	/* --- The proposal queue, as rows ------------------------------------- */
+
+	.queue {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+	}
+
+	.proposal {
+		display: flex;
+		gap: var(--space-3);
+		align-items: center;
+		justify-content: space-between;
+		/* Explicit px, not a spacing token: the scale starts at 16px and a queue
+		   row is the one place in the app that wants tighter than the scale. */
+		padding: 6px 0;
+		border-bottom: 1px solid var(--border-thin);
+	}
+
+	/* Title and context on one line, the quote under it. Two rows, not three. */
+	.row-top {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: baseline;
+		gap: var(--space-1) var(--space-3);
+	}
+
+	.proposal:last-child {
+		border-bottom: 0;
+	}
+
+	.row-main {
+		min-width: 0;
+		flex: 1;
+	}
+
+	.proposal-title {
+		font-weight: 600;
+		line-height: 1.3;
+	}
+
+	/*
+	 * One line of the quote, expandable.
+	 *
+	 * Visible rather than hidden, because deciding whether Paul really promised
+	 * something needs the sentence in front of him and opening a thing first is
+	 * how a queue gets cleared by accepting everything. Clamped rather than
+	 * truncated with a width, so it reflows at 412px instead of cutting mid-word
+	 * at a fixed column.
+	 */
+	/* Specific enough to beat the global blockquote margin, which is set for
+	   prose and is 12px of dead space on a one-line quote in a queue row. */
+	.proposal .evidence {
+		margin: 2px 0 0;
+		padding-left: var(--space-2);
+		border-left: 2px solid var(--border-thin);
+		color: var(--text-secondary);
+		font-size: var(--text-sm);
+		display: -webkit-box;
+		-webkit-line-clamp: 1;
+		line-clamp: 1;
+		-webkit-box-orient: vertical;
+		overflow: hidden;
+	}
+
+	.evidence.full {
+		-webkit-line-clamp: unset;
+		line-clamp: unset;
+		overflow: visible;
+	}
+
+	.proposal-meta {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--space-1) var(--space-3);
+		font-size: 0.6875rem;
+		color: var(--text-secondary);
+	}
+
+	.proposal-meta span:empty {
+		display: none;
+	}
+
+	.proposal-meta .signal {
+		color: var(--ink);
+	}
+
+	.row-actions {
+		display: flex;
+		gap: var(--space-1);
+		align-items: center;
+		flex-shrink: 0;
+	}
+
+	/* D22: 44px tap floor on every verdict, at both widths. */
+	.verdict,
+	.expand {
+		min-height: var(--tap);
+		padding: 0 var(--space-3);
+		border: 1px solid var(--border-control);
+		border-radius: var(--radius-sm);
+		background: var(--surface-card);
+		font-family: var(--font-sans);
+		font-size: var(--text-sm);
+		cursor: pointer;
+	}
+
+	.expand {
+		border-color: transparent;
+		color: var(--text-secondary);
+		padding: 0 var(--space-2);
+	}
+
+	.verdict.accept {
+		border-color: var(--navy);
+		color: var(--navy);
+		font-weight: 600;
+	}
+
+	.verdict:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
+
+	.verdict:focus-visible,
+	.expand:focus-visible {
+		outline: 2px solid var(--navy);
+		outline-offset: 1px;
+	}
+
+	kbd {
+		font-family: var(--font-mono, monospace);
+		font-size: 0.75em;
+		padding: 1px 4px;
+		border: 1px solid var(--border-thin);
+		border-radius: 3px;
+	}
+
+	/*
+	 * At a phone width the verdicts move under the text rather than squeezing
+	 * the title into a column two words wide. D22: Paul reads this at 412.
+	 */
+	@media (max-width: 560px) {
+		.proposal {
+			flex-direction: column;
+			align-items: stretch;
+			gap: var(--space-2);
+		}
+
+		/* Context drops off a phone; owner and deadline never do. */
+		.wide-only {
+			display: none;
+		}
+
+		.row-actions {
+			width: 100%;
+		}
+
+		.verdict {
+			flex: 1;
+		}
+	}
+
 	.head {
 		display: flex;
 		flex-wrap: wrap;

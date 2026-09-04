@@ -424,3 +424,69 @@ test.describe('pages use the width they are read at', () => {
 		expect(width, 'a procedure page is no longer capped for reading').toBeLessThan(1400);
 	});
 });
+
+
+test.describe('the review queue is dense enough to work through', () => {
+	/*
+	 * W5b. Twenty-seven verdicts at a quarter of a viewport each is a scrolling
+	 * exercise, and the cost of the interface was what was delaying the
+	 * decisions rather than anything about the decisions themselves.
+	 *
+	 * Asserted as a row height rather than a screen count, because the fixture
+	 * holds a different number of proposals than the real mirror and the
+	 * property that matters is the same either way: one decision, one row.
+	 */
+	test('a proposal row stays under 100px at 1920', async ({ page }) => {
+		await page.setViewportSize({ width: 1920, height: 1080 });
+		await page.goto('/actions');
+		const rows = page.locator('ul[class*="queue"] > li');
+		if ((await rows.count()) === 0) test.skip(true, 'no pending proposals in this fixture');
+
+		const box = await rows.first().boundingBox();
+		expect(box, 'the first proposal row has no box').toBeTruthy();
+		expect(box!.height).toBeLessThan(100);
+	});
+
+	test('both verdicts are reachable without opening anything', async ({ page }) => {
+		await page.setViewportSize({ width: 1920, height: 1080 });
+		await page.goto('/actions');
+		const rows = page.locator('ul[class*="queue"] > li');
+		if ((await rows.count()) === 0) test.skip(true, 'no pending proposals in this fixture');
+
+		const first = rows.first();
+		await expect(first.locator('button[class*="accept"]')).toBeVisible();
+		await expect(first.locator('button[class*="reject"]')).toBeVisible();
+		// And the sentence that stops a queue being cleared by accepting
+		// everything is on screen, not behind the expander.
+		await expect(first.locator('blockquote')).toBeVisible();
+	});
+
+	test('the queue comes before the summary tiles', async ({ page }) => {
+		/*
+		 * A page is ordered by what the reader came to do. The decisions sat
+		 * below five tiles reading zero, so the first screen of a page about
+		 * pending decisions carried no content at all.
+		 */
+		await page.goto('/actions');
+		const queue = page.locator('ul[class*="queue"]');
+		if ((await queue.count()) === 0) test.skip(true, 'no pending proposals in this fixture');
+
+		const queueY = (await queue.boundingBox())!.y;
+		const tilesY = (await page.locator('[class*="tiles"]').first().boundingBox())!.y;
+		expect(queueY).toBeLessThan(tilesY);
+	});
+
+	test('every verdict meets the tap floor at 412px', async ({ page }) => {
+		// D22. A card costing a quarter of a desktop viewport costs a whole
+		// phone screen, and these are the controls Paul actually presses.
+		await page.setViewportSize({ width: 412, height: 915 });
+		await page.goto('/actions');
+		const buttons = page.locator('button[class*="verdict"]');
+		if ((await buttons.count()) === 0) test.skip(true, 'no pending proposals in this fixture');
+
+		const small = await buttons.evaluateAll((els) =>
+			els.filter((e) => e.getBoundingClientRect().height < 44).length
+		);
+		expect(small).toBe(0);
+	});
+});
